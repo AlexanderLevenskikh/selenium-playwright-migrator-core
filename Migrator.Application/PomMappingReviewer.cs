@@ -256,6 +256,8 @@ public sealed class PomMappingReviewer
         "catch" => "catch",
         "finally" => "finally",
         "throw" => "throw",
+        "break" => "loop_exit",
+        "retry_increment" => "retry_counter_update",
         _ => "unresolved_source_structure"
     };
 
@@ -281,6 +283,15 @@ public sealed class PomMappingReviewer
             or "Evaluate" or "EvaluateAsync" or "RunScript")
         {
             yield return "script_execution";
+            yield break;
+        }
+
+        // A state getter is observational, not a wait. Dropping it may
+        // silently turn a conditional reload into unconditional navigation.
+        if (name == "Get" && chain.Any(n => n is "Displayed" or "Visible"
+                or "Enabled" or "Exists"))
+        {
+            yield return "state_check";
             yield break;
         }
 
@@ -333,7 +344,9 @@ public sealed class PomMappingReviewer
     private sealed record ParsedTarget(
         IReadOnlyList<PomMappingTargetEffect> Effects,
         IReadOnlyList<string> Diagnostics,
-        IReadOnlyDictionary<string, int> ParameterUses);
+        IReadOnlyDictionary<string, int> ParameterUses,
+        IReadOnlyList<string> CatchTypes,
+        IReadOnlyList<string> WhileConditions);
 
     private static int CountSourceArgumentUses(string expression, string parameter)
     {
@@ -369,7 +382,8 @@ public sealed class PomMappingReviewer
             .Take(10).Select(d => "target_syntax_" + d.Id).ToArray();
         if (errors.Length > 0)
             return new ParsedTarget(Array.Empty<PomMappingTargetEffect>(), errors,
-                new Dictionary<string, int>(StringComparer.Ordinal));
+                new Dictionary<string, int>(StringComparer.Ordinal),
+                Array.Empty<string>(), Array.Empty<string>());
 
         var method = tree.GetRoot().DescendantNodes()
             .OfType<MethodDeclarationSyntax>().First();
@@ -404,7 +418,13 @@ public sealed class PomMappingReviewer
             n is InvocationExpressionSyntax or IfStatementSyntax or WhileStatementSyntax
                 or ForStatementSyntax or ForEachStatementSyntax or DoStatementSyntax
                 or TryStatementSyntax or CatchClauseSyntax or FinallyClauseSyntax
-                or ThrowStatementSyntax)
+                or ThrowStatementSyntax or BreakStatementSyntax
+            || ((n is PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax)
+                && n.Ancestors().Any(parent => parent is CatchClauseSyntax)
+                && (n.IsKind(SyntaxKind.PostIncrementExpression)
+                    || n.IsKind(SyntaxKind.PreIncrementExpression)
+                    || n.IsKind(SyntaxKind.PostDecrementExpression)
+                    || n.IsKind(SyntaxKind.PreDecrementExpression))))
             .Where(n => n is not InvocationExpressionSyntax
                 || !n.Ancestors().OfType<InvocationExpressionSyntax>().Any())
             .OrderBy(n => n.SpanStart).ThenBy(n => n.Span.Length)
@@ -420,6 +440,8 @@ public sealed class PomMappingReviewer
                 CatchClauseSyntax => "catch",
                 FinallyClauseSyntax => "finally",
                 ThrowStatementSyntax => "throw",
+                BreakStatementSyntax => "loop_exit",
+                PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax => "retry_counter_update",
                 InvocationExpressionSyntax invocation => TargetEffect(invocation),
                 _ => "unclassified_target_call"
             };
@@ -431,7 +453,11 @@ public sealed class PomMappingReviewer
                 node.ToString().Length <= 250 ? node.ToString() : node.ToString()[..250]));
         }
         return new ParsedTarget(effects, diagnostics.Distinct(StringComparer.Ordinal).ToArray(),
-            parameterUses);
+            parameterUses,
+            method.DescendantNodes().OfType<CatchClauseSyntax>()
+                .Select(c => c.Declaration?.Type.ToString() ?? string.Empty).ToArray(),
+            method.DescendantNodes().OfType<WhileStatementSyntax>()
+                .Select(c => c.Condition.ToString()).ToArray());
     }
 
     private static string? TargetEffect(InvocationExpressionSyntax inv)
@@ -444,6 +470,8 @@ public sealed class PomMappingReviewer
             _ => string.Empty
         };
 
+        if (name is "IsVisibleAsync" or "IsHiddenAsync"
+            or "IsEnabledAsync" or "IsDisabledAsync") return "state_check";
         if (name is "ClickAsync") return "click";
         if (name is "FillAsync" or "PressAsync" or "TypeAsync") return "input";
         if (name is "WaitForAsync" or "WaitForSelectorAsync"
