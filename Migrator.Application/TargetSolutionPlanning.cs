@@ -357,11 +357,28 @@ public sealed partial class MigrationEngine
                 node.NUnitPlan?.AnalysisId, node.NUnitPlan?.CandidateId));
         }
 
-        var slnx = "<Solution>\n" + string.Join("\n", projects
+        // SLNX requires unique project display names within each solution
+        // folder. Generated project file names are intentionally stable and
+        // repeated across assemblies, so preserve the source project folders
+        // instead of placing every Migrator.Generated.Library in the root.
+        var slnxLines = new List<string> { "<Solution>" };
+        foreach (var group in projects
             .OrderBy(project => project.ProjectFile, StringComparer.Ordinal)
-            .Select(project => "  <Project Path=\""
-                + SecurityElement.Escape(project.ProjectFile) + "\" />"))
-            + "\n</Solution>\n";
+            .GroupBy(project => Path.GetDirectoryName(project.ProjectFile)?
+                .Replace('\\', '/') ?? string.Empty, StringComparer.Ordinal))
+        {
+            if (group.Key.Length > 0)
+                slnxLines.Add("  <Folder Name=\"/"
+                    + SecurityElement.Escape(group.Key) + "/\">");
+            foreach (var project in group)
+                slnxLines.Add((group.Key.Length > 0 ? "    " : "  ")
+                    + "<Project Path=\""
+                    + SecurityElement.Escape(project.ProjectFile) + "\" />");
+            if (group.Key.Length > 0)
+                slnxLines.Add("  </Folder>");
+        }
+        slnxLines.Add("</Solution>");
+        var slnx = string.Join("\n", slnxLines) + "\n";
         plannedFiles.Add(SolutionFile(SolutionArtifactName, slnx, null));
         var manifest = JsonSerializer.Serialize(new
         {
