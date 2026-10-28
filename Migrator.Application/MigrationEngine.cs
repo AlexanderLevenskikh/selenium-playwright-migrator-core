@@ -82,6 +82,7 @@ public sealed partial class MigrationEngine
 
                     var existingFramework = SourceFrameworkGuard.Classify(
                         tree.GetRoot(), file, scope);
+                    var executionGates = NUnitExecutionGateGuard.Find(tree.GetRoot());
 
                     if (hasXunit)
                     {
@@ -94,6 +95,21 @@ public sealed partial class MigrationEngine
                         disposition = existingFramework.Disposition;
                         findings.Add(Finding(relative, 0, existingFramework.Code,
                             existingFramework.Explanation, existingFramework.EvidenceKind));
+                    }
+                    else if (declaredCount > 0 && executionGates.Count > 0)
+                    {
+                        // Never turn a skipped/opt-in NUnit test into a runnable
+                        // target by dropping [Ignore], [Explicit] or their
+                        // per-case named arguments.
+                        disposition = "unsupported_nunit_execution_gate";
+                        foreach (var gate in executionGates)
+                            findings.Add(Finding(relative, gate.SourceLine,
+                                "NUNIT_EXECUTION_GATE_REQUIRES_REVIEW",
+                                "NUnit source execution gate " + gate.GateName
+                                    + " on " + gate.Scope
+                                    + " is not attested in generated output; "
+                                    + "preserve the gate before opting in to migration.",
+                                "syntax"));
                     }
                     else if (scopedFixtureTypes.Length > 1
                              || scopedFixtureTypes.Length > 0 && declaredCount > 0)
