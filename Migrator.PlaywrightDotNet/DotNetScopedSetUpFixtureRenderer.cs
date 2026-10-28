@@ -47,7 +47,23 @@ public partial class PlaywrightDotNetRenderer
         sb.AppendLine("{");
 
         var problems = scope.Diagnostics;
-        if (problems.Count > 0)
+        // Preflight both setup AND teardown before executing any scope
+        // effects. An unmapped teardown must prevent the suite from running,
+        // not merely report inconclusive after its tests have passed.
+        var unsafeActions = declaration.Hooks
+            .SelectMany(hook => hook.Actions)
+            .Where(action => action is not MappedMethodInvocationAction mapped
+                || mapped.GetTargetStatements("playwright-dotnet").Count == 0
+                || mapped.GetTargetStatements("playwright-dotnet").Any(statement =>
+                    Regex.IsMatch(statement, @"\bPage\s*\.",
+                        RegexOptions.CultureInvariant)
+                    || statement.Contains("{TARGET}", StringComparison.Ordinal)
+                    || statement.Contains("{result}", StringComparison.Ordinal)
+                    || statement.Contains("TODO", StringComparison.OrdinalIgnoreCase)
+                    || statement.Contains("MIGRATOR:", StringComparison.Ordinal)))
+            .ToArray();
+
+        if (problems.Count > 0 || unsafeActions.Length > 0)
         {
             sb.AppendLine($"{_indent}[OneTimeSetUp]");
             sb.AppendLine($"{_indent}public Task __MigratorBlockedScopedSetupAsync()");
@@ -56,6 +72,13 @@ public partial class PlaywrightDotNetRenderer
                 AppendSmartTodo(sb, $"scoped NUnit source needs review: {EscapeComment(issue.SourceType)}",
                     issue.Code, issue.Description,
                     "Resolve source scope/ordering before executing the generated assembly.", null);
+            foreach (var action in unsafeActions)
+                AppendSmartTodo(sb,
+                    $"scope hook action lacks standalone target evidence: {EscapeComment(GetActionSourceText(action))}",
+                    "NUNIT_SETUPFIXTURE_ACTION_REQUIRES_MAPPING",
+                    "Namespace/assembly setup executes outside the individual Playwright PageTest context.",
+                    "Supply explicit independent mappings for every source OneTimeSetUp and OneTimeTearDown action.");
+
             foreach (var hook in declaration.Hooks)
             {
                 sb.AppendLine($"{_indent}{_indent}// Unexecuted source {hook.Kind}: {EscapeComment(hook.DeclaringType)}.{EscapeComment(hook.MethodName)}");
@@ -87,26 +110,7 @@ public partial class PlaywrightDotNetRenderer
                 {
                     sb.AppendLine($"{_indent}{_indent}// Source {EscapeComment(hook.DeclaringType)}.{EscapeComment(hook.MethodName)}");
                     foreach (var action in hook.Actions)
-                    {
-                        if (action is MappedMethodInvocationAction mapped
-                            && mapped.GetTargetStatements("playwright-dotnet")
-                                .All(statement => !Regex.IsMatch(statement,
-                                    @"\bPage\s*\.", RegexOptions.CultureInvariant)
-                                    && !statement.Contains("{TARGET}", StringComparison.Ordinal)))
-                        {
-                            RenderActionWithSafety(sb, action);
-                        }
-                        else
-                        {
-                            AppendSmartTodo(sb,
-                                $"scope hook action lacks standalone target evidence: {EscapeComment(GetActionSourceText(action))}",
-                                "NUNIT_SETUPFIXTURE_ACTION_REQUIRES_MAPPING",
-                                "Namespace/assembly setup runs without an individual Playwright PageTest context.",
-                                "Supply an explicit independent target Methods mapping; never assume a Page property exists.");
-                            sb.AppendLine($"{_indent}{_indent}Assert.Inconclusive(\"MIGRATOR: scoped source hook not migrated.\");");
-                            RenderActionAsComment(sb, action);
-                        }
-                    }
+                        RenderActionWithSafety(sb, action);
                 }
                 sb.AppendLine($"{_indent}}}");
                 sb.AppendLine();
