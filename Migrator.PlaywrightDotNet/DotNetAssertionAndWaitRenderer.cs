@@ -32,6 +32,9 @@ public partial class PlaywrightDotNetRenderer
                 case TextAssertionKind.TextContains:
                     methodLine = $"await {ExpectCall()}({locator}).ToContainTextAsync({ConvertExpression(action.ExpectedValue!)}); // line {action.SourceLine}";
                     break;
+                case TextAssertionKind.TextNotContains:
+                    methodLine = $"await {ExpectCall()}({locator}).Not.ToContainTextAsync({ConvertExpression(action.ExpectedValue!)}); // line {action.SourceLine}";
+                    break;
                 default:
                     methodLine = $"// TODO: unsupported text assertion kind {action.Kind}";
                     break;
@@ -74,6 +77,9 @@ public partial class PlaywrightDotNetRenderer
                 }
             case TextAssertionKind.TextContains:
                 sb.AppendLine($"{_indent}{_indent}await {ExpectCall()}({locator}).ToContainTextAsync({ConvertExpression(action.ExpectedValue!)}); // line {action.SourceLine}");
+                break;
+            case TextAssertionKind.TextNotContains:
+                sb.AppendLine($"{_indent}{_indent}await {ExpectCall()}({locator}).Not.ToContainTextAsync({ConvertExpression(action.ExpectedValue!)}); // line {action.SourceLine}");
                 break;
         }
     }
