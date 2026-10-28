@@ -94,10 +94,25 @@ internal static class NUnitLifecycleInspector
                 foreach (var method in declaration.Members.OfType<MethodDeclarationSyntax>())
                 {
                     var symbol = model.GetDeclaredSymbol(method) as IMethodSymbol;
-                    var kinds = method.AttributeLists.SelectMany(list => list.Attributes)
+                    var attributes = method.AttributeLists.SelectMany(list => list.Attributes).ToArray();
+                    var kinds = attributes
                         .Select(attr => AttributeKind(attr.Name.ToString().Split('.').Last()))
                         .Where(kind => kind != null)
                         .Select(kind => kind!.Value).Distinct().ToArray();
+                    foreach (var attr in attributes)
+                    {
+                        var possibleKind = AttributeKind(attr.Name.ToString().Split('.').Last());
+                        if (possibleKind == null) continue;
+                        var constructor = model.GetSymbolInfo(attr).Symbol as IMethodSymbol;
+                        var attrType = constructor?.ContainingType;
+                        if (attrType != null && attrType.TypeKind != TypeKind.Error
+                            && !string.Equals(attrType.ToDisplayString(),
+                                "NUnit.Framework." + possibleKind.Value + "Attribute",
+                                StringComparison.Ordinal))
+                            Error("NUNIT_LIFECYCLE_ATTRIBUTE_AMBIGUOUS", type.Name,
+                                "A non-NUnit attribute has a lifecycle-like name. Do not infer NUnit execution from spelling alone.",
+                                Line(attr));
+                    }
 
                     if (kinds.Length > 1)
                         Error("NUNIT_LIFECYCLE_MULTIPLE_ATTRIBUTES", type.Name,
@@ -111,9 +126,9 @@ internal static class NUnitLifecycleInspector
                             "Overridden inherited NUnit hook may not invoke the base implementation.",
                             Line(method));
                     if (level > 0 && previouslySeen.ContainsKey(method.Identifier.ValueText)
-                        && kinds.Length == 0)
+                        && symbol?.IsOverride != true)
                         Error("NUNIT_LIFECYCLE_HIDDEN_METHOD", type.Name,
-                            "A derived method hides or overrides an inherited lifecycle method.",
+                            "A derived method hides an inherited lifecycle name; NUnit may skip the base implementation.",
                             Line(method));
 
                     foreach (var kind in kinds)
