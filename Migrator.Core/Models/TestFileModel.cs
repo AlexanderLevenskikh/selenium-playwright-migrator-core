@@ -18,6 +18,9 @@ public sealed record TestFileModel
     /// Null for ordinary single-SetUp fixtures using the legacy rendering path.
     /// </summary>
     public NUnitLifecyclePlan? NUnitLifecycle { get; init; }
+
+    /// <summary>Assembly/namespace scoped NUnit SetUpFixture ledger.</summary>
+    public NUnitScopedSetUpPlan? ScopedSetUp { get; init; }
     public IEnumerable<TestModel> Tests { get; init; } = Array.Empty<TestModel>();
 
     /// <summary>
