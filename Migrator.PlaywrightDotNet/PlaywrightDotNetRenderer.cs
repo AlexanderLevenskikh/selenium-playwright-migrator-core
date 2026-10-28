@@ -2870,8 +2870,27 @@ public partial class PlaywrightDotNetRenderer : IRenderer
 
     void RenderTableRowAccess(StringBuilder sb, TableRowAccessAction action)
     {
-        // This action represents a table row access that wasn't resolved to a specific operation
-        // (click, text, etc). Render as TODO for manual review.
+        // Source ElementAt(...) may be followed by an operation/assertion that
+        // this generic row access action does not model. Emitting only
+        // 'var row = locator' silently DROPS the source operation, producing a
+        // compiling but semantically empty test. Fail closed for every tail.
+        var sourceOperation = Regex.Match(action.SourceText,
+            @"\.Items\s*\.\s*ElementAt\s*\([^)]*\)(?<tail>.*)$",
+            RegexOptions.CultureInvariant);
+        if (sourceOperation.Success
+            && !string.IsNullOrWhiteSpace(sourceOperation.Groups["tail"].Value))
+        {
+            AppendSmartTodo(sb,
+                "table row operation/assertion requires mapping: " + EscapeComment(action.SourceText),
+                "TABLE_ROW_OPERATION_REQUIRES_MAPPING",
+                "The source chain contains behavior after ElementAt(...) that was not recognized as an executable target action.",
+                "Add a precise recognizer or an explicit source-backed mapping; do not replace a click or assertion with a locator variable.",
+                action.SourceText);
+            return;
+        }
+
+        // A bare row access can still introduce a locator for downstream use;
+        // the terminal operation above must never be elided.
         var target = action.Target;
         var locator = RenderTableRowLocator(target, action.IndexExpression);
 

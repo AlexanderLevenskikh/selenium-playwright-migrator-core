@@ -8,6 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- This project deliberately has zero ProjectReference edges. -->
-    <PackageReference Include="SeleniumPlaywrightMigrator.Application" Version="0.1.0-preview.6" />
+    <PackageReference Include="SeleniumPlaywrightMigrator.Application" Version="0.1.0-preview.7" />
   </ItemGroup>
 </Project>

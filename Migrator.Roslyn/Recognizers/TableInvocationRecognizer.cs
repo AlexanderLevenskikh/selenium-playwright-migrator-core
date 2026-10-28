@@ -90,6 +90,21 @@ public class TableInvocationRecognizer : IInvocationRecognizer
             {
                 var index = elementAtMatch.Groups[1].Value.Trim();
                 var targetExpr = ExtractTableBase(ctx.ReceiverText);
+
+                // Recognizing an ElementAt receiver is not enough: a terminal
+                // Click() changes application state and must not be degraded to
+                // a locator-only variable. Retain the index in the source target
+                // so the adapter can map it to a Playwright .Nth(index).ClickAsync().
+                // Other operations are left structured and will be explicitly
+                // marked for review by the renderer if not recognized above.
+                if (ctx.MethodName == "Click" && ctx.ArgumentTexts.Count == 0
+                    && ctx.ReceiverText.TrimEnd().EndsWith(")", StringComparison.Ordinal))
+                {
+                    return new ClickAction(ctx.SourceLine,
+                        TargetExpression.Unresolved(targetExpr + ".ElementAt(" + index + ")"),
+                        RecognitionConfidence.SyntaxFallback);
+                }
+
                 return new TableRowAccessAction(ctx.SourceLine, TargetExpression.Unresolved(targetExpr), index, fullText);
             }
         }

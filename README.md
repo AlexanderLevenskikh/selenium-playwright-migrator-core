@@ -74,3 +74,9 @@ These are **quality and mapping extensibility improvements**, not automatic busi
 Use `new PomSourceInspector().Inspect(projectDirectory, pageTypes?, pageVariable?)` to examine actual source definitions of Page Object locators and LocalStorage helpers. The inspector collects direct members and one nested control level (for example `page.Table.Items`), with source paths, lines, literals and the definitions of selector extensions such as `WithDataTest` and `WithTid`.
 
 Every `ProposedPlaywrightExpression` is marked `requires_review`. Unknown selector helpers and non-literal values are `insufficient_evidence` rather than guessed. Suggestions are **not automatically applied** to the adapter configuration. A reviewer must confirm DOM matching, authorization, context, wait/retry semantics and browser origin before using them. Hashes bind proposals to the scanned source bytes. No customer code is included in regression fixtures.
+
+## Terminal table-row actions (preview.7)
+
+A source `Items.ElementAt(N).Click()` represents a browser side effect. The Roslyn table recognizer now preserves it as a ClickAction with the original index, so a reviewed selector mapping can emit `await locator.Nth(N).ClickAsync()` rather than a passive locator variable.
+
+Unrecognized operations/assertions after `ElementAt(N)` are explicitly marked `TABLE_ROW_OPERATION_REQUIRES_MAPPING`. Their behavior must not disappear merely because a target locator is available. A synthetic regression covers preserved clicks and fail-closed assertion tails.
