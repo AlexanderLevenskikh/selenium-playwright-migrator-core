@@ -11,6 +11,9 @@ public static class ReportBuilder
             .Concat(model.NUnitLifecycle?.Hooks
                 .SelectMany(hook => TestActionTraversal.Flatten(hook.Actions))
                 ?? Enumerable.Empty<TestAction>())
+            .Concat(model.ScopedSetUp?.Declaration?.Hooks
+                .SelectMany(hook => TestActionTraversal.Flatten(hook.Actions))
+                ?? Enumerable.Empty<TestAction>())
             .ToList();
         var allFileActions = allActions.Concat(allSetupActions).ToList();
 
@@ -27,7 +30,8 @@ public static class ReportBuilder
             line.TrimStart().StartsWith("// TODO:"));
 
         var setupHasUnsupported = allSetupActions.Any(a => a is UnsupportedAction)
-            || (model.NUnitLifecycle?.Diagnostics.Count ?? 0) > 0;
+            || (model.NUnitLifecycle?.Diagnostics.Count ?? 0) > 0
+            || model.ScopedSetUp?.HasScope == true;
         var convertedWithoutUnsupported = model.Tests.Count(t =>
             !TestActionTraversal.Flatten(t.BodyActions).Any(a => a is UnsupportedAction));
         var emptyAfterSuppression = generatedOutput.Split(
