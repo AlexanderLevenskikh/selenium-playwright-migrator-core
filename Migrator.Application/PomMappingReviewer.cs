@@ -260,10 +260,16 @@ public sealed class PomMappingReviewer
             yield break;
         }
 
-        if (chain.Any(n => n is "Wait" or "WaitFor" or "Until")
-            || name is "Wait" or "WaitFor")
+        var hasWaitChain = chain.Any(n => n is "Wait" or "WaitFor" or "Until")
+            || name is "Wait" or "WaitFor";
+        if (hasWaitChain)
         {
             yield return "state_wait";
+            // A wait.EqualTo(true) is an expected state condition, not a
+            // separate business assertion. A terminal Click after a wait
+            // remains a distinct browser side effect and is counted below.
+            if (name is "EqualTo" or "Wait" or "WaitFor" or "Until")
+                yield break;
         }
 
         if (name is "ClearAndInputText" or "InputText" or "SendKeys" or "SendKeysAsync"
