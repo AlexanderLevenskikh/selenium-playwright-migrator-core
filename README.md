@@ -68,3 +68,9 @@ The Roslyn frontend now retains `var result = Navigation.Open*Page()` as a struc
 `LocalStorage.Clear/SetItem/RemoveItem/SettingPeriod` invocations produce actionable `LOCAL_STORAGE_REQUIRES_MAPPING` TODOs and findings unless explicitly mapped. No automatic conversion to `Page.EvaluateAsync` is attempted: browser origin, pre-navigation timing, serialized values and side effects must first be verified from source truth. These findings carry source line numbers for agent review.
 
 These are **quality and mapping extensibility improvements**, not automatic business-semantic preservation. Private ArBilling source is intentionally absent from repository regressions; only synthetic fixtures are committed.
+
+## Source-backed POM evidence (preview.6)
+
+Use `new PomSourceInspector().Inspect(projectDirectory, pageTypes?, pageVariable?)` to examine actual source definitions of Page Object locators and LocalStorage helpers. The inspector collects direct members and one nested control level (for example `page.Table.Items`), with source paths, lines, literals and the definitions of selector extensions such as `WithDataTest` and `WithTid`.
+
+Every `ProposedPlaywrightExpression` is marked `requires_review`. Unknown selector helpers and non-literal values are `insufficient_evidence` rather than guessed. Suggestions are **not automatically applied** to the adapter configuration. A reviewer must confirm DOM matching, authorization, context, wait/retry semantics and browser origin before using them. Hashes bind proposals to the scanned source bytes. No customer code is included in regression fixtures.
