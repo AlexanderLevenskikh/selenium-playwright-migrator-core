@@ -20,6 +20,7 @@ public partial class PlaywrightDotNetRenderer : IRenderer
     readonly HashSet<string> _fixturePageAliases = new(StringComparer.Ordinal);
     readonly HashSet<string> _setupActiveNavigationResults = new(StringComparer.Ordinal);
     bool _renderingSetUp;
+    bool _scopedSetUpHasBlockingDiagnostics;
     readonly HashSet<string> _localAliases = new(StringComparer.Ordinal);
     readonly HashSet<string> _targetLocals = new(StringComparer.Ordinal);
     HashSet<string> _targetKnownTypes = new(StringComparer.Ordinal);
@@ -86,6 +87,20 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             .Where(item => !string.IsNullOrWhiteSpace(item))
             .Select(item => item!)
             .ToArray();
+        _scopedSetUpHasBlockingDiagnostics = false;
+        if (model.ScopedSetUp is { HasScope: true } sourceScope)
+        {
+            if (sourceScope.Declaration != null)
+                return RenderScopedSetUpFixture(model, sourceScope);
+            if (_targetTestFramework != DotNetTargetTestFramework.NUnit)
+                throw new InvalidOperationException(
+                    "NUNIT_SETUPFIXTURE_FRAMEWORK_MISMATCH: namespace-scoped hooks require a target NUnit assembly.");
+            if (!string.IsNullOrWhiteSpace(testHost?.Namespace)
+                && !string.Equals(testHost.Namespace, model.Namespace, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "NUNIT_SETUPFIXTURE_NAMESPACE_CHANGED: target namespace must preserve the source SetUpFixture containment hierarchy.");
+            _scopedSetUpHasBlockingDiagnostics = sourceScope.Diagnostics.Count > 0;
+        }
         var hasTestHostSetup = testHost?.SetUpStatements != null && testHost.SetUpStatements.Length > 0;
         var hasGeneratedSetup = hasTestHostSetup || model.SetUpActions.Any()
             || model.NUnitLifecycle != null;
@@ -112,6 +127,28 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         }
 
         DotNetTestFileScaffoldRenderer.AppendClassDeclaration(sb, testHost, classLayout);
+
+        if (model.ScopedSetUp is { HasScope: true } scopeDependencies)
+        {
+            // The target suite must contain exactly one generated scoped
+            // SetUpFixture artifact per source declaration. Never paste these
+            // effects into each test fixture (that repeats setup per class).
+            foreach (var sourceScope in scopeDependencies.Applicable)
+            {
+                AppendSmartTodo(sb,
+                    $"verify generated scoped SetUpFixture dependency: {EscapeComment(sourceScope.SourceType)}",
+                    "NUNIT_SETUPFIXTURE_DEPENDENCY_REQUIRES_REVIEW",
+                    "A namespace/assembly SetUpFixture must execute once for the containing NUnit suite, not once per individual test class.",
+                    "Include and verify the separately generated SetUpFixture file in the same target assembly before accepting behavior.",
+                    sourceScope.SourceFile);
+            }
+            foreach (var problem in scopeDependencies.Diagnostics)
+            {
+                AppendSmartTodo(sb, $"unresolved namespace SetUpFixture scope: {EscapeComment(problem.SourceType)}",
+                    problem.Code, problem.Description,
+                    "Remove ambiguous scope dependencies before treating fixture initialization as executable.");
+            }
+        }
 
         // Render class-level fields. Some source class members are intentionally
         // omitted as non-portable (for example Selenium POM fields). Do not add
@@ -487,6 +524,8 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             _blockedSymbols.Add(symbol);
 
         var body = new StringBuilder();
+        if (_scopedSetUpHasBlockingDiagnostics)
+            body.AppendLine($"{_indent}{_indent}Assert.Inconclusive(\"MIGRATOR: ambiguous NUnit SetUpFixture scope.\");");
         foreach (var action in test.BodyActions)
             RenderActionWithSafety(body, action);
 
