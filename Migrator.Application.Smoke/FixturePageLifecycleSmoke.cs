@@ -251,12 +251,15 @@ internal static class FixturePageLifecycleSmoke
                 }
                 """);
             var lifecycleCase = RunCase(Config(), lifecycle);
-            Check(lifecycleCase.Parsed.SetUpActions.OfType<UnsupportedAction>().Count() == 3
+            Check(lifecycleCase.Parsed.NUnitLifecycle is
+                { CanRenderOrderedHooks: false } plan
+                && plan.Diagnostics.Any(d => d.Code == "NUNIT_LIFECYCLE_SAME_LEVEL_ORDER")
                 && lifecycleCase.Generated.Contains("BeforeAll", StringComparison.Ordinal)
                 && lifecycleCase.Generated.Contains("PrepareTwo", StringComparison.Ordinal)
                 && lifecycleCase.Generated.Contains("Cleanup", StringComparison.Ordinal)
+                && lifecycleCase.Generated.Contains("Assert.Inconclusive(", StringComparison.Ordinal)
                 && lifecycleCase.Complete == 0,
-                "OneTimeSetUp, multiple SetUp and TearDown cannot silently disappear");
+                "OneTimeSetUp, multiple SetUp and TearDown must remain visible and fail closed");
         }
         finally
         {
