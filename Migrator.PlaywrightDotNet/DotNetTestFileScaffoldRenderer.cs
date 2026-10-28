@@ -72,7 +72,8 @@ internal static class DotNetTestFileScaffoldRenderer
             .Any(a => a is UnsupportedAction or RawStatementAction
                 or FixturePageAliasAction
                 or (MappedMethodInvocationAction { RequiresReview: true }))
-        || model.NUnitLifecycle != null;
+        || model.NUnitLifecycle != null
+        || model.ScopedSetUp?.HasScope == true;
 
     public static void AppendFilePreamble(
         StringBuilder sb,
@@ -126,7 +127,8 @@ internal static class DotNetTestFileScaffoldRenderer
         if (!string.IsNullOrWhiteSpace(classLayout.TargetNamespace))
         {
             // Backward compatibility: without TestHost, use .Playwright suffix.
-            var nsSuffix = testHost != null ? string.Empty : ".Playwright";
+            var nsSuffix = testHost != null || model.ScopedSetUp?.HasScope == true
+                ? string.Empty : ".Playwright";
             sb.AppendLine($"namespace {classLayout.TargetNamespace}{nsSuffix};");
             sb.AppendLine();
         }

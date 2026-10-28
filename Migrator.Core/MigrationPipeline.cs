@@ -76,6 +76,10 @@ public class MigrationPipeline
             // The experimental IR V2 bridge does not yet carry inherited
             // NUnit hook ordering. Do not silently emit test bodies without
             // inherited setup and teardown actions.
+            if (targetModel.ScopedSetUp?.HasScope == true)
+                throw new InvalidOperationException(
+                    "NUNIT_SETUPFIXTURE_IRV2_UNSUPPORTED: namespace/assembly-scoped hooks require the legacy renderer.");
+
             if (targetModel.NUnitLifecycle != null)
                 throw new InvalidOperationException(
                     "NUNIT_LIFECYCLE_IRV2_UNSUPPORTED: use the legacy renderer until the inherited lifecycle is represented in IR V2.");

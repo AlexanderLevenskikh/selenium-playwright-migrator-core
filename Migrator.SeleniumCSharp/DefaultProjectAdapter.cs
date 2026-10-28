@@ -137,8 +137,27 @@ public class DefaultProjectAdapter : IProjectAdapter
             ScaffoldMethodPatterns = resolved._scaffoldMethodPatterns,
             ClassFields = sourceModel.ClassFields,
             NUnitLifecycle = adaptedLifecycle,
+            ScopedSetUp = AdaptScopedSetUp(sourceModel.ScopedSetUp, resolved),
             PreservedClassAttributes = sourceModel.PreservedClassAttributes
         };
+    }
+
+    NUnitScopedSetUpPlan? AdaptScopedSetUp(
+        NUnitScopedSetUpPlan? source, ResolvedFileConfig resolved)
+    {
+        if (source?.Declaration == null)
+            return source;
+        // Only the declaring SetUpFixture gets executable target hooks.
+        // Dependent fixture files retain source-only scope references.
+        var declaration = source.Declaration with
+        {
+            Hooks = source.Declaration.Hooks.Select(hook => hook with
+            {
+                Actions = hook.Actions.SelectMany(action => AdaptAction(action, resolved))
+                    .ToArray()
+            }).ToArray()
+        };
+        return source with { Declaration = declaration };
     }
 
     ResolvedFileConfig GetResolvedConfig(string? sourceFilePath)

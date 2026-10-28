@@ -53,6 +53,14 @@ public sealed partial class MigrationEngine
                 {
                     var classes = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>();
                     var fixtures = new HashSet<string>(StringComparer.Ordinal);
+                    // [SetUpFixture] is a migration artifact even when it has
+                    // zero [Test] methods. Never silently skip assembly/namespace
+                    // one-time hooks as a no_test_declarations helper.
+                    var scopedFixtureTypes = classes.Where(type =>
+                        type.AttributeLists.SelectMany(list => list.Attributes)
+                            .Any(attribute => attribute.Name.ToString().Split('.').Last()
+                                is "SetUpFixture" or "SetUpFixtureAttribute"))
+                        .ToArray();
                     var hasXunit = false;
                     foreach (var type in classes)
                     {
@@ -87,13 +95,20 @@ public sealed partial class MigrationEngine
                         findings.Add(Finding(relative, 0, existingFramework.Code,
                             existingFramework.Explanation, existingFramework.EvidenceKind));
                     }
+                    else if (scopedFixtureTypes.Length > 1
+                             || scopedFixtureTypes.Length > 0 && declaredCount > 0)
+                    {
+                        disposition = "multiple_fixtures";
+                        findings.Add(Finding(relative, 0, "MULTIPLE_FIXTURES",
+                            "SetUpFixture and test declarations share a file or multiple SetUpFixtures are declared; isolate each namespace-scoped artifact before generation.", "syntax"));
+                    }
                     else if (fixtures.Count > 1)
                     {
                         disposition = "multiple_fixtures";
                         findings.Add(Finding(relative, 0, "MULTIPLE_FIXTURES",
                             "Multiple test classes were discovered in one file. The legacy parser selects one; generation is blocked to avoid silent loss.", "syntax"));
                     }
-                    else if (declaredCount == 0)
+                    else if (declaredCount == 0 && scopedFixtureTypes.Length == 0)
                     {
                         disposition = "no_test_declarations";
                     }
@@ -104,6 +119,13 @@ public sealed partial class MigrationEngine
                             var parser = new RoslynTestFileParser(LoadConfig(configPath));
                             var model = parser.Parse(file);
                             parsedCount = model.Tests.Count();
+                            if (scopedFixtureTypes.Length > 0
+                                && model.ScopedSetUp?.Declaration == null)
+                            {
+                                disposition = "parser_error";
+                                findings.Add(Finding(relative, 0, "NUNIT_SETUPFIXTURE_DISCOVERY_UNRESOLVED",
+                                    "The source declares SetUpFixture but Roslyn could not establish a scoped declaration.", "diagnostic"));
+                            }
                             if (parsedCount != declaredCount)
                             {
                                 disposition = "incomplete_parser";

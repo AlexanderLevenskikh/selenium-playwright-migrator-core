@@ -179,6 +179,12 @@ internal static class SemanticCompilationSupport
                 """);
         }
 
+        if (compilation.GetTypeByMetadataName("NUnit.Framework.SetUpFixtureAttribute") == null)
+        {
+            declarations.Add(
+                "[System.AttributeUsage(System.AttributeTargets.Class)] public sealed class SetUpFixtureAttribute : System.Attribute { }");
+        }
+
         if (compilation.GetTypeByMetadataName("NUnit.Framework.SetUpAttribute") == null)
         {
             declarations.Add(
