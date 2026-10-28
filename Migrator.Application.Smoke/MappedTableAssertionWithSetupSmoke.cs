@@ -29,6 +29,7 @@ internal static class MappedTableAssertionWithSetupSmoke
                         page.Loader.ValidateLoading();
                         page.Table.Items.ElementAt(0).Text.Get().Should().Be("code");
                         page.Table.Items.ElementAt(1).Text.Get().Should().Contain("region");
+                        page.Table.Items.ElementAt(1).Text.Get().Should().NotContain("deprecated");
                     }
                 }
                 """);
@@ -66,7 +67,9 @@ internal static class MappedTableAssertionWithSetupSmoke
             Check(rendered.Contains(
                 "await Expect(Page.Locator(\"[data-test='table'] [data-test='row']\").Nth(1)).ToContainTextAsync(\"region\");",
                 StringComparison.Ordinal), "source .Should().Contain should retain substring semantics");
-            Check(Count(rendered, "[MIGRATOR:TABLE_ASSERTION_REQUIRES_SETUP_REVIEW]") == 2,
+            Check(Count(rendered, ".Not.ToContainTextAsync(\\\"deprecated\\\")") == 1,
+                "NotContain must become one executable negated substring assertion");
+            Check(Count(rendered, "[MIGRATOR:TABLE_ASSERTION_REQUIRES_SETUP_REVIEW]") == 3,
                 "unmigrated fixture setup must remain a visible review blocker for both assertions");
             Check(rendered.Contains("[MIGRATOR:UNRESOLVED_SYMBOL]", StringComparison.Ordinal),
                 "unresolved source fixture assignment must remain disclosed");
