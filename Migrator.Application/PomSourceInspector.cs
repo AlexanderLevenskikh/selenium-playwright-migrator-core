@@ -126,9 +126,14 @@ public sealed class PomSourceInspector
             }
         }
 
-        var methodEvidence = allClasses.SelectMany(c => ExtractHelperMethods(c.Source, c.Class))
+        var selectedPublicMethods = allClasses.SelectMany(c => ExtractHelperMethods(c.Source, c.Class))
             .Where(m => filters.Count == 0 || filters.Contains(m.SourceType)
                 || m.SourceType.Equals("LocalStorage", StringComparison.Ordinal))
+            .Take(MaxResults).ToArray();
+        // Preserve lexical call sequences and reachable private helpers. In particular,
+        // a DatePicker method calling its private Blur() cannot be safely treated as
+        // a single FillAsync just because it contains one input action.
+        var methodEvidence = PomMethodLineage.Expand(allClasses, selectedPublicMethods)
             .Take(MaxResults).ToArray();
 
         var ordered = selected.OrderBy(m => m.SourceType, StringComparer.Ordinal)
@@ -136,17 +141,21 @@ public sealed class PomSourceInspector
             .ThenBy(m => m.SourcePath, StringComparer.Ordinal)
             .ToArray();
         return new PomSourceInspection(
-            "migrator-pom-evidence/v1alpha1", root, treeHash, inputs.Count,
+            "migrator-pom-evidence/v1alpha2", root, treeHash, inputs.Count,
             ordered.Length, ordered.Take(MaxResults).ToArray(), methodEvidence,
             new[]
             {
                 "Every locator is a review-required proposal, never an automatically applied UiTarget mapping.",
-                "Helper semantics are inferred only from explicit source AST: missing extension implementations cause insufficient_evidence.",
-                "CSS composition of nested Page Objects is only a hypothesis until live DOM and source control behavior are checked.",
-                "Selector matching count, visibility, auth context, wait/retry logic, and data provenance are not verified.",
-                "Storage methods require origin/timing review; in particular pre-navigation localStorage writes may need an origin bootstrap.",
+                "Selector/helper AST does not establish DOM matching count, auth, wait or browser behavior.",
+                "POM call order is lexical syntax, not a dynamic runtime trace through branches or retries.",
+                "Same-class private helper calls are followed only to a bounded depth; inherited and dynamic dispatch is unverified.",
+                "Source test storage-before-navigation evidence does not establish browser origin or storage lifetime.",
+                "No executable POM or LocalStorage mapping is automatically produced; target source must be reviewed.",
                 "Only in-scope UTF-8 C# sources are captured; this is not MSBuild or a runtime behavior oracle."
-            });
+            })
+        {
+            StorageAndNavigationFlows = PomMethodLineage.StorageFlows(allClasses)
+        };
 
         void Collect(string directory, int depth)
         {
