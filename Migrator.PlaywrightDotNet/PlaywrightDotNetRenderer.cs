@@ -133,14 +133,14 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             // The target suite must contain exactly one generated scoped
             // SetUpFixture artifact per source declaration. Never paste these
             // effects into each test fixture (that repeats setup per class).
-            foreach (var sourceScope in scopeDependencies.Applicable)
+            foreach (var scopedDependency in scopeDependencies.Applicable)
             {
                 AppendSmartTodo(sb,
-                    $"verify generated scoped SetUpFixture dependency: {EscapeComment(sourceScope.SourceType)}",
+                    $"verify generated scoped SetUpFixture dependency: {EscapeComment(scopedDependency.SourceType)}",
                     "NUNIT_SETUPFIXTURE_DEPENDENCY_REQUIRES_REVIEW",
                     "A namespace/assembly SetUpFixture must execute once for the containing NUnit suite, not once per individual test class.",
                     "Include and verify the separately generated SetUpFixture file in the same target assembly before accepting behavior.",
-                    sourceScope.SourceFile);
+                    scopedDependency.SourceFile);
             }
             foreach (var problem in scopeDependencies.Diagnostics)
             {
