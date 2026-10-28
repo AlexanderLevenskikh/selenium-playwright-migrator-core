@@ -175,3 +175,20 @@ dotnet run --project Migrator.AssemblyCli -- verify ./source-project ./new-targe
 ```
 
 The new generated-assembly smoke runs a full synthetic project with assembly-global, parent and nested namespace SetUpFixtures, two nested test classes and one sibling-namespace fixture: **3/3 real NUnit tests** assert once-per-scope state, parent-to-child setup and reverse teardown. Negative tests delete a required SetUpFixture, add an unexpected source, modify the target csproj and attempt cross-project or overlapping source/target operations; none may be reported buildable. No customer source, selector or URL is included.
+
+## Multi-project NUnit solution generation (preview.18)
+
+Core supports a **separate project graph**, not a flattened assembly: `PlanTargetSolution(sourceRoot, configPath?)` discovers 2–20 SDK-style `.csproj` under a source root, validates literal `ProjectReference` edges, checks cycles, external/missing references, source ownership, target-safe shared libraries and all independent NUnit `SetUpFixture` boundaries. Each original NUnit test project becomes a **distinct target NUnit assembly**, including only its own global/namespace `SetUpFixture` types. Each shared, target-safe source library becomes its own target SDK library, with the original source types and package-free `ProjectReference` edges preserved. Test-to-test `ProjectReference` is blocked.
+
+The target solution contains `Migrator.Generated.slnx`, one generated `Migrator.Generated.Tests.csproj` per test project, one `Migrator.Generated.Library.csproj` per shared library, every exact source-backed generated/copied C# file, and `migrator-solution-manifest.json`. Each generated project disables SDK auto-Compile globs and lists every local C# file plus every referenced target library explicitly. The content-addressed plan binds source/project/config hashes, per-file SHA-256, a solution manifest and graph identity. `MaterializeTargetSolution` publishes only to a new, non-overlapping target directory. `VerifyTargetSolution` rejects a missing `SetUpFixture`, library file, `.csproj`, `.slnx`, manifest, added/unexpected C# file or changed `ProjectReference` before any build runs.
+
+`dotnet build Migrator.Generated.slnx` and `dotnet test` per individual test assembly are opt-in stages with separate, mandatory per-assembly NUnit TRX counts. Runtime status is always `runtime_passed_review_required` — compilation/parallel project isolation does not prove source/target business equivalence.
+
+CLI:
+```bash
+dotnet run --project Migrator.AssemblyCli -- solution-plan ./source-solution --config ./adapter.json
+dotnet run --project Migrator.AssemblyCli -- solution-generate ./source-solution ./new-target-solution --config ./adapter.json --build --test
+dotnet run --project Migrator.AssemblyCli -- solution-verify ./source-solution ./new-target-solution --config ./adapter.json --build
+```
+
+**Boundaries:** This preview intentionally fails closed on dynamic MSBuild imports/conditions, `Compile` glob overrides, nested or same-directory project ownership, unresolved/duplicate/cyclic/external references, test-project-to-test-project references, and libraries carrying NUnit/Selenium/Playwright lifecycle or external NuGet packages. Shared libraries must be reviewed as **target-safe unchanged C#**, not transplanted Selenium framework code. Test projects retain their source namespace identity. The synthetic Core regression generates four target projects (two test assemblies plus two shared libraries), compiles the complete `.slnx`, executes three NUnit tests with 2/2 and 1/1 per-assembly TRX, and checks missing/injected files and altered project graphs. All source code and business data are fictitious; private ArBilling E2E remains not run.
