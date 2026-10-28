@@ -159,6 +159,11 @@ public class RoslynTestFileParser : ITestFileParser
 
         var testClass = classDecls.FirstOrDefault(HasTestFixtureAttribute)
             ?? classDecls.FirstOrDefault(ContainsTestMethod)
+            ?? classDecls.FirstOrDefault(c =>
+                semanticModel.GetDeclaredSymbol(c) is INamedTypeSymbol symbol
+                && symbol.GetAttributes().Any(attr =>
+                    string.Equals(attr.AttributeClass?.ToDisplayString(),
+                        "NUnit.Framework.SetUpFixtureAttribute", StringComparison.Ordinal)))
             ?? (classDecls.Count == 1 ? classDecls[0] : null);
 
         if (testClass == null)
@@ -180,7 +185,11 @@ public class RoslynTestFileParser : ITestFileParser
             .SelectMany(al => al.Attributes)
             .Any(a => IsAttributeNamed(a, "SetUp"))).ToArray();
         var setUpMethod = setUpMethods.FirstOrDefault();
-        var lifecycle = NUnitLifecycleInspector.Inspect(
+        var scopedSetUp = NUnitScopedSetUpInspector.Inspect(
+            testClass, semanticModel, compilation,
+            (method, model) => ParseMethodBody(method, model).ToList());
+        var lifecycle = scopedSetUp?.Declaration != null
+            ? null : NUnitLifecycleInspector.Inspect(
             testClass, semanticModel, compilation,
             (method, model) => RecognizeFixturePageAliases(method, model,
                 ParseMethodBody(method, model).ToList()));
@@ -220,6 +229,7 @@ public class RoslynTestFileParser : ITestFileParser
         {
             ClassFields = classFields,
             NUnitLifecycle = lifecycle,
+            ScopedSetUp = scopedSetUp,
             PreservedClassAttributes = ParsePreservedClassAttributes(testClass)
         };
     }
