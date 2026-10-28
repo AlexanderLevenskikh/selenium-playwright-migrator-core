@@ -104,3 +104,9 @@ This prevents common false-green substitutions: `InputAndSelect` reduced to one 
 ## Source-argument and locator literal checks (preview.10)
 
 `PomMappingReviewer` now requires every source helper parameter used in effect-producing calls to remain represented in target invocation/filter arguments (source/target counts are returned as `parameterFlows`). A category-complete mapping with `FillAsync("hardcoded")` or a missing menu-filter parameter is `rejected_incomplete`, not `requires_review`. C# literals in `Page.Locator(...)` containing likely double-escaped CSS attribute quotes are `blocked`. These conservative checks do not establish correct values, selector uniqueness, browser state or behavior; zero missing obligations remains `requires_review`.
+
+## Table assertions with mapped locators and incomplete Selenium setup (preview.11)
+
+When an original NUnit fixture still has an unresolved Selenium Page Object alias in setup, Core ordinarily blocks downstream `page.*` calls. An explicitly configured target locator for `page.Table.Items.ElementAt(N)` can nonetheless preserve source `Text.Get().Should().Be(expected)` and `Should().Contain(expected)` as executable `ToHaveTextAsync` and `ToContainTextAsync` assertions, **without treating the original setup as migrated**.
+
+The narrow guard requires a fully resolved `Page.Locator(...).Nth(N)` target, a literal row index, a valid expected-value expression and an alias blocked by the original fixture setup (not a locally blocked test operation). Every such assertion is accompanied by `TABLE_ASSERTION_REQUIRES_SETUP_REVIEW` TODO. No equivalent behavior or complete migration is claimed; the remaining setup/navigation and loader dependencies must be verified independently. Unmapped rows and arbitrary source-side expressions still fail closed.

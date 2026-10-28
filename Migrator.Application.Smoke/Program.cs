@@ -68,6 +68,7 @@ try
     PomMethodLineageSmoke.Run();
     PomMappingReviewerSmoke.Run();
     MappingLiteralRoundTripSmoke.Run();
+    MappedTableAssertionWithSetupSmoke.Run();
     Console.WriteLine("Core alpha smoke passed.");
 }
 finally { Directory.Delete(work, recursive: true); }
