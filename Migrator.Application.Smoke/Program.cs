@@ -68,6 +68,7 @@ try
     PomMethodLineageSmoke.Run();
     PomMappingReviewerSmoke.Run();
     PomLoaderControlFlowSmoke.Run();
+    PomSourceBoundRetrySmoke.Run();
     MappingLiteralRoundTripSmoke.Run();
     MappedTableAssertionWithSetupSmoke.Run();
     Console.WriteLine("Core alpha smoke passed.");
