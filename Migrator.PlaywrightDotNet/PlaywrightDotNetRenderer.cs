@@ -87,7 +87,8 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             .Select(item => item!)
             .ToArray();
         var hasTestHostSetup = testHost?.SetUpStatements != null && testHost.SetUpStatements.Length > 0;
-        var hasGeneratedSetup = hasTestHostSetup || model.SetUpActions.Any();
+        var hasGeneratedSetup = hasTestHostSetup || model.SetUpActions.Any()
+            || model.NUnitLifecycle != null;
         var classLayout = DotNetTestFileScaffoldRenderer.CreateClassLayout(model, _targetTestFramework, hasGeneratedSetup);
         if (!_useAssertionsExpectExplicit)
             _useAssertionsExpect = classLayout.BaseClass != "PageTest";
@@ -126,7 +127,12 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         _fixturePageAliases.Clear();
         _setupActiveNavigationResults.Clear();
         _renderingSetUp = false;
-        if (hasTestHostSetup)
+        if (model.NUnitLifecycle is { } lifecycle)
+        {
+            ResetMethodScope();
+            RenderNUnitLifecycle(sb, lifecycle, hasTestHostSetup);
+        }
+        else if (hasTestHostSetup)
         {
             ResetMethodScope();
             RenderHostSetUp(sb, testHost!.SetUpStatements!, model.SetUpActions);
