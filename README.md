@@ -192,3 +192,9 @@ dotnet run --project Migrator.AssemblyCli -- solution-verify ./source-solution .
 ```
 
 **Boundaries:** This preview intentionally fails closed on dynamic MSBuild imports/conditions, `Compile` glob overrides, nested or same-directory project ownership, unresolved/duplicate/cyclic/external references, test-project-to-test-project references, and libraries carrying NUnit/Selenium/Playwright lifecycle or external NuGet packages. Shared libraries must be reviewed as **target-safe unchanged C#**, not transplanted Selenium framework code. Test projects retain their source namespace identity. The synthetic Core regression generates four target projects (two test assemblies plus two shared libraries), compiles the complete `.slnx`, executes three NUnit tests with 2/2 and 1/1 per-assembly TRX, and checks missing/injected files and altered project graphs. All source code and business data are fictitious; private ArBilling E2E remains not run.
+
+## NUnit opt-in and ignore safety (preview.19)
+
+Source NUnit `[Ignore]` and `[Explicit]` attributes, including `Ignore` and `Explicit` named arguments on `[TestCase]` or `[TestFixture]`, can change whether a test executes at all. Until a source-backed attribute-preserving renderer is implemented, `Analyze` returns `unsupported_nunit_execution_gate` and `NUNIT_EXECUTION_GATE_REQUIRES_REVIEW` with source line evidence. `Preview` refuses to produce any runnable target file for that fixture. Declared tests remain counted, preventing false-green loss.
+
+Only local syntax-recognizable gates are covered by this preview; inherited aliases, dynamic `TestCaseData` skip logic and other NUnit scheduling/selection attributes still require explicit source/project review. Synthetic Core regression tests six common gate spellings plus an unaffected regular NUnit test. Private customer code is not shipped.
