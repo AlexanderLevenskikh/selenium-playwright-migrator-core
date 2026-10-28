@@ -80,7 +80,7 @@ public class TableInvocationRecognizer : IInvocationRecognizer
 
                 return kind is null ? null : new TextAssertionAction(
                     ctx.SourceLine, tableTextTarget, kind.Value, expectedValue,
-                    RecognitionConfidence.Semantic, ctx.FullText);
+                    RecognitionConfidence.Semantic);
             }
         }
 
