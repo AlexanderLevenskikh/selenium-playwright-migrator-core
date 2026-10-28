@@ -275,8 +275,7 @@ public sealed partial class MigrationEngine
             var prefix = dir is "" or "." ? "" : dir + "/";
             var expectedSource = plan.Files.Where(f =>
                     f.RelativePath.StartsWith(prefix, StringComparison.Ordinal)
-                    && f.RelativePath.EndsWith(".cs", StringComparison.Ordinal)
-                    && !f.RelativePath[prefix.Length..].Contains('/'))
+                    && f.RelativePath.EndsWith(".cs", StringComparison.Ordinal))
                 .Select(f => f.RelativePath[prefix.Length..])
                 .OrderBy(x => x, StringComparer.Ordinal).ToArray();
             var refs = doc.Descendants().Where(n =>
