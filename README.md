@@ -88,3 +88,7 @@ The read-only `PomSourceInspector.Inspect(...)` now emits `migrator-pom-evidence
 `StorageAndNavigationFlows` captures NUnit test and setup calls to LocalStorage relative to the first navigation within the method. These are only syntax-level relationships: fixture inheritance, dynamic dispatch, browser origins and runtime order through loops or exception paths are not attested. Nothing is automatically translated or marked behavior-preserving; evidence is input to explicit reviewed `Methods` mappings.
 
 Synthetic regression covers multi-step combobox interactions, loader retries, a date picker with reachable private blur helper, multi-key storage writes and storage before/after navigation. No private input is committed.
+
+### Explicit control type selection
+
+When `pageTypes` contains a specific class name (for example a project's `Combobox`), the inspector includes its public methods even when the name is not in the built-in list. A zero-call public method is preserved as evidence for review rather than silently omitted. This is only source inspection; no method is automatically mapped or executed.

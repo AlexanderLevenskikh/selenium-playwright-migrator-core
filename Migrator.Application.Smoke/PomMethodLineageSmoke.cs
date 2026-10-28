@@ -89,11 +89,20 @@ internal static class PomMethodLineageSmoke
                 }
                 """);
 
+            File.WriteAllText(Path.Combine(root, "Combobox.cs"), """
+                public class Combobox {
+                    public void SelectValue(string value) {
+                        Click();
+                        accept.Visible.Wait().EqualTo(true);
+                        menuItems.ElementAt(0).Click();
+                    }
+                }
+                """);
             var inspector = new PomSourceInspector();
-            var report = inspector.Inspect(root, new[] { "ScCombobox", "Loader", "DatePicker" });
+            var report = inspector.Inspect(root, new[] { "ScCombobox", "Loader", "DatePicker", "Combobox" });
             Require(report.SchemaVersion == "migrator-pom-evidence/v1alpha2",
                 "new source evidence schema");
-            Require(report.InspectedFiles == 5 && report.SourceTreeHash.Length == 64,
+            Require(report.InspectedFiles == 6 && report.SourceTreeHash.Length == 64,
                 "input count and exact byte identity");
 
             var combo = report.Helpers.Single(h => h.SourceType == "ScCombobox"
@@ -109,6 +118,13 @@ internal static class PomMethodLineageSmoke
             Require(combo.MethodSha256.Length == 64, "method-level fingerprint missing");
             Require(combo.ReviewFlags.Contains("syntax_only_not_behavioral_proof"),
                 "must never imply a proven mapping");
+
+            var explicitlyRequested = report.Helpers.Single(h =>
+                h.SourceType == "Combobox" && h.Method == "SelectValue");
+            Require(explicitlyRequested.OrderedCalls.Count >= 3,
+                "caller-selected domain type cannot be silently skipped");
+            Require(explicitlyRequested.OrderedCalls.Any(s => s.Method == "Click"),
+                "explicitly selected helper should retain actual operations");
 
             var loader = report.Helpers.Single(h => h.SourceType == "Loader"
                 && h.Method == "ValidateLoading");
