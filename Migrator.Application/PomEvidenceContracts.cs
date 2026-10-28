@@ -36,6 +36,12 @@ public sealed record SourceHelperEvidence(
     public bool IsReachablePrivateHelper { get; init; }
     public IReadOnlyList<string> ReviewFlags { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> ParameterNames { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Immutable numeric local declarations used to normalize bounded retry
+    /// guards. This is syntax evidence, not a runtime constant evaluation.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> NumericLocalConstants { get; init; }
+        = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
 public sealed record PomMethodCallEvidence(
