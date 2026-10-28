@@ -169,6 +169,57 @@ internal static class InheritedNUnitLifecycleSmoke
                 """);
             CheckBlocked(missingBase, "NUNIT_LIFECYCLE_BASE_UNRESOLVED");
 
+            var hidden = Path.Combine(root, "HiddenFixture.cs");
+            File.WriteAllText(hidden, """
+                using NUnit.Framework;
+                public class HiddenBase {
+                    [SetUp] public void Prepare() { Recorder.Note("before-base"); }
+                }
+                [TestFixture] public class HiddenFixture : HiddenBase {
+                    [SetUp] public new void Prepare() { Recorder.Note("before-leaf"); }
+                    [Test] public void T() {}
+                }
+                """);
+            CheckBlocked(hidden, "NUNIT_LIFECYCLE_HIDDEN_METHOD");
+
+            var custom = Path.Combine(root, "CustomAttributeFixture.cs");
+            File.WriteAllText(custom, """
+                using NUnit.Framework;
+                namespace SyntheticAttrs { public class SetUpAttribute : System.Attribute { } }
+                [TestFixture] public class CustomAttributeFixture {
+                    [SyntheticAttrs.SetUp] public void Before() { Recorder.Note("before-leaf"); }
+                    [Test] public void T() {}
+                }
+                """);
+            CheckBlocked(custom, "NUNIT_LIFECYCLE_ATTRIBUTE_AMBIGUOUS");
+
+            var incompatibleHost = new ProjectAdapterConfig
+            {
+                SourceProjectName = "Synthetic",
+                Methods = config.Methods,
+                TestHost = new TestHostConfig
+                {
+                    SetUpStatements = new[] { "await Page.GotoAsync(\"https://example.invalid/host\");" }
+                }
+            };
+            var hostResult = RunPipeline(fixtureFile, incompatibleHost);
+            Check(hostResult.GeneratedOutput.Contains("[MIGRATOR:NUNIT_LIFECYCLE_HOST_CONFLICT]",
+                      StringComparison.Ordinal)
+                  && hostResult.GeneratedOutput.Contains("Assert.Inconclusive(", StringComparison.Ordinal),
+                "a custom target host setup may not erase inherited source hooks");
+
+            var xunitHost = new ProjectAdapterConfig
+            {
+                SourceProjectName = "Synthetic",
+                Methods = config.Methods,
+                TestHost = new TestHostConfig { TargetTestFramework = "xunit" }
+            };
+            var xunitResult = RunPipeline(fixtureFile, xunitHost);
+            Check(xunitResult.GeneratedOutput.Contains("[MIGRATOR:NUNIT_LIFECYCLE_FRAMEWORK_MISMATCH]",
+                      StringComparison.Ordinal)
+                  && xunitResult.GeneratedOutput.Contains("throw new NotSupportedException(", StringComparison.Ordinal),
+                "NUnit inherited cleanup cannot silently become xUnit initialization");
+
             void CheckBlocked(string path, string code)
             {
                 var outcome = RunPipeline(path, config);
