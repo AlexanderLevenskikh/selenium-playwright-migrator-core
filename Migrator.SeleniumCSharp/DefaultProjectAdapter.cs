@@ -659,20 +659,37 @@ public class DefaultProjectAdapter : IProjectAdapter
                     continue;
                 }
 
-                // An unrelated later reassignment of the navigation local
-                // invalidates its provenance. Ordinary mapped calls on that
-                // object, such as a reviewed Loader, do not change identity.
-                if (action is RawStatementAction raw)
+                // Unknown source-side setup operations on the local may change
+                // its lifecycle and must break navigation provenance. Reviewed
+                // mapped helpers can preserve it, but a generic wait or an
+                // unmapped method can never silently become a no-op.
+                var unsafeSource = action switch
                 {
-                    var assigned = Regex.Match(raw.SourceText,
-                        @"^\s*(?<left>@?[A-Za-z_]\w*)\s*=(?!=)");
-                    if (assigned.Success)
-                        boundNavigationLocals.Remove(assigned.Groups["left"].Value.TrimStart('@'));
+                    RawStatementAction raw => raw.SourceText,
+                    UnsupportedAction unsupported => unsupported.SourceText,
+                    MethodInvocationAction method => method.FullSourceText,
+                    WaitForAction wait => wait.FullSourceText,
+                    _ => null
+                };
+                if (!string.IsNullOrWhiteSpace(unsafeSource))
+                {
+                    foreach (var local in boundNavigationLocals.ToArray())
+                    {
+                        if (Regex.IsMatch(unsafeSource,
+                                @"(?<![A-Za-z0-9_])" + Regex.Escape(local) + @"\b",
+                                RegexOptions.CultureInvariant))
+                            boundNavigationLocals.Remove(local);
+                    }
                 }
 
-                if (action is MappedMethodInvocationAction mapped
-                    && IsExplicitPageNavigationMapping(mapped))
-                    boundNavigationLocals.Add(mapped.ResultVariable!.TrimStart('@'));
+                if (action is MappedMethodInvocationAction mapped)
+                {
+                    // A new result assignment shadows any previous binding.
+                    if (!string.IsNullOrWhiteSpace(mapped.ResultVariable))
+                        boundNavigationLocals.Remove(mapped.ResultVariable!.TrimStart('@'));
+                    if (IsExplicitPageNavigationMapping(mapped))
+                        boundNavigationLocals.Add(mapped.ResultVariable!.TrimStart('@'));
+                }
 
                 result.Add(action);
             }
