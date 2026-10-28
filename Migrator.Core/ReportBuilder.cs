@@ -27,7 +27,7 @@ public static class ReportBuilder
             line.TrimStart().StartsWith("// TODO:"));
 
         var setupHasUnsupported = allSetupActions.Any(a => a is UnsupportedAction)
-            || model.NUnitLifecycle?.Diagnostics.Count > 0;
+            || (model.NUnitLifecycle?.Diagnostics.Count ?? 0) > 0;
         var convertedWithoutUnsupported = model.Tests.Count(t =>
             !TestActionTraversal.Flatten(t.BodyActions).Any(a => a is UnsupportedAction));
         var emptyAfterSuppression = generatedOutput.Split(
