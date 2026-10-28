@@ -61,6 +61,7 @@ try
     }
     catch (InvalidOperationException ex) when (ex.Message.StartsWith("STALE_ANALYSIS", StringComparison.Ordinal)) {}
     ExistingPlaywrightGuardSmoke.Run();
+    RenderedTodoCompletenessSmoke.Run();
     Console.WriteLine("Core alpha smoke passed.");
 }
 finally { Directory.Delete(work, recursive: true); }
