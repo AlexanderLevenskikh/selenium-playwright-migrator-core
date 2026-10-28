@@ -1,0 +1,40 @@
+name: Core CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-smoke-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore engine and smoke test
+        run: dotnet restore Migrator.Application.Smoke/Migrator.Application.Smoke.csproj
+      - name: Build engine and smoke test
+        run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: Run Core smoke
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: Pack version-matched Core NuGet packages
+        run: |
+          mkdir -p artifacts/nuget
+          for project in Migrator.Core Migrator.Roslyn Migrator.SeleniumCSharp Migrator.PlaywrightDotNet Migrator.Application; do
+            dotnet pack "$project/$project.csproj" --no-restore -c Release -o artifacts/nuget
+          done
+      - name: Independent package consumer smoke
+        run: |
+          dotnet restore PackageConsumer.Smoke/PackageConsumer.Smoke.csproj --source "$PWD/artifacts/nuget" --source https://api.nuget.org/v3/index.json
+          dotnet run --project PackageConsumer.Smoke/PackageConsumer.Smoke.csproj --no-restore -c Release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: migrator-core-nuget-preview
+          path: artifacts/nuget/*.nupkg
+          if-no-files-found: error
