@@ -92,8 +92,9 @@ internal static class PomMappingReviewerSmoke
                     "await Page.Locator(\"#picker\").ClickAsync();",
                     "await Page.Locator(\"#input\").WaitForAsync();",
                     "await Page.Locator(\"#input\").FillAsync(value);",
-                    "await Page.Locator(\"#menu\").WaitForAsync();",
-                    "await Page.Locator(\"#item\").ClickAsync();",
+                    "var options = Page.Locator(\"#menu\").Filter(new() { HasTextString = value });",
+                    "await options.WaitForAsync();",
+                    "await options.ClickAsync();",
                     "await Page.Locator(\"#accept\").ClickAsync();"
                 });
             Assert(full.MissingObligations.Count == 0
@@ -102,6 +103,58 @@ internal static class PomMappingReviewerSmoke
                 "Complete operation-category sequence still requires human/DOM review");
             Assert(full.SourceMethodSha256 == combo.MethodSha256,
                 "mapping review must be tied to actual source method");
+            Assert(full.ParameterFlows.Single(x => x.ParameterName == "value") is
+                { SourceArgumentUses: 2, TargetArgumentUses: 2, Preserved: true },
+                "both input and menu filter must retain the source argument");
+
+            var wrongArgument = reviewer.Review(root, "ComboBox", combo.Method,
+                combo.SourceLine, hash, new[]
+                {
+                    "await Page.Locator(\"#picker\").ClickAsync();",
+                    "await Page.Locator(\"#input\").WaitForAsync();",
+                    "await Page.Locator(\"#input\").FillAsync(\"wrong literal\");",
+                    "var options = Page.Locator(\"#menu\").Filter(new() { HasTextString = \"wrong literal\" });",
+                    "await options.WaitForAsync();",
+                    "await options.ClickAsync();",
+                    "await Page.Locator(\"#accept\").ClickAsync();"
+                });
+            Assert(wrongArgument.MissingObligations.Count == 0
+                && wrongArgument.Status == "rejected_incomplete"
+                && wrongArgument.ReviewFlags.Contains("source_parameter_usage_not_preserved"),
+                "category-complete but hardcoded argument must not pass");
+            Assert(wrongArgument.ParameterFlows.Single().TargetArgumentUses == 0,
+                "string literal names do not count as source argument forwarding");
+
+            var halfBound = reviewer.Review(root, "ComboBox", combo.Method,
+                combo.SourceLine, hash, new[]
+                {
+                    "await Page.Locator(\"#picker\").ClickAsync();",
+                    "await Page.Locator(\"#input\").WaitForAsync();",
+                    "await Page.Locator(\"#input\").FillAsync(value);",
+                    "var options = Page.Locator(\"#menu\").Filter(new() { HasTextString = \"wrong\" });",
+                    "await options.WaitForAsync();",
+                    "await options.ClickAsync();",
+                    "await Page.Locator(\"#accept\").ClickAsync();"
+                });
+            Assert(halfBound.Status == "rejected_incomplete"
+                && halfBound.ParameterFlows.Single().TargetArgumentUses == 1,
+                "losing the filter argument must fail even if FillAsync forwards it");
+
+            var escapedSelector = reviewer.Review(root, "ComboBox", combo.Method,
+                combo.SourceLine, hash, new[]
+                {
+                    \"\"\"var combo = Page.Locator("[data-test=\\\\\\\"picker\\\\\\\"]");\"\"\",
+                    "await combo.ClickAsync();",
+                    "await Page.Locator(\"#input\").WaitForAsync();",
+                    "await Page.Locator(\"#input\").FillAsync(value);",
+                    "var options = Page.Locator(\"#menu\").Filter(new() { HasTextString = value });",
+                    "await options.WaitForAsync();",
+                    "await options.ClickAsync();",
+                    "await Page.Locator(\"#accept\").ClickAsync();"
+                });
+            Assert(escapedSelector.Status == "blocked"
+                && escapedSelector.ReviewFlags.Contains("target_selector_suspicious_double_escaping"),
+                "double-escaped CSS attribute quotes must be blocked rather than compile-green");
 
             var picker = source.Helpers.Single(h => h.SourceType == "DatePicker"
                 && h.Method == "SetBeginDate");
@@ -132,13 +185,16 @@ internal static class PomMappingReviewerSmoke
 
             var completeStorage = reviewer.Review(root, "LocalStorage", storage.Method,
                 storage.SourceLine, hash, new[] {
-                    "await Page.EvaluateAsync(\"localStorage.setItem('first', a)\");",
-                    "await Page.EvaluateAsync(\"localStorage.setItem('second', b)\");",
-                    "await Page.EvaluateAsync(\"localStorage.setItem('third', c)\");",
-                    "await Page.EvaluateAsync(\"localStorage.setItem('fourth', d)\");",
-                    "await Page.EvaluateAsync(\"localStorage.setItem('fifth', e)\");"
+                    "await Page.EvaluateAsync(\"([key,value]) => localStorage.setItem(key,value)\", new object[] { \"first\", a });",
+                    "await Page.EvaluateAsync(\"([key,value]) => localStorage.setItem(key,value)\", new object[] { \"second\", b });",
+                    "await Page.EvaluateAsync(\"([key,value]) => localStorage.setItem(key,value)\", new object[] { \"third\", c });",
+                    "await Page.EvaluateAsync(\"([key,value]) => localStorage.setItem(key,value)\", new object[] { \"fourth\", d });",
+                    "await Page.EvaluateAsync(\"([key,value]) => localStorage.setItem(key,value)\", new object[] { \"fifth\", e });"
                 });
-            Assert(completeStorage.Status == "requires_review" && !completeStorage.BehaviorallyVerified,
+            Assert(completeStorage.Status == "requires_review"
+                && completeStorage.ParameterFlows.Count == 5
+                && completeStorage.ParameterFlows.All(x => x.Preserved)
+                && !completeStorage.BehaviorallyVerified,
                 "matching storage write counts do NOT prove origin, ordering or serialized values");
 
             var invalid = reviewer.Review(root, "ComboBox", combo.Method,
