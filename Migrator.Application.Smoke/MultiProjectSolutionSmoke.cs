@@ -239,6 +239,26 @@ internal static class MultiProjectSolutionSmoke
             ExpectProblem("SOLUTION_PROJECT_REFERENCE_CYCLE");
             Put("Foundation/Foundation.csproj", originalFoundation);
 
+            // Package-bearing shared libraries cannot be copied to a package-free
+            // target library even if their C# source is syntactically harmless.
+            Put("Foundation/Foundation.csproj", originalFoundation.Replace(
+                "</Project>",
+                "  <ItemGroup><PackageReference Include=\"Synthetic.Optional\" Version=\"1.0.0\" /></ItemGroup>\n</Project>",
+                StringComparison.Ordinal));
+            ExpectProblem("SOLUTION_LIBRARY_PACKAGE_UNSUPPORTED");
+            Put("Foundation/Foundation.csproj", originalFoundation);
+
+            // A package-free library carrying Selenium driver types also
+            // remains blocked; no implicit Selenium runtime may be transplanted.
+            Put("Foundation/DriverLeak.cs", """
+                using OpenQA.Selenium;
+                public sealed class DriverLeak {
+                    public IWebDriver Driver { get; }
+                }
+                """);
+            ExpectProblem("SOLUTION_LIBRARY_TEST_LIFECYCLE_UNSAFE");
+            File.Delete(Path.Combine(source, "Foundation/DriverLeak.cs"));
+
             var sourceAProject = File.ReadAllText(Path.Combine(source,
                 "TestsA/TestsA.csproj"));
             Put("TestsA/TestsA.csproj", sourceAProject.Replace("</ItemGroup>",
