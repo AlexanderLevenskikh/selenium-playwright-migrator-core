@@ -176,8 +176,39 @@ internal static class PomMethodLineage
             ParameterNames = method.ParameterList.Parameters
                 .Select(parameter => parameter.Identifier.ValueText)
                 .Where(name => !string.IsNullOrWhiteSpace(name))
-                .ToArray()
+                .ToArray(),
+            NumericLocalConstants = NumericLocalLiterals(method)
         };
+    }
+
+    private static IReadOnlyDictionary<string, string> NumericLocalLiterals(
+        MethodDeclarationSyntax method)
+    {
+        // Only numeric literal locals with no later writes qualify as aliases.
+        // A mutable variable that is incremented/assigned is never folded.
+        var writes = method.DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>()
+            .Select(x => x.Left.ToString())
+            .Concat(method.DescendantNodes().OfType<PostfixUnaryExpressionSyntax>()
+                .Where(x => x.IsKind(SyntaxKind.PostIncrementExpression)
+                    || x.IsKind(SyntaxKind.PostDecrementExpression))
+                .Select(x => x.Operand.ToString()))
+            .Concat(method.DescendantNodes().OfType<PrefixUnaryExpressionSyntax>()
+                .Where(x => x.IsKind(SyntaxKind.PreIncrementExpression)
+                    || x.IsKind(SyntaxKind.PreDecrementExpression))
+                .Select(x => x.Operand.ToString()))
+            .ToHashSet(StringComparer.Ordinal);
+
+        return method.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+            .Where(v => v.Initializer?.Value is LiteralExpressionSyntax literal
+                && literal.IsKind(SyntaxKind.NumericLiteralExpression)
+                && !writes.Contains(v.Identifier.ValueText))
+            .GroupBy(v => v.Identifier.ValueText, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(
+                group => group.Key,
+                group => ((LiteralExpressionSyntax)group.Single().Initializer!.Value).Token.ValueText,
+                StringComparer.Ordinal);
     }
 
     private static IReadOnlyList<PomMethodCallEvidence> RootInvocations(MethodDeclarationSyntax method)
