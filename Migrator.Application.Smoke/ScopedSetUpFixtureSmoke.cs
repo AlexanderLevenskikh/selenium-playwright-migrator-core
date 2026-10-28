@@ -158,6 +158,57 @@ internal static class ScopedSetUpFixtureSmoke
                 && preview.TransformationStatus == "partial",
                 "preview must produce one distinct artifact for each source scoped SetUpFixture");
 
+            // A forgotten one-time teardown must prevent *all* suite
+            // execution, not report failure after tests appeared successful.
+            var missingTeardown = new ProjectAdapterConfig
+            {
+                SourceProjectName = "Synthetic",
+                Methods = config.Methods.Where(method =>
+                    method.SourceMethod != "Recorder.Track(\"outer-stop\")").ToArray()
+            };
+            var incomplete = Migrate(outer, missingTeardown).GeneratedOutput;
+            Check(incomplete.Contains("[MIGRATOR:NUNIT_SETUPFIXTURE_ACTION_REQUIRES_MAPPING]",
+                      StringComparison.Ordinal)
+                && incomplete.Contains("Assert.Inconclusive(", StringComparison.Ordinal)
+                && !incomplete.Contains("System.Console.WriteLine(\"outer-start\");",
+                    StringComparison.Ordinal),
+                "unmapped one-time cleanup must block scope before executing setup side effects");
+
+            var pageDependent = new ProjectAdapterConfig
+            {
+                SourceProjectName = "Synthetic",
+                Methods = config.Methods.Where(method =>
+                    method.SourceMethod != "Recorder.Track(\"outer-start\")").Append(
+                    new MethodMapping
+                    {
+                        SourceMethod = "Recorder.Track(\"outer-start\")",
+                        TargetStatements = new[] {
+                            "await Page.GotoAsync(\"https://example.invalid/source-only\");"
+                        },
+                        RequiresReview = true
+                    }).ToArray()
+            };
+            var pageScope = Migrate(outer, pageDependent).GeneratedOutput;
+            Check(pageScope.Contains("[MIGRATOR:NUNIT_SETUPFIXTURE_ACTION_REQUIRES_MAPPING]",
+                      StringComparison.Ordinal)
+                && !pageScope.Contains("await Page.GotoAsync(", StringComparison.Ordinal),
+                "namespace setup has no per-test Playwright Page context");
+
+            var incompatibleNamespace = new ProjectAdapterConfig
+            {
+                SourceProjectName = "Synthetic",
+                Methods = config.Methods,
+                TestHost = new TestHostConfig { Namespace = "DifferentNamespace" }
+            };
+            try
+            {
+                Migrate(test, incompatibleNamespace);
+                throw new InvalidOperationException("Changed namespace scope was accepted");
+            }
+            catch (InvalidOperationException ex) when (
+                ex.Message.StartsWith("NUNIT_SETUPFIXTURE_NAMESPACE_CHANGED",
+                    StringComparison.Ordinal)) { }
+
             // Two setup fixtures in the same namespace: no stable order.
             var duplicate = Path.Combine(root, "DuplicateHooks.cs");
             File.WriteAllText(duplicate, """
