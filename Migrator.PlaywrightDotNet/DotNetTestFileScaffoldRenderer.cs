@@ -67,9 +67,12 @@ internal static class DotNetTestFileScaffoldRenderer
     public static bool HasTodoWarning(TestFileModel model) =>
         model.Tests.SelectMany(t => t.BodyActions)
             .Concat(model.SetUpActions)
+            .Concat(model.NUnitLifecycle?.Hooks.SelectMany(h => h.Actions)
+                ?? Enumerable.Empty<TestAction>())
             .Any(a => a is UnsupportedAction or RawStatementAction
                 or FixturePageAliasAction
-                or (MappedMethodInvocationAction { RequiresReview: true }));
+                or (MappedMethodInvocationAction { RequiresReview: true }))
+        || model.NUnitLifecycle != null;
 
     public static void AppendFilePreamble(
         StringBuilder sb,

@@ -187,6 +187,14 @@ internal static class SemanticCompilationSupport
                 public sealed class SetUpAttribute : System.Attribute { }
                 """);
         }
+        foreach (var hook in new[] { "TearDown", "OneTimeSetUp", "OneTimeTearDown" })
+        {
+            if (compilation.GetTypeByMetadataName("NUnit.Framework." + hook + "Attribute") == null)
+                declarations.Add(
+                    "[System.AttributeUsage(System.AttributeTargets.Method)] public sealed class "
+                    + hook + "Attribute : System.Attribute { }");
+        }
+
 
         if (compilation.GetTypeByMetadataName("NUnit.Framework.Assert") == null)
         {

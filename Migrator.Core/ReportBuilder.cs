@@ -7,7 +7,11 @@ public static class ReportBuilder
     public static MigrationReport Build(TestFileModel model, string generatedOutput)
     {
         var allActions = model.Tests.SelectMany(t => TestActionTraversal.Flatten(t.BodyActions)).ToList();
-        var allSetupActions = TestActionTraversal.Flatten(model.SetUpActions).ToList();
+        var allSetupActions = TestActionTraversal.Flatten(model.SetUpActions)
+            .Concat(model.NUnitLifecycle?.Hooks
+                .SelectMany(hook => TestActionTraversal.Flatten(hook.Actions))
+                ?? Enumerable.Empty<TestAction>())
+            .ToList();
         var allFileActions = allActions.Concat(allSetupActions).ToList();
 
         var unsupportedActions = allFileActions.OfType<UnsupportedAction>().ToList();
@@ -22,7 +26,8 @@ public static class ReportBuilder
         var todoComments = generatedOutput.Split('\n').Count(line =>
             line.TrimStart().StartsWith("// TODO:"));
 
-        var setupHasUnsupported = allSetupActions.Any(a => a is UnsupportedAction);
+        var setupHasUnsupported = allSetupActions.Any(a => a is UnsupportedAction)
+            || (model.NUnitLifecycle?.Diagnostics.Count ?? 0) > 0;
         var convertedWithoutUnsupported = model.Tests.Count(t =>
             !TestActionTraversal.Flatten(t.BodyActions).Any(a => a is UnsupportedAction));
         var emptyAfterSuppression = generatedOutput.Split(
@@ -39,7 +44,7 @@ public static class ReportBuilder
         // its source actions (and the shared setup) is provably emitted as executable
         // target code with no TODOs, rather than merely "has no UnsupportedAction".
         // SuccessfullyConvertedTests deliberately keeps its old definition.
-        var setupExecutable = ExecutableTargetSemantics.Analyze(model.SetUpActions);
+        var setupExecutable = ExecutableTargetSemantics.Analyze(allSetupActions);
         // Cross-check the *rendered target* as well as the intermediate IR. If
         // an action was turned into TODO after source-symbol safety checks,
         // it cannot count as fully converted regardless of model-level semantics.

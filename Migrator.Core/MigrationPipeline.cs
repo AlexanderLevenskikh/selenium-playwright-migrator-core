@@ -73,6 +73,13 @@ public class MigrationPipeline
     {
         if (_renderMode == MigrationPipelineRenderMode.IrV2)
         {
+            // The experimental IR V2 bridge does not yet carry inherited
+            // NUnit hook ordering. Do not silently emit test bodies without
+            // inherited setup and teardown actions.
+            if (targetModel.NUnitLifecycle != null)
+                throw new InvalidOperationException(
+                    "NUNIT_LIFECYCLE_IRV2_UNSUPPORTED: use the legacy renderer until the inherited lifecycle is represented in IR V2.");
+
             if (_targetBackend == null)
                 throw new InvalidOperationException("IR V2 rendering requires a target backend.");
 
