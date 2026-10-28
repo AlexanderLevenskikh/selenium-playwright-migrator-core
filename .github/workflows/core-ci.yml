@@ -27,6 +27,8 @@ jobs:
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: Generate, dotnet build and run complete synthetic NUnit target assembly
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --project-assembly-only
+      - name: Generate complete multi-project solution and verify independent NUnit assemblies
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --multi-project-only
       - name: Pack version-matched Core NuGet packages
         run: |
           mkdir -p artifacts/nuget
