@@ -81,7 +81,7 @@ internal static class InheritedNUnitLifecycleSmoke
             Check(lifecycle is { CanRenderOrderedHooks: true, SourceTypeLevels: 3 }
                   && lifecycle.Hooks.Count == 12,
                 "three-level source ancestry and all four hook kinds must be discovered");
-            Check(lifecycle.Ordered(NUnitLifecycleKind.SetUp).Select(h => h.MethodName)
+            Check(lifecycle!.Ordered(NUnitLifecycleKind.SetUp).Select(h => h.MethodName)
                     .SequenceEqual(new[] { "BaseBefore", "MiddleBefore", "LeafBefore" }),
                 "base-to-derived NUnit SetUp order");
             Check(lifecycle.Ordered(NUnitLifecycleKind.TearDown).Select(h => h.MethodName)
