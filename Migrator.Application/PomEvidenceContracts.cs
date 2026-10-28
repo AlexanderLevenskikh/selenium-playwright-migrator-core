@@ -27,7 +27,41 @@ public sealed record SourceHelperEvidence(
     IReadOnlyList<string> CalledMethods,
     IReadOnlyList<string> LiteralStorageKeys,
     string Classification,
-    string RequiredReview);
+    string RequiredReview)
+{
+    /// <summary>Outermost call expressions in lexical source order, not a runtime trace.</summary>
+    public IReadOnlyList<PomMethodCallEvidence> OrderedCalls { get; init; } = Array.Empty<PomMethodCallEvidence>();
+    public IReadOnlyList<PomControlFlowEvidence> ControlFlow { get; init; } = Array.Empty<PomControlFlowEvidence>();
+    public string MethodSha256 { get; init; } = string.Empty;
+    public bool IsReachablePrivateHelper { get; init; }
+}
+
+public sealed record PomMethodCallEvidence(
+    int Order,
+    int SourceLine,
+    string Receiver,
+    string Method,
+    IReadOnlyList<string> CallChain,
+    string SourceText,
+    string Role,
+    bool InsideConditional,
+    bool InsideLoop,
+    bool InsideExceptionHandler);
+
+public sealed record PomControlFlowEvidence(string Kind, int SourceLine, string Expression);
+
+public sealed record PomStorageOrderEvidence(int SourceLine, string Method, string RelativeToNavigation, string SourceText);
+
+public sealed record PomTestFlowEvidence(
+    string Fixture,
+    string Method,
+    string SourcePath,
+    int SourceLine,
+    bool IsSetup,
+    bool HasNavigationCall,
+    bool HasComplexFlow,
+    IReadOnlyList<PomStorageOrderEvidence> StorageOperations,
+    string RuntimeOrderQualification);
 
 public sealed record PomSourceInspection(
     string SchemaVersion,
@@ -37,4 +71,8 @@ public sealed record PomSourceInspection(
     int TotalLocatorMembers,
     IReadOnlyList<PomLocatorEvidence> Locators,
     IReadOnlyList<SourceHelperEvidence> Helpers,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations)
+{
+    /// <summary>Syntax-only storage/navigation order, including NUnit setup methods.</summary>
+    public IReadOnlyList<PomTestFlowEvidence> StorageAndNavigationFlows { get; init; } = Array.Empty<PomTestFlowEvidence>();
+}
