@@ -114,3 +114,9 @@ The narrow guard requires a fully resolved `Page.Locator(...).Nth(N)` target, a 
 ### Explicit mappings for project-specific wait helpers
 
 A syntax-fallback recognizer may classify `page.Loader.ValidateLoading()` as a generic `WaitForAction` when the external project class is not available to the lightweight parser. Core now gives precedence to an **exact, zero-argument `Methods.SourceMethod` mapping** over that generic wait policy. This allows source-reviewed multiline `while/try/catch` retry implementations in target statements to be preserved instead of reduced to an unverified wait or TODO. Argument-bearing/custom wait helpers without explicit matching still fail closed. These mappings should use `RequiresReview: true` until their DOM and browser error/reload behavior has been independently checked.
+
+## Negated table assertions and retry-sensitive POM review (preview.12)
+
+Source `Should().NotContain(expected)` no longer falls through to equality. Core preserves it as an executable `Expect(locator).Not.ToContainTextAsync(expected)` where an explicit locator is safe, or an unresolved-source TODO otherwise. The table-row regression retains its original index and a visible setup-review blocker.
+
+`review_pom_mapping` now includes source state-getter obligations, successful-loop exits, and retry-counter mutations inside catch paths. It also rejects a changed numeric/comparison retry guard, a previously conditional reload moved outside its branch, or a widened/narrowed catch-all boundary. Cross-framework typed exception translation remains `requires_review`, not approved. Synthetic negative cases exercise each protection; they cannot prove private backend equivalence.

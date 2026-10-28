@@ -92,6 +92,41 @@ public sealed class PomMappingReviewer
         foreach (var diagnostic in parse.Diagnostics)
             flags.Add(diagnostic);
 
+        // Retry shape: preserve finite-loop guard operators/literals, ensure a
+        // branch-scoped source reload remains conditional, and do not silently
+        // broaden/narrow exception handlers. A different target exception type
+        // may be correct across frameworks, but still needs runtime review.
+        var sourceWhile = method.ControlFlow.Where(flow => flow.Kind == "while").ToArray();
+        for (var i = 0; i < Math.Min(sourceWhile.Length, parse.WhileConditions.Count); i++)
+        {
+            var sourceGuard = GuardShape(sourceWhile[i].Expression);
+            var targetGuard = GuardShape(parse.WhileConditions[i]);
+            if (sourceGuard.Length > 0 && !sourceGuard.SequenceEqual(targetGuard, StringComparer.Ordinal))
+                flags.Add("source_retry_guard_changed");
+        }
+
+        var sourceReloads = method.OrderedCalls
+            .Where(call => SourceEffects(call, method.SourceType).Contains("reload", StringComparer.Ordinal))
+            .ToArray();
+        for (var i = 0; i < Math.Min(sourceReloads.Length, parse.ReloadInsideConditional.Count); i++)
+        {
+            if (sourceReloads[i].InsideConditional && !parse.ReloadInsideConditional[i])
+                flags.Add("conditional_reload_moved_outside_branch");
+        }
+
+        var sourceCatches = method.ControlFlow.Where(flow => flow.Kind == "catch").ToArray();
+        for (var i = 0; i < Math.Min(sourceCatches.Length, parse.CatchTypes.Count); i++)
+        {
+            var sourceTypeName = CatchTypeName(sourceCatches[i].Expression);
+            var targetTypeName = CatchTypeName(parse.CatchTypes[i]);
+            if (!IsCatchAll(sourceTypeName) && IsCatchAll(targetTypeName))
+                flags.Add("typed_source_catch_widened");
+            else if (IsCatchAll(sourceTypeName) && !IsCatchAll(targetTypeName))
+                flags.Add("source_catch_all_narrowed");
+            else if (!string.Equals(sourceTypeName, targetTypeName, StringComparison.Ordinal))
+                flags.Add("exception_type_translation_requires_review");
+        }
+
         // A source action must have a corresponding target operation AFTER all
         // preceding obligations, otherwise a mapping can reorder application state.
         // This is deliberately stronger than comparing global click/Fill totals.
@@ -132,6 +167,10 @@ public sealed class PomMappingReviewer
             || flags.Contains("truncated_invocations");
         var status = blockedTarget ? "blocked"
             : missing.Count > 0 || parameterFlows.Any(flow => !flow.Preserved)
+                || flags.Contains("source_retry_guard_changed")
+                || flags.Contains("conditional_reload_moved_outside_branch")
+                || flags.Contains("typed_source_catch_widened")
+                || flags.Contains("source_catch_all_narrowed")
                 ? "rejected_incomplete"
             : "requires_review";
 
@@ -154,7 +193,7 @@ public sealed class PomMappingReviewer
                 "Operation categories and lexical order are necessary conditions, not proof of matching selectors, arguments or business effects.",
                 "Source method parameters used by invocation arguments must remain referenced in target action/filter invocation arguments; matching identifier counts do not prove correct binding or values.",
                 "CSS locator string literals containing a backslash immediately before an attribute quote are blocked as likely double-escaped selectors.",
-                "Control flow and retry structures are compared by presence/order categories, not equivalent branch predicates or exception behavior.",
+                "Retry loops additionally compare guard operators/literals, conditional reload placement and catch breadth; matching structure does not establish equivalent branch predicates, timeouts or exceptions.",
                 "A C# syntax-only review cannot prove target project compilation or NUnit test success.",
                 "Browser origin, authentication, timing, DOM matches and application observables remain unverified.",
                 "An unresolved helper or unsupported source operation is a missing obligation; never silently discard it.",
@@ -242,6 +281,32 @@ public sealed class PomMappingReviewer
         }
     }
 
+    private static string CatchTypeName(string declaration)
+    {
+        var trimmed = declaration.Trim();
+        if (trimmed == "catch" || trimmed.Length == 0)
+            return string.Empty;
+        return trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+    }
+
+    private static bool IsCatchAll(string typeName) =>
+        typeName is "" or "Exception" or "System.Exception"
+            or "SystemException" or "System.SystemException" or "object" or "System.Object";
+
+    private static string[] GuardShape(string condition) =>
+        SyntaxFactory.ParseExpression(condition).DescendantTokens()
+            .Where(token => token.IsKind(SyntaxKind.NumericLiteralToken)
+                || token.IsKind(SyntaxKind.LessThanToken)
+                || token.IsKind(SyntaxKind.LessThanEqualsToken)
+                || token.IsKind(SyntaxKind.GreaterThanToken)
+                || token.IsKind(SyntaxKind.GreaterThanEqualsToken)
+                || token.IsKind(SyntaxKind.EqualsEqualsToken)
+                || token.IsKind(SyntaxKind.ExclamationEqualsToken)
+                || token.IsKind(SyntaxKind.AmpersandAmpersandToken)
+                || token.IsKind(SyntaxKind.BarBarToken))
+            .Select(token => token.RawKind.ToString() + ":" + token.ValueText)
+            .ToArray();
+
     private static bool IsBuiltInEffect(PomMethodCallEvidence call, string sourceType)
     {
         var effects = SourceEffects(call, sourceType).ToArray();
@@ -256,6 +321,8 @@ public sealed class PomMappingReviewer
         "catch" => "catch",
         "finally" => "finally",
         "throw" => "throw",
+        "break" => "loop_exit",
+        "retry_increment" => "retry_counter_update",
         _ => "unresolved_source_structure"
     };
 
@@ -281,6 +348,15 @@ public sealed class PomMappingReviewer
             or "Evaluate" or "EvaluateAsync" or "RunScript")
         {
             yield return "script_execution";
+            yield break;
+        }
+
+        // A state getter is observational, not a wait. Dropping it may
+        // silently turn a conditional reload into unconditional navigation.
+        if (name == "Get" && chain.Any(n => n is "Displayed" or "Visible"
+                or "Enabled" or "Exists"))
+        {
+            yield return "state_check";
             yield break;
         }
 
@@ -333,7 +409,10 @@ public sealed class PomMappingReviewer
     private sealed record ParsedTarget(
         IReadOnlyList<PomMappingTargetEffect> Effects,
         IReadOnlyList<string> Diagnostics,
-        IReadOnlyDictionary<string, int> ParameterUses);
+        IReadOnlyDictionary<string, int> ParameterUses,
+        IReadOnlyList<string> CatchTypes,
+        IReadOnlyList<string> WhileConditions,
+        IReadOnlyList<bool> ReloadInsideConditional);
 
     private static int CountSourceArgumentUses(string expression, string parameter)
     {
@@ -369,7 +448,8 @@ public sealed class PomMappingReviewer
             .Take(10).Select(d => "target_syntax_" + d.Id).ToArray();
         if (errors.Length > 0)
             return new ParsedTarget(Array.Empty<PomMappingTargetEffect>(), errors,
-                new Dictionary<string, int>(StringComparer.Ordinal));
+                new Dictionary<string, int>(StringComparer.Ordinal),
+                Array.Empty<string>(), Array.Empty<string>(), Array.Empty<bool>());
 
         var method = tree.GetRoot().DescendantNodes()
             .OfType<MethodDeclarationSyntax>().First();
@@ -404,7 +484,13 @@ public sealed class PomMappingReviewer
             n is InvocationExpressionSyntax or IfStatementSyntax or WhileStatementSyntax
                 or ForStatementSyntax or ForEachStatementSyntax or DoStatementSyntax
                 or TryStatementSyntax or CatchClauseSyntax or FinallyClauseSyntax
-                or ThrowStatementSyntax)
+                or ThrowStatementSyntax or BreakStatementSyntax
+            || ((n is PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax)
+                && n.Ancestors().Any(parent => parent is CatchClauseSyntax)
+                && (n.IsKind(SyntaxKind.PostIncrementExpression)
+                    || n.IsKind(SyntaxKind.PreIncrementExpression)
+                    || n.IsKind(SyntaxKind.PostDecrementExpression)
+                    || n.IsKind(SyntaxKind.PreDecrementExpression))))
             .Where(n => n is not InvocationExpressionSyntax
                 || !n.Ancestors().OfType<InvocationExpressionSyntax>().Any())
             .OrderBy(n => n.SpanStart).ThenBy(n => n.Span.Length)
@@ -420,6 +506,8 @@ public sealed class PomMappingReviewer
                 CatchClauseSyntax => "catch",
                 FinallyClauseSyntax => "finally",
                 ThrowStatementSyntax => "throw",
+                BreakStatementSyntax => "loop_exit",
+                PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax => "retry_counter_update",
                 InvocationExpressionSyntax invocation => TargetEffect(invocation),
                 _ => "unclassified_target_call"
             };
@@ -431,7 +519,15 @@ public sealed class PomMappingReviewer
                 node.ToString().Length <= 250 ? node.ToString() : node.ToString()[..250]));
         }
         return new ParsedTarget(effects, diagnostics.Distinct(StringComparer.Ordinal).ToArray(),
-            parameterUses);
+            parameterUses,
+            method.DescendantNodes().OfType<CatchClauseSyntax>()
+                .Select(c => c.Declaration?.Type.ToString() ?? string.Empty).ToArray(),
+            method.DescendantNodes().OfType<WhileStatementSyntax>()
+                .Select(c => c.Condition.ToString()).ToArray(),
+            method.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(inv => TargetMethodName(inv) == "ReloadAsync")
+                .Select(inv => inv.Ancestors().Any(ancestor => ancestor is IfStatementSyntax
+                    or ConditionalExpressionSyntax or SwitchSectionSyntax)).ToArray());
     }
 
     private static string? TargetEffect(InvocationExpressionSyntax inv)
@@ -444,6 +540,8 @@ public sealed class PomMappingReviewer
             _ => string.Empty
         };
 
+        if (name is "IsVisibleAsync" or "IsHiddenAsync"
+            or "IsEnabledAsync" or "IsDisabledAsync") return "state_check";
         if (name is "ClickAsync") return "click";
         if (name is "FillAsync" or "PressAsync" or "TypeAsync") return "input";
         if (name is "WaitForAsync" or "WaitForSelectorAsync"

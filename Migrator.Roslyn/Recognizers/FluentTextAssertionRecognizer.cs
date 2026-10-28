@@ -30,6 +30,11 @@ public class FluentTextAssertionRecognizer : IInvocationRecognizer
                 if (expectedContain != null)
                     return new TextAssertionAction(ctx.SourceLine, target, TextAssertionKind.TextContains, expectedContain, RecognitionConfidence.SyntaxFallback, ctx.FullText);
                 break;
+            case "NotContain":
+                var expectedNotContain = ctx.ArgumentTexts.FirstOrDefault();
+                if (expectedNotContain != null)
+                    return new TextAssertionAction(ctx.SourceLine, target, TextAssertionKind.TextNotContains, expectedNotContain, RecognitionConfidence.SyntaxFallback, ctx.FullText);
+                break;
             case "NotBe":
                 var expectedNotBe = ctx.ArgumentTexts.FirstOrDefault();
                 if (expectedNotBe != null)

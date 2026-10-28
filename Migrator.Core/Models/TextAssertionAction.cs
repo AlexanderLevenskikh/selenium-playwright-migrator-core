@@ -6,7 +6,8 @@ public enum TextAssertionKind
     TextNotEquals,
     TextNotEmpty,
     TextEmpty,
-    TextContains
+    TextContains,
+    TextNotContains
 }
 
 public sealed class TextAssertionAction : TestAction
