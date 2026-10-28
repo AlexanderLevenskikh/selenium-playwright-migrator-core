@@ -104,3 +104,13 @@ This prevents common false-green substitutions: `InputAndSelect` reduced to one 
 ## Source-argument and locator literal checks (preview.10)
 
 `PomMappingReviewer` now requires every source helper parameter used in effect-producing calls to remain represented in target invocation/filter arguments (source/target counts are returned as `parameterFlows`). A category-complete mapping with `FillAsync("hardcoded")` or a missing menu-filter parameter is `rejected_incomplete`, not `requires_review`. C# literals in `Page.Locator(...)` containing likely double-escaped CSS attribute quotes are `blocked`. These conservative checks do not establish correct values, selector uniqueness, browser state or behavior; zero missing obligations remains `requires_review`.
+
+## Table assertions with mapped locators and incomplete Selenium setup (preview.11)
+
+When an original NUnit fixture still has an unresolved Selenium Page Object alias in setup, Core ordinarily blocks downstream `page.*` calls. An explicitly configured target locator for `page.Table.Items.ElementAt(N)` can nonetheless preserve source `Text.Get().Should().Be(expected)` and `Should().Contain(expected)` as executable `ToHaveTextAsync` and `ToContainTextAsync` assertions, **without treating the original setup as migrated**.
+
+The narrow guard requires a fully resolved `Page.Locator(...).Nth(N)` target, a literal row index, a valid expected-value expression and an alias blocked by the original fixture setup (not a locally blocked test operation). Every such assertion is accompanied by `TABLE_ASSERTION_REQUIRES_SETUP_REVIEW` TODO. No equivalent behavior or complete migration is claimed; the remaining setup/navigation and loader dependencies must be verified independently. Unmapped rows and arbitrary source-side expressions still fail closed.
+
+### Explicit mappings for project-specific wait helpers
+
+A syntax-fallback recognizer may classify `page.Loader.ValidateLoading()` as a generic `WaitForAction` when the external project class is not available to the lightweight parser. Core now gives precedence to an **exact, zero-argument `Methods.SourceMethod` mapping** over that generic wait policy. This allows source-reviewed multiline `while/try/catch` retry implementations in target statements to be preserved instead of reduced to an unverified wait or TODO. Argument-bearing/custom wait helpers without explicit matching still fail closed. These mappings should use `RequiresReview: true` until their DOM and browser error/reload behavior has been independently checked.

@@ -1093,13 +1093,9 @@ public class DefaultProjectAdapter : IProjectAdapter
                 ResolveTargetWithLocalVars(va.Target.SourceExpression, resolved, localVariableMappings),
                 va.Kind,
                 va.Confidence) },
-            WaitForAction wa => new[] { new WaitForAction(
-                wa.SourceLine,
-                ResolveTargetWithLocalVars(wa.Target.SourceExpression, resolved, localVariableMappings),
-                wa.Confidence,
-                wa.SourceMethod,
-                wa.FullSourceText,
-                wa.Kind) },
+            WaitForAction wa => AdaptExplicitWaitMappingOrFallback(
+                wa, resolved,
+                ResolveTargetWithLocalVars(wa.Target.SourceExpression, resolved, localVariableMappings)),
             NavigationAction nav => new[] { ResolveNavigation(nav, resolved) },
             TableRowTextAccessAction trt => new[] { new TableRowTextAccessAction(
                 trt.SourceLine,
@@ -1229,6 +1225,45 @@ public class DefaultProjectAdapter : IProjectAdapter
         return new UnresolvedTarget(sourceExpression);
     }
 
+    IEnumerable<TestAction> AdaptExplicitWaitMappingOrFallback(
+        WaitForAction action, ResolvedFileConfig resolved, TargetExpression target)
+    {
+        var fullSource = action.FullSourceText.Trim().TrimEnd(';').Trim();
+
+        // The parser may classify an unresolved project-specific ValidateLoading
+        // or similar zero-argument helper as a generic WaitForAction. When an
+        // explicit Methods mapping names the *exact source call*, it must win
+        // over the fallback wait policy, otherwise a reviewed multi-step retry
+        // mapping is silently discarded and the generated test loses behavior.
+        // Do not generalize this to arbitrary argument-bearing calls, whose
+        // placeholders need a separately resolved invocation/signature.
+        if (Regex.IsMatch(fullSource, @"\(\s*\)$", RegexOptions.CultureInvariant)
+            && resolved._methodStatementsMap.TryGetValue(fullSource, out var mapping)
+            && mapping.HasAnyStatements)
+        {
+            return new TestAction[]
+            {
+                new MappedMethodInvocationAction(
+                    action.SourceLine,
+                    action.FullSourceText,
+                    mapping.Statements,
+                    mapping.RequiresReview,
+                    target,
+                    fullSource,
+                    resultVariable: null,
+                    targetStatementsByTarget: mapping.TargetStatementsByTarget,
+                    requiresReviewByTarget: mapping.RequiresReviewByTarget)
+            };
+        }
+
+        return new TestAction[]
+        {
+            new WaitForAction(
+                action.SourceLine, target, action.Confidence,
+                action.SourceMethod, action.FullSourceText, action.Kind)
+        };
+    }
+
     IEnumerable<TestAction> AdaptAction(TestAction action, ResolvedFileConfig resolved)
     {
         return action switch
@@ -1273,13 +1308,9 @@ public class DefaultProjectAdapter : IProjectAdapter
                 ResolveTarget(va.Target.SourceExpression, resolved),
                 va.Kind,
                 va.Confidence) },
-            WaitForAction wa => new[] { new WaitForAction(
-                wa.SourceLine,
-                ResolveTarget(wa.Target.SourceExpression, resolved),
-                wa.Confidence,
-                wa.SourceMethod,
-                wa.FullSourceText,
-                wa.Kind) },
+            WaitForAction wa => AdaptExplicitWaitMappingOrFallback(
+                wa, resolved,
+                ResolveTarget(wa.Target.SourceExpression, resolved)),
             NavigationAction nav => new[] { ResolveNavigation(nav, resolved) },
             MethodInvocationAction mi => TryResolveMethodMapping(mi, resolved),
             RawStatementAction raw => TryResolveRawStatement(raw, resolved),

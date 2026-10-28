@@ -529,6 +529,52 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         }
     }
 
+
+    bool TryRenderMappedTableAssertionWithBlockedSetupAlias(
+        StringBuilder sb, TestAction action, string rootSymbol)
+    {
+        if (action is not TextAssertionAction text
+            || text.Target is not MappedTarget
+            || !_setupBlockedSymbols.Contains(rootSymbol))
+            return false;
+
+        var source = text.Target.SourceExpression;
+        // Only the explicit table-row ElementAt mapping is supported in this
+        // narrow escape hatch. Arbitrary POM assertions cannot bypass a
+        // blocked Selenium fixture alias.
+        if (!Regex.IsMatch(source,
+                @"\.Items\s*\.\s*ElementAt\s*\(\s*[0-9]+\s*\)",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        var target = RenderTargetExpression(text.Target).Trim();
+        var page = Regex.Escape(_pageVariable);
+        if (!Regex.IsMatch(target,
+                @"^" + page + @"\.(?:Locator|GetByTestId|GetByText|GetByRole|GetByLabel)\s*\(.*\)\.Nth\(\s*[0-9]+\s*\)$",
+                RegexOptions.CultureInvariant | RegexOptions.Singleline))
+            return false;
+
+        var expected = text.ExpectedValue ?? string.Empty;
+        if (!IsStringLiteral(expected)
+            && !AllSymbolsResolved(expected, Array.Empty<string>()))
+            return false;
+
+        var targetCheck = GetCheckableSourceText(action, GetActionSourceText(action));
+        if (FindReferencedSymbol(targetCheck, _blockedSymbols) != null
+            || FindReferencedSymbol(targetCheck, _sourceOnlyIdentifiers) != null)
+            return false;
+
+        RenderTextAssertion(sb, text);
+        AppendSmartTodo(
+            sb,
+            "mapped table assertion depends on unmigrated fixture setup",
+            "TABLE_ASSERTION_REQUIRES_SETUP_REVIEW",
+            "The locator is target-side and the assertion was preserved, but its Selenium setup alias has unresolved source lifecycle and navigation dependencies.",
+            "Complete or verify the fixture navigation, Page Object initialization and loader behavior. An active assertion is not evidence of equivalent setup.",
+            source);
+        return true;
+    }
+
     void RenderActionWithSafetyCore(StringBuilder sb, TestAction action)
     {
         var sourceText = GetActionSourceText(action);
@@ -712,6 +758,18 @@ public partial class PlaywrightDotNetRenderer : IRenderer
 
             if (rootBlocked != null)
             {
+                // An explicitly mapped table-row text assertion may already have
+                // a self-contained Playwright locator, even though a Selenium
+                // fixture field named page was blocked by its original setup.
+                // Preserve this assertion as an executable review candidate,
+                // NOT as verified behavior: the source setup is still unresolved.
+                // Unmapped targets, non-literal row indices, source-only values
+                // and locally blocked (rather than fixture-blocked) roots remain
+                // on the existing conservative path.
+                if (TryRenderMappedTableAssertionWithBlockedSetupAlias(
+                        sb, action, rootBlocked))
+                    return;
+
                 foreach (var variable in declaredVariables)
                     BlockSymbol(variable);
 
