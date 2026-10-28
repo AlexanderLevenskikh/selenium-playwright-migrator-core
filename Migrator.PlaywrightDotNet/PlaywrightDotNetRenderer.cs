@@ -555,6 +555,9 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         // These names remain source-only symbols. They are not emitted as
         // fields or C# locals of type IPage, which would silently change POM
         // semantics and frequently cause invalid target compilation.
+        // A second assignment may replace a previously source-backed field.
+        // Revoke the old binding first, even if the new source is unresolved.
+        _fixturePageAliases.Remove(action.SourceField);
         BlockSymbol(action.SourceField);
         if (!mappedNavigationActive)
         {
@@ -682,6 +685,28 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         {
             RenderFixturePageAlias(sb, fixtureAlias);
             return;
+        }
+
+        if (_renderingSetUp && _fixturePageAliases.Count > 0)
+        {
+            // An unresolved operation touching an already-bound source POM
+            // field, or any later field assignment, invalidates its provenance.
+            // Otherwise a previously valid alias could incorrectly authorize
+            // a test after SetUp changed or discarded the Page Object.
+            foreach (var field in _fixturePageAliases.ToArray())
+            {
+                var writesField = declaredVariables.Contains(field, StringComparer.Ordinal)
+                    && action is RawStatementAction or MethodInvocationAction
+                        or MappedMethodInvocationAction or LocalDeclarationAction
+                        or UnsupportedAction;
+                var unknownUse = action is RawStatementAction or MethodInvocationAction
+                        or UnsupportedAction or WaitForAction
+                    && Regex.IsMatch(sourceText,
+                        @"(?<![A-Za-z0-9_])" + Regex.Escape(field) + @"\b",
+                        RegexOptions.CultureInvariant);
+                if (writesField || unknownUse)
+                    _fixturePageAliases.Remove(field);
+            }
         }
 
         // Scaffolding is explicit and narrow. It never happens merely because a call is

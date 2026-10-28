@@ -177,6 +177,67 @@ internal static class FixturePageLifecycleSmoke
                 .SetUpActions.OfType<FixturePageAliasAction>().Any(),
                 "a shadowing setup local is not the fixture field");
 
+            // A second source POM field assignment invalidates the first
+            // binding even if the first source navigation was mapped.
+            var rebound = Path.Combine(root, "Rebound.cs");
+            File.WriteAllText(rebound, """
+                using NUnit.Framework;
+                [TestFixture] public class Rebound
+                {
+                    private SyntheticPage page;
+                    [SetUp] public void Prepare()
+                    {
+                        var pagef = Navigation.OpenSyntheticPage();
+                        page = pagef;
+                        var unrelated = UnknownFactory.CreatePage();
+                        page = unrelated;
+                    }
+                    [Test] public void Test() { page.Save.Click(); }
+                }
+                """);
+            var reboundCase = RunCase(Config(navigation), rebound);
+            Check(reboundCase.Adapted.SetUpActions.OfType<FixturePageAliasAction>().Count() == 2
+                && !reboundCase.Generated.Contains("await Page.Locator(\"#save\").ClickAsync();", StringComparison.Ordinal),
+                "later unresolved POM reassignment must revoke the previous alias binding");
+
+            var reset = Path.Combine(root, "ResetField.cs");
+            File.WriteAllText(reset, """
+                using NUnit.Framework;
+                [TestFixture] public class ResetField
+                {
+                    private SyntheticPage page;
+                    [SetUp] public void Prepare()
+                    {
+                        var pagef = Navigation.OpenSyntheticPage();
+                        page = pagef;
+                        page = null;
+                    }
+                    [Test] public void Test() { page.Save.Click(); }
+                }
+                """);
+            var resetCase = RunCase(Config(navigation), reset);
+            Check(!resetCase.Generated.Contains("await Page.Locator(\"#save\").ClickAsync();", StringComparison.Ordinal),
+                "resetting source POM field to null must invalidate mapped downstream actions");
+
+            var unknownSetup = Path.Combine(root, "UnknownSetup.cs");
+            File.WriteAllText(unknownSetup, """
+                using NUnit.Framework;
+                [TestFixture] public class UnknownSetup
+                {
+                    private SyntheticPage page;
+                    [SetUp] public void Prepare()
+                    {
+                        var pagef = Navigation.OpenSyntheticPage();
+                        page = pagef;
+                        page.UnknownSetupMutation();
+                    }
+                    [Test] public void Test() { page.Save.Click(); }
+                }
+                """);
+            var unknownSetupCase = RunCase(Config(navigation), unknownSetup);
+            Check(!unknownSetupCase.Generated.Contains("await Page.Locator(\"#save\").ClickAsync();", StringComparison.Ordinal),
+                "unmapped source-side setup operation on field must revoke the alias");
+
             var lifecycle = Path.Combine(root, "Lifecycle.cs");
             File.WriteAllText(lifecycle, """
                 using NUnit.Framework;
