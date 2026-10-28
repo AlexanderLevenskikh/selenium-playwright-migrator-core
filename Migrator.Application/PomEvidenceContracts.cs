@@ -34,6 +34,7 @@ public sealed record SourceHelperEvidence(
     public IReadOnlyList<PomControlFlowEvidence> ControlFlow { get; init; } = Array.Empty<PomControlFlowEvidence>();
     public string MethodSha256 { get; init; } = string.Empty;
     public bool IsReachablePrivateHelper { get; init; }
+    public IReadOnlyList<string> ReviewFlags { get; init; } = Array.Empty<string>();
 }
 
 public sealed record PomMethodCallEvidence(
