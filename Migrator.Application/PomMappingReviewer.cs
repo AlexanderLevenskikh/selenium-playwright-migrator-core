@@ -346,7 +346,8 @@ public sealed class PomMappingReviewer
         IReadOnlyList<string> Diagnostics,
         IReadOnlyDictionary<string, int> ParameterUses,
         IReadOnlyList<string> CatchTypes,
-        IReadOnlyList<string> WhileConditions);
+        IReadOnlyList<string> WhileConditions,
+        IReadOnlyList<bool> ReloadInsideConditional);
 
     private static int CountSourceArgumentUses(string expression, string parameter)
     {
@@ -383,7 +384,7 @@ public sealed class PomMappingReviewer
         if (errors.Length > 0)
             return new ParsedTarget(Array.Empty<PomMappingTargetEffect>(), errors,
                 new Dictionary<string, int>(StringComparer.Ordinal),
-                Array.Empty<string>(), Array.Empty<string>());
+                Array.Empty<string>(), Array.Empty<string>(), Array.Empty<bool>());
 
         var method = tree.GetRoot().DescendantNodes()
             .OfType<MethodDeclarationSyntax>().First();
@@ -457,7 +458,11 @@ public sealed class PomMappingReviewer
             method.DescendantNodes().OfType<CatchClauseSyntax>()
                 .Select(c => c.Declaration?.Type.ToString() ?? string.Empty).ToArray(),
             method.DescendantNodes().OfType<WhileStatementSyntax>()
-                .Select(c => c.Condition.ToString()).ToArray());
+                .Select(c => c.Condition.ToString()).ToArray(),
+            method.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(inv => TargetMethodName(inv) == "ReloadAsync")
+                .Select(inv => inv.Ancestors().Any(ancestor => ancestor is IfStatementSyntax
+                    or ConditionalExpressionSyntax or SwitchSectionSyntax)).ToArray());
     }
 
     private static string? TargetEffect(InvocationExpressionSyntax inv)
