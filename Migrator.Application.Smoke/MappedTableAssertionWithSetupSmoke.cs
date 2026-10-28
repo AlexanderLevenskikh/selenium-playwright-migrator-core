@@ -92,7 +92,7 @@ internal static class MappedTableAssertionWithSetupSmoke
                 "await Page.Locator(\"#ready\").WaitForAsync(new() { State = WaitForSelectorState.Visible });",
                 "break;",
                 "}",
-                "catch (Microsoft.Playwright.TimeoutException)",
+                "catch (System.TimeoutException)",
                 "{",
                 "attempt++;",
                 "if (attempt == 2)",
@@ -132,7 +132,7 @@ internal static class MappedTableAssertionWithSetupSmoke
                 + "\n" + loaderRendered[..Math.Min(loaderRendered.Length, 5200)]);
             Check(Count(loaderRendered, "await Page.ReloadAsync();") == 2,
                 "both retry helpers must retain source navigation side effects");
-            Check(Count(loaderRendered, "catch (Microsoft.Playwright.TimeoutException)") == 2,
+            Check(Count(loaderRendered, "catch (System.TimeoutException)") == 2,
                 "retry catch path may not disappear during multiline mapping rendering");
             Check(!CSharpSyntaxTree.ParseText(loaderRendered).GetDiagnostics()
                 .Any(d => d.Severity == DiagnosticSeverity.Error),
