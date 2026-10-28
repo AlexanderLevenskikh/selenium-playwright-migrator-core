@@ -52,6 +52,7 @@ try
     var preview = engine.Preview(work, expectedAnalysisId: third.AnalysisId);
     Require(preview.Files.Count == 1 && preview.TargetTreeHash.Length == 64, "expected one target");
     Require(!string.IsNullOrWhiteSpace(preview.Files.Single().Content), "rendered output missing");
+    ArtifactVerificationSmoke.Run(engine, work, third, preview);
     File.AppendAllText(nunit, "\n// changed");
     try
     {
