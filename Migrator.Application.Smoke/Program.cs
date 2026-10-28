@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--project-assembly-only", StringComparer.Ordinal))
+{
+    ProjectTargetAssemblySmoke.Run();
+    Console.WriteLine("Generated NUnit target assembly build and runtime smoke passed.");
+    return;
+}
 var work = Path.Combine(Path.GetTempPath(), "migrator-app-smoke-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(work);
 try
