@@ -99,10 +99,27 @@ public sealed class PomMappingReviewer
         var sourceWhile = method.ControlFlow.Where(flow => flow.Kind == "while").ToArray();
         for (var i = 0; i < Math.Min(sourceWhile.Length, parse.WhileConditions.Count); i++)
         {
-            var sourceGuard = GuardShape(sourceWhile[i].Expression);
-            var targetGuard = GuardShape(parse.WhileConditions[i]);
+            var sourceGuard = GuardShape(sourceWhile[i].Expression, method.NumericLocalConstants);
+            var targetGuard = GuardShape(parse.WhileConditions[i], parse.NumericLocalConstants);
             if (sourceGuard.Length > 0 && !sourceGuard.SequenceEqual(targetGuard, StringComparer.Ordinal))
                 flags.Add("source_retry_guard_changed");
+        }
+
+        // The final retry failure condition is usually an 'if' inside catch,
+        // often comparing the counter to a separately declared limit. Do not
+        // accept changing == to >=, or 2 to 3, simply because Assert.Fail remains.
+        var sourceNumericBranches = method.ControlFlow.Where(flow => flow.Kind == "if")
+            .Select(flow => GuardShape(flow.Expression, method.NumericLocalConstants))
+            .Where(ContainsNumericGuard).ToArray();
+        var targetNumericBranches = parse.IfConditions
+            .Select(condition => GuardShape(condition, parse.NumericLocalConstants))
+            .Where(ContainsNumericGuard).ToArray();
+        if (sourceNumericBranches.Length > targetNumericBranches.Length)
+            flags.Add("source_retry_failure_guard_missing");
+        for (var i = 0; i < Math.Min(sourceNumericBranches.Length, targetNumericBranches.Length); i++)
+        {
+            if (!sourceNumericBranches[i].SequenceEqual(targetNumericBranches[i], StringComparer.Ordinal))
+                flags.Add("source_retry_failure_guard_changed");
         }
 
         var sourceReloads = method.OrderedCalls
@@ -146,7 +163,23 @@ public sealed class PomMappingReviewer
             if (position < 0)
                 missing.Add(obligation);
             else
+            {
+                // A hidden loader cannot be substituted by a visible-state
+                // wait. An unspecified target state remains review-only.
+                var sourceVisibility = SourceWaitVisibility(obligation.SourceCall);
+                if (obligation.Effect == "state_wait" && sourceVisibility != null)
+                {
+                    var targetVisibility = TargetWaitVisibility(targetEffects[position].TargetCall);
+                    if (targetVisibility == null)
+                        flags.Add("target_wait_visibility_unproven");
+                    else if (targetVisibility != sourceVisibility)
+                    {
+                        flags.Add("source_wait_visibility_inverted");
+                        missing.Add(obligation);
+                    }
+                }
                 cursor = position + 1;
+            }
         }
 
         if (targetStatements.Any(s => s.Contains("TODO", StringComparison.OrdinalIgnoreCase)
@@ -168,6 +201,9 @@ public sealed class PomMappingReviewer
         var status = blockedTarget ? "blocked"
             : missing.Count > 0 || parameterFlows.Any(flow => !flow.Preserved)
                 || flags.Contains("source_retry_guard_changed")
+                || flags.Contains("source_retry_failure_guard_changed")
+                || flags.Contains("source_retry_failure_guard_missing")
+                || flags.Contains("source_wait_visibility_inverted")
                 || flags.Contains("conditional_reload_moved_outside_branch")
                 || flags.Contains("typed_source_catch_widened")
                 || flags.Contains("source_catch_all_narrowed")
@@ -193,7 +229,8 @@ public sealed class PomMappingReviewer
                 "Operation categories and lexical order are necessary conditions, not proof of matching selectors, arguments or business effects.",
                 "Source method parameters used by invocation arguments must remain referenced in target action/filter invocation arguments; matching identifier counts do not prove correct binding or values.",
                 "CSS locator string literals containing a backslash immediately before an attribute quote are blocked as likely double-escaped selectors.",
-                "Retry loops additionally compare guard operators/literals, conditional reload placement and catch breadth; matching structure does not establish equivalent branch predicates, timeouts or exceptions.",
+                "Retry loops compare normalized numeric guards, explicit wait visibility and conditional reload placement; unmatched state semantics and browser timing remain unverified.",
+                "Immutable numeric source limits are syntax-folded; dynamic limits are not evaluated. A literal window.location.reload() is recognized as a reload category, not accepted as equivalent to Playwright reload timing.",
                 "A C# syntax-only review cannot prove target project compilation or NUnit test success.",
                 "Browser origin, authentication, timing, DOM matches and application observables remain unverified.",
                 "An unresolved helper or unsupported source operation is a missing obligation; never silently discard it.",
@@ -293,19 +330,50 @@ public sealed class PomMappingReviewer
         typeName is "" or "Exception" or "System.Exception"
             or "SystemException" or "System.SystemException" or "object" or "System.Object";
 
-    private static string[] GuardShape(string condition) =>
+    private static string[] GuardShape(string condition,
+        IReadOnlyDictionary<string, string> numericConstants) =>
         SyntaxFactory.ParseExpression(condition).DescendantTokens()
-            .Where(token => token.IsKind(SyntaxKind.NumericLiteralToken)
-                || token.IsKind(SyntaxKind.LessThanToken)
-                || token.IsKind(SyntaxKind.LessThanEqualsToken)
-                || token.IsKind(SyntaxKind.GreaterThanToken)
-                || token.IsKind(SyntaxKind.GreaterThanEqualsToken)
-                || token.IsKind(SyntaxKind.EqualsEqualsToken)
-                || token.IsKind(SyntaxKind.ExclamationEqualsToken)
-                || token.IsKind(SyntaxKind.AmpersandAmpersandToken)
-                || token.IsKind(SyntaxKind.BarBarToken))
-            .Select(token => token.RawKind.ToString() + ":" + token.ValueText)
-            .ToArray();
+            .Select(token =>
+            {
+                if (token.IsKind(SyntaxKind.IdentifierToken)
+                    && numericConstants.TryGetValue(token.ValueText, out var numericValue))
+                    return "number:" + numericValue;
+                if (token.IsKind(SyntaxKind.NumericLiteralToken))
+                    return "number:" + token.ValueText;
+                if (token.IsKind(SyntaxKind.LessThanToken)
+                    || token.IsKind(SyntaxKind.LessThanEqualsToken)
+                    || token.IsKind(SyntaxKind.GreaterThanToken)
+                    || token.IsKind(SyntaxKind.GreaterThanEqualsToken)
+                    || token.IsKind(SyntaxKind.EqualsEqualsToken)
+                    || token.IsKind(SyntaxKind.ExclamationEqualsToken)
+                    || token.IsKind(SyntaxKind.AmpersandAmpersandToken)
+                    || token.IsKind(SyntaxKind.BarBarToken))
+                    return "operator:" + token.Kind();
+                return null;
+            }).Where(value => value != null).Select(value => value!).ToArray();
+
+    private static bool ContainsNumericGuard(string[] tokens) =>
+        tokens.Any(token => token.StartsWith("number:", StringComparison.Ordinal));
+
+    private static string? SourceWaitVisibility(string call)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(call,
+            @"\.(?:Visible|Displayed)\s*(?:\(\s*\))?\s*\.\s*Wait\s*\(\s*\)\s*\.\s*EqualTo\s*\(\s*(true|false)\s*\)",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return !match.Success ? null
+            : match.Groups[1].Value == "true" ? "visible" : "hidden";
+    }
+
+    private static string? TargetWaitVisibility(string target)
+    {
+        if (target.Contains("ToBeHiddenAsync(", StringComparison.Ordinal)
+            || target.Contains("WaitForSelectorState.Hidden", StringComparison.Ordinal))
+            return "hidden";
+        if (target.Contains("ToBeVisibleAsync(", StringComparison.Ordinal)
+            || target.Contains("WaitForSelectorState.Visible", StringComparison.Ordinal))
+            return "visible";
+        return null;
+    }
 
     private static bool IsBuiltInEffect(PomMethodCallEvidence call, string sourceType)
     {
@@ -347,7 +415,23 @@ public sealed class PomMappingReviewer
         if (name is "ExecuteJs" or "ExecuteJavaScript" or "ExecuteScript"
             or "Evaluate" or "EvaluateAsync" or "RunScript")
         {
-            yield return "script_execution";
+            // Only a literal, standalone JS reload expression qualifies.
+            // Arbitrary or dynamic scripts remain separate obligations.
+            var invocation = SyntaxFactory.ParseExpression(call.SourceText)
+                .DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>()
+                .FirstOrDefault(node => TargetMethodName(node) == name);
+            if (invocation?.ArgumentList.Arguments.Count == 1
+                && invocation.ArgumentList.Arguments[0].Expression
+                    is LiteralExpressionSyntax literal
+                && literal.IsKind(SyntaxKind.StringLiteralExpression)
+                && System.Text.RegularExpressions.Regex.IsMatch(literal.Token.ValueText,
+                    @"^\s*(?:window\.)?location\.reload\s*\(\s*\)\s*;?\s*$",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+            {
+                yield return "reload";
+            }
+            else
+                yield return "script_execution";
             yield break;
         }
 
@@ -412,7 +496,34 @@ public sealed class PomMappingReviewer
         IReadOnlyDictionary<string, int> ParameterUses,
         IReadOnlyList<string> CatchTypes,
         IReadOnlyList<string> WhileConditions,
-        IReadOnlyList<bool> ReloadInsideConditional);
+        IReadOnlyList<bool> ReloadInsideConditional,
+        IReadOnlyList<string> IfConditions,
+        IReadOnlyDictionary<string, string> NumericLocalConstants);
+
+    private static IReadOnlyDictionary<string, string> NumericLocalLiterals(
+        MethodDeclarationSyntax method)
+    {
+        var writes = method.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+            .Select(expr => expr.Left.ToString())
+            .Concat(method.DescendantNodes().OfType<PostfixUnaryExpressionSyntax>()
+                .Where(expr => expr.IsKind(SyntaxKind.PostIncrementExpression)
+                    || expr.IsKind(SyntaxKind.PostDecrementExpression))
+                .Select(expr => expr.Operand.ToString()))
+            .Concat(method.DescendantNodes().OfType<PrefixUnaryExpressionSyntax>()
+                .Where(expr => expr.IsKind(SyntaxKind.PreIncrementExpression)
+                    || expr.IsKind(SyntaxKind.PreDecrementExpression))
+                .Select(expr => expr.Operand.ToString()))
+            .ToHashSet(StringComparer.Ordinal);
+        return method.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+            .Where(decl => decl.Initializer?.Value is LiteralExpressionSyntax literal
+                && literal.IsKind(SyntaxKind.NumericLiteralExpression)
+                && !writes.Contains(decl.Identifier.ValueText))
+            .GroupBy(decl => decl.Identifier.ValueText, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key,
+                group => ((LiteralExpressionSyntax)group.Single().Initializer!.Value).Token.ValueText,
+                StringComparer.Ordinal);
+    }
 
     private static int CountSourceArgumentUses(string expression, string parameter)
     {
@@ -449,7 +560,8 @@ public sealed class PomMappingReviewer
         if (errors.Length > 0)
             return new ParsedTarget(Array.Empty<PomMappingTargetEffect>(), errors,
                 new Dictionary<string, int>(StringComparer.Ordinal),
-                Array.Empty<string>(), Array.Empty<string>(), Array.Empty<bool>());
+                Array.Empty<string>(), Array.Empty<string>(), Array.Empty<bool>(),
+                Array.Empty<string>(), new Dictionary<string, string>(StringComparer.Ordinal));
 
         var method = tree.GetRoot().DescendantNodes()
             .OfType<MethodDeclarationSyntax>().First();
@@ -527,7 +639,10 @@ public sealed class PomMappingReviewer
             method.DescendantNodes().OfType<InvocationExpressionSyntax>()
                 .Where(inv => TargetMethodName(inv) == "ReloadAsync")
                 .Select(inv => inv.Ancestors().Any(ancestor => ancestor is IfStatementSyntax
-                    or ConditionalExpressionSyntax or SwitchSectionSyntax)).ToArray());
+                    or ConditionalExpressionSyntax or SwitchSectionSyntax)).ToArray(),
+            method.DescendantNodes().OfType<IfStatementSyntax>()
+                .Select(node => node.Condition.ToString()).ToArray(),
+            NumericLocalLiterals(method));
     }
 
     private static string? TargetEffect(InvocationExpressionSyntax inv)
