@@ -183,7 +183,10 @@ public partial class PlaywrightDotNetRenderer
         }
 
         if (_targetTestFramework == DotNetTargetTestFramework.NUnit)
+        {
             sb.AppendLine($"{_indent}{_indent}Assert.Inconclusive(\"MIGRATOR: inherited NUnit lifecycle requires source-backed review.\");");
+            sb.AppendLine($"{_indent}{_indent}return Task.CompletedTask;");
+        }
         else
             sb.AppendLine($"{_indent}{_indent}throw new NotSupportedException(\"MIGRATOR: NUnit lifecycle cannot be automatically migrated to xUnit.\");");
         sb.AppendLine($"{_indent}}}");
