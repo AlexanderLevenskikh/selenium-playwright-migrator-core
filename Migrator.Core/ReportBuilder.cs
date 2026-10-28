@@ -40,6 +40,10 @@ public static class ReportBuilder
         // target code with no TODOs, rather than merely "has no UnsupportedAction".
         // SuccessfullyConvertedTests deliberately keeps its old definition.
         var setupExecutable = ExecutableTargetSemantics.Analyze(model.SetUpActions);
+        // Cross-check the *rendered target* as well as the intermediate IR. If
+        // an action was turned into TODO after source-symbol safety checks,
+        // it cannot count as fully converted regardless of model-level semantics.
+        var renderedDebt = RenderedTodoAttribution.Analyze(generatedOutput, model.Tests.Select(t => t.Name));
         var fullyConverted = model.Tests.Count(t =>
         {
             var bodyFlattened = TestActionTraversal.Flatten(t.BodyActions).ToList();
@@ -47,7 +51,9 @@ public static class ReportBuilder
                 return false;
 
             var body = ExecutableTargetSemantics.Analyze(bodyFlattened);
-            return setupExecutable.Issues.Count == 0
+            return !renderedDebt.SharedDebt
+                   && !renderedDebt.AffectedTests.Contains(t.Name)
+                   && setupExecutable.Issues.Count == 0
                    && body.Issues.Count == 0
                    && body.BehaviorCount > 0;
         });
