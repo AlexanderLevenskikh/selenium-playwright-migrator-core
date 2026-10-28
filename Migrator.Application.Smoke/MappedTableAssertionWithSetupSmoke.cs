@@ -67,7 +67,7 @@ internal static class MappedTableAssertionWithSetupSmoke
             Check(rendered.Contains(
                 "await Expect(Page.Locator(\"[data-test='table'] [data-test='row']\").Nth(1)).ToContainTextAsync(\"region\");",
                 StringComparison.Ordinal), "source .Should().Contain should retain substring semantics");
-            Check(Count(rendered, ".Not.ToContainTextAsync(\\\"deprecated\\\")") == 1,
+            Check(Count(rendered, ".Not.ToContainTextAsync(\"deprecated\")") == 1,
                 "NotContain must become one executable negated substring assertion");
             Check(Count(rendered, "[MIGRATOR:TABLE_ASSERTION_REQUIRES_SETUP_REVIEW]") == 3,
                 "unmigrated fixture setup must remain a visible review blocker for both assertions");
