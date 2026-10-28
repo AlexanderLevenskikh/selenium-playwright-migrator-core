@@ -168,14 +168,30 @@ public class RoslynTestFileParser : ITestFileParser
             .Select(t => t.Type.ToString())
             .FirstOrDefault() ?? null;
 
-        var setUpMethod = testClass.DescendantNodes().OfType<MethodDeclarationSyntax>()
-            .FirstOrDefault(m => m.AttributeLists.SelectMany(al => al.Attributes)
-                .Any(a => a.Name.ToString() == "SetUp"));
-
+        // NUnit can run multiple setup/teardown hooks. The migrator has one
+        // generated setup body, so never silently discard extra or differently
+        // scoped lifecycle hooks. Their execution order/context is not inferred.
+        var lifecycleMethods = testClass.Members.OfType<MethodDeclarationSyntax>()
+            .Where(m => m.AttributeLists.SelectMany(al => al.Attributes)
+                .Any(a => IsAttributeNamed(a, "SetUp", "OneTimeSetUp",
+                    "TearDown", "OneTimeTearDown")))
+            .ToArray();
+        var setUpMethods = lifecycleMethods.Where(m => m.AttributeLists
+            .SelectMany(al => al.Attributes)
+            .Any(a => IsAttributeNamed(a, "SetUp"))).ToArray();
+        var setUpMethod = setUpMethods.FirstOrDefault();
         var setUpActions = setUpMethod != null
             ? RecognizeFixturePageAliases(setUpMethod, semanticModel,
                 ParseMethodBody(setUpMethod, semanticModel).ToList())
             : new List<TestAction>();
+
+        foreach (var extra in lifecycleMethods.Where(m => m != setUpMethod))
+        {
+            var line = extra.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            setUpActions.Insert(0, new UnsupportedAction(line,
+                extra.ToString(),
+                "NUnit lifecycle hook not migrated: multiple SetUp / OneTimeSetUp / TearDown ordering and scope require review"));
+        }
 
         var tests = testClass.DescendantNodes().OfType<MethodDeclarationSyntax>()
             .Where(IsTestMethod)
