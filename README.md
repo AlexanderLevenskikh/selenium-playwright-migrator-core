@@ -92,3 +92,11 @@ Synthetic regression covers multi-step combobox interactions, loader retries, a 
 ### Explicit control type selection
 
 When `pageTypes` contains a specific class name (for example a project's `Combobox`), the inspector includes its public methods even when the name is not in the built-in list. A zero-call public method is preserved as evidence for review rather than silently omitted. This is only source inspection; no method is automatically mapped or executed.
+
+## Review proposed Page Object Methods mappings (preview.9)
+
+`PomMappingReviewer.Review(sourceDirectory, sourceType, sourceMethod, sourceLine, expectedSourceTreeHash, targetStatements)` checks an **explicit proposed mapping** against the source-backed POM method ledger. Call `PomSourceInspector.Inspect` first to get the source hash, method name and line. Supply concrete target-side C# statements; placeholders and TODOs are not validated as executable mappings.
+
+The reviewer expands bounded same-class helper calls, then compares required operation classes in source lexical order with the target C# syntax: clicks, inputs, waits, assertions, storage writes/removals, scripts, reloads, and loop/conditional/exception structures. It reports each source-lined obligation, target effect, missing obligation and risk, with statuses `rejected_incomplete`, `blocked` or `requires_review`. **There is deliberately no `passed` or `approved` status.** Matching effect counts/orders are necessary but not sufficient: selectors, argument equivalence, branching predicates, browser origin, auth and app observables remain unverified.
+
+This prevents common false-green substitutions: `InputAndSelect` reduced to one `FillAsync`, DatePicker without its private blur script, retrying Loader replaced by one wait, and multi-key LocalStorage helper collapsed to one write. No user files are copied into the public regression fixtures.
