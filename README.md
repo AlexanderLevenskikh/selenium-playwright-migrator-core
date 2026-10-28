@@ -138,3 +138,11 @@ The parser also no longer silently drops multiple `[SetUp]`, `[OneTimeSetUp]`, `
 ### Fixture alias invalidation hardening
 
 Later `page = other` or `page = null` assignments revoke the existing alias even if a previous `page = pagef` was source-backed. An unmapped setup helper that touches the field also revokes it. A previous navigation/alias is never retained as evidence for subsequent tests after source setup changes the Page Object. Synthetic negative regressions lock down these cases.
+
+## Inherited NUnit lifecycle (preview.15)
+
+A Roslyn-symbol-bound `NUnitLifecyclePlan` discovers `[SetUp]`, `[TearDown]`, `[OneTimeSetUp]` and `[OneTimeTearDown]` across the complete source inheritance chain, including partial and project-local base types. For one hook per kind per class, Core emits **one target hook of each kind**: setup phases execute base-to-derived; cleanup executes derived-to-base, with reached-level guards and nested `try/finally` so a failing derived cleanup does not simply drop base cleanup. An inherited lifecycle is always marked `NUNIT_LIFECYCLE_REQUIRES_REVIEW`: source/target exception behavior, package-level NUnit SetUpFixtures, fixture instance lifetime and browser semantics require actual testing.
+
+No runtime order is invented for multiple identical hooks within one class. A hidden/overridden inherited hook, unresolved base type, inherited metadata-only lifecycle, invalid hook signature, unpaired teardown, `InstancePerTestCase` one-time hooks, xUnit target or conflicting host SetUpStatements creates blocking diagnostics and an inconclusive NUnit SetUp rather than an apparently passing test. Plain single-level NUnit SetUp without inherited/extra phases retains the old rendering path. All lifecycle actions are included in quality accounting. Synthetic Core tests verify three inheritance levels and source-order effects, plus negative cases.
+
+This release does not translate namespace/assembly SetUpFixture scope or external source-only hooks; it fails closed when the inherited source chain cannot be resolved. No private ArBilling implementation or selectors are committed.
