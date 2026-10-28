@@ -69,7 +69,25 @@ public sealed class PomMappingReviewer
         var helperKeys = new HashSet<string>(StringComparer.Ordinal);
         ExpandMethod(method, 0);
 
-        var parse = ParseTargets(targetStatements);
+        var parse = ParseTargets(targetStatements, method.ParameterNames);
+        // The operation sequence alone can be complete while an agent
+        // hardcodes the input instead of forwarding the source argument.
+        // Compare AST identifier occurrences inside effect-producing call
+        // expressions, excluding string literals and unused local declarations.
+        var parameterFlows = method.ParameterNames
+            .Distinct(StringComparer.Ordinal)
+            .Select(name =>
+            {
+                var sourceUses = method.OrderedCalls.Sum(call =>
+                    CountSourceArgumentUses(call.SourceText, name));
+                parse.ParameterUses.TryGetValue(name, out var targetUses);
+                return new PomParameterFlowEvidence(
+                    name, sourceUses, targetUses, targetUses >= sourceUses);
+            })
+            .Where(flow => flow.SourceArgumentUses > 0)
+            .ToArray();
+        if (parameterFlows.Any(flow => !flow.Preserved))
+            flags.Add("source_parameter_usage_not_preserved");
         var targetEffects = parse.Effects;
         foreach (var diagnostic in parse.Diagnostics)
             flags.Add(diagnostic);
@@ -113,7 +131,8 @@ public sealed class PomMappingReviewer
             || flags.Contains("recursive_source_helper")
             || flags.Contains("truncated_invocations");
         var status = blockedTarget ? "blocked"
-            : missing.Count > 0 ? "rejected_incomplete"
+            : missing.Count > 0 || parameterFlows.Any(flow => !flow.Preserved)
+                ? "rejected_incomplete"
             : "requires_review";
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -133,12 +152,17 @@ public sealed class PomMappingReviewer
             new[]
             {
                 "Operation categories and lexical order are necessary conditions, not proof of matching selectors, arguments or business effects.",
+                "Source method parameters used by invocation arguments must remain referenced in target action/filter invocation arguments; matching identifier counts do not prove correct binding or values.",
+                "CSS locator string literals containing a backslash immediately before an attribute quote are blocked as likely double-escaped selectors.",
                 "Control flow and retry structures are compared by presence/order categories, not equivalent branch predicates or exception behavior.",
                 "A C# syntax-only review cannot prove target project compilation or NUnit test success.",
                 "Browser origin, authentication, timing, DOM matches and application observables remain unverified.",
                 "An unresolved helper or unsupported source operation is a missing obligation; never silently discard it.",
                 "This tool never executes or applies the target statements and never returns a passed/approved mapping."
-            });
+            })
+        {
+            ParameterFlows = parameterFlows
+        };
 
         void ExpandMethod(SourceHelperEvidence current, int depth)
         {
@@ -308,9 +332,34 @@ public sealed class PomMappingReviewer
 
     private sealed record ParsedTarget(
         IReadOnlyList<PomMappingTargetEffect> Effects,
-        IReadOnlyList<string> Diagnostics);
+        IReadOnlyList<string> Diagnostics,
+        IReadOnlyDictionary<string, int> ParameterUses);
 
-    private static ParsedTarget ParseTargets(IReadOnlyList<string> statements)
+    private static int CountSourceArgumentUses(string expression, string parameter)
+    {
+        var syntax = SyntaxFactory.ParseExpression(expression);
+        return syntax.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>()
+            .Count(x => string.Equals(x.Identifier.ValueText, parameter, StringComparison.Ordinal));
+    }
+
+    private static bool IsTargetParameterCarrier(string method) =>
+        method is "FillAsync" or "TypeAsync" or "PressAsync" or "Filter"
+            or "GetByText" or "GetByRole" or "GetByLabel"
+            or "GetByPlaceholder" or "GetByTestId" or "SelectOptionAsync"
+            or "SetInputFilesAsync" or "EvaluateAsync" or "AddInitScriptAsync"
+            or "ToContainTextAsync" or "ToHaveTextAsync" or "ToHaveValueAsync";
+
+    private static string TargetMethodName(InvocationExpressionSyntax inv) =>
+        inv.Expression switch
+        {
+            MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText,
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+            GenericNameSyntax generic => generic.Identifier.ValueText,
+            _ => string.Empty
+        };
+
+    private static ParsedTarget ParseTargets(IReadOnlyList<string> statements,
+        IReadOnlyList<string> parameterNames)
     {
         var source = "class __Candidate { async System.Threading.Tasks.Task Run() {\n"
             + string.Join("\n", statements) + "\n} }";
@@ -319,11 +368,36 @@ public sealed class PomMappingReviewer
             .Where(d => d.Severity == DiagnosticSeverity.Error)
             .Take(10).Select(d => "target_syntax_" + d.Id).ToArray();
         if (errors.Length > 0)
-            return new ParsedTarget(Array.Empty<PomMappingTargetEffect>(), errors);
+            return new ParsedTarget(Array.Empty<PomMappingTargetEffect>(), errors,
+                new Dictionary<string, int>(StringComparer.Ordinal));
 
         var method = tree.GetRoot().DescendantNodes()
             .OfType<MethodDeclarationSyntax>().First();
         var effects = new List<PomMappingTargetEffect>();
+        var diagnostics = new List<string>();
+        var parameterUses = parameterNames.Distinct(StringComparer.Ordinal)
+            .ToDictionary(name => name, _ => 0, StringComparer.Ordinal);
+
+        foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var name = TargetMethodName(invocation);
+            if (name == "Locator"
+                && invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression
+                    is LiteralExpressionSyntax locatorLiteral
+                && locatorLiteral.Token.ValueText.Contains("\\\"", StringComparison.Ordinal)
+                && locatorLiteral.Token.ValueText.Contains("[", StringComparison.Ordinal))
+                diagnostics.Add("target_selector_suspicious_double_escaping");
+
+            if (!IsTargetParameterCarrier(name))
+                continue;
+            foreach (var identifier in invocation.ArgumentList.DescendantNodes()
+                         .OfType<IdentifierNameSyntax>())
+            {
+                var variable = identifier.Identifier.ValueText;
+                if (parameterUses.ContainsKey(variable))
+                    parameterUses[variable]++;
+            }
+        }
         // Include control-flow in source order. Do not count nested invocations
         // twice: a ClickAsync(GetByText(...)) is one terminal click.
         var nodes = method.Body!.DescendantNodes().Where(n =>
@@ -356,7 +430,8 @@ public sealed class PomMappingReviewer
                 Math.Max(1, line), effect,
                 node.ToString().Length <= 250 ? node.ToString() : node.ToString()[..250]));
         }
-        return new ParsedTarget(effects, Array.Empty<string>());
+        return new ParsedTarget(effects, diagnostics.Distinct(StringComparer.Ordinal).ToArray(),
+            parameterUses);
     }
 
     private static string? TargetEffect(InvocationExpressionSyntax inv)

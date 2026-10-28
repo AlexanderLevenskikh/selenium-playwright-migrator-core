@@ -172,7 +172,11 @@ internal static class PomMethodLineage
             MethodSha256 = Convert.ToHexString(
                 SHA256.HashData(Encoding.UTF8.GetBytes(method.ToFullString()))).ToLowerInvariant(),
             IsReachablePrivateHelper = privateHelper,
-            ReviewFlags = risks
+            ReviewFlags = risks,
+            ParameterNames = method.ParameterList.Parameters
+                .Select(parameter => parameter.Identifier.ValueText)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToArray()
         };
     }
 
