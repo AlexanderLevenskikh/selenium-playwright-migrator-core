@@ -94,6 +94,28 @@ public class DefaultProjectAdapter : IProjectAdapter
 
         var adaptedTests = sourceModel.Tests.Select(t => AdaptTest(t, resolved)).ToList();
         var adaptedSetup = AdaptFixtureSetUp(sourceModel.SetUpActions, resolved);
+        NUnitLifecyclePlan? adaptedLifecycle = null;
+        if (sourceModel.NUnitLifecycle is { } lifecycle)
+        {
+            // Keep the source-bound lifecycle phases separate. Setup-local
+            // navigation provenance is shared only across successive SetUp
+            // levels, never between OneTimeSetUp and per-test SetUp.
+            var setupNavigation = new HashSet<string>(StringComparer.Ordinal);
+            var oneTimeNavigation = new HashSet<string>(StringComparer.Ordinal);
+            var adaptedHooks = lifecycle.Hooks
+                .Select(hook => hook with
+                {
+                    Actions = hook.Kind switch
+                    {
+                        NUnitLifecycleKind.SetUp => AdaptFixtureSetUp(
+                            hook.Actions, resolved, setupNavigation),
+                        NUnitLifecycleKind.OneTimeSetUp => AdaptFixtureSetUp(
+                            hook.Actions, resolved, oneTimeNavigation),
+                        _ => hook.Actions.SelectMany(a => AdaptAction(a, resolved)).ToArray()
+                    }
+                }).ToArray();
+            adaptedLifecycle = lifecycle with { Hooks = adaptedHooks };
+        }
 
         var testHost = sourceModel.TestHost ?? resolved._testHost;
 
@@ -114,6 +136,7 @@ public class DefaultProjectAdapter : IProjectAdapter
             ScaffoldMethods = resolved._scaffoldMethods,
             ScaffoldMethodPatterns = resolved._scaffoldMethodPatterns,
             ClassFields = sourceModel.ClassFields,
+            NUnitLifecycle = adaptedLifecycle,
             PreservedClassAttributes = sourceModel.PreservedClassAttributes
         };
     }
@@ -642,9 +665,11 @@ public class DefaultProjectAdapter : IProjectAdapter
     /// not convert the Selenium Page Object into an IPage or approve its DOM.
     /// </summary>
     List<TestAction> AdaptFixtureSetUp(
-        IEnumerable<TestAction> sourceActions, ResolvedFileConfig resolved)
+        IEnumerable<TestAction> sourceActions, ResolvedFileConfig resolved,
+        HashSet<string>? sharedNavigationLocals = null)
     {
-        var boundNavigationLocals = new HashSet<string>(StringComparer.Ordinal);
+        var boundNavigationLocals = sharedNavigationLocals
+            ?? new HashSet<string>(StringComparer.Ordinal);
         var result = new List<TestAction>();
         foreach (var sourceAction in sourceActions)
         {
