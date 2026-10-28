@@ -259,7 +259,8 @@ internal static class PomMethodLineage
             && (receiver is "LocalStorage" or "this" or ""
                 || receiver.Contains("LocalStorage", StringComparison.Ordinal)))
             return "storage_mutation_candidate";
-        if (name is "ExecuteScript" or "Evaluate" or "RunScript" or "JavaScriptExecutor")
+        if (name is "ExecuteScript" or "ExecuteJavaScript" or "ExecuteJs"
+            or "Evaluate" or "EvaluateAsync" or "RunScript" or "JavaScriptExecutor")
             return "script_execution";
         if (name is "Click" or "ClickAsync" or "ClearAndInputText" or "InputText"
             or "SendKeys" or "SendKeysAsync" or "FillAsync"
