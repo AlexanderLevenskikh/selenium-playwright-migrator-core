@@ -144,6 +144,9 @@ internal static class PomMethodLineageSmoke
                 && h.Method == "Blur" && h.IsReachablePrivateHelper
                 && h.OrderedCalls.Any(c => c.Method == "ExecuteJs")),
                 "reachable private helper should expose its script action");
+            Require(report.Helpers.Single(h => h.SourceType == "DatePicker"
+                && h.Method == "Blur").ReviewFlags.Contains("javascript_source_execution"),
+                "private ExecuteJs must be flagged as source JavaScript requiring review");
 
             var storage = report.Helpers.Single(h => h.SourceType == "LocalStorage"
                 && h.Method == "SettingPeriod");
