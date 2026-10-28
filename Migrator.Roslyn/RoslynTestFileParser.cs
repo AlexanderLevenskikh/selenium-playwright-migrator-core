@@ -572,6 +572,12 @@ public class RoslynTestFileParser : ITestFileParser
             if (TryExtractNavigationDeclaration(lds, line) is { } navDecl)
                 return navDecl;
 
+            // Project-specific Navigation.Open*Page() returns a source Page Object.
+            // Keep the invocation/result variable structured for explicit config mapping,
+            // but do NOT infer a Playwright Page alias or a URL from its method name.
+            if (TryExtractProjectPageNavigationDeclaration(lds, line) is { } projectNavigation)
+                return projectNavigation;
+
             // Then try to extract locator declarations. Besides direct
             // WebDriver.FindElement(...) locals, a Selenium By value stored in a local
             // is a stable locator alias and can be represented directly as ILocator.
@@ -1786,6 +1792,40 @@ public class RoslynTestFileParser : ITestFileParser
 
         var lower = name.ToLowerInvariant();
         return lower.Contains("name") || lower.Contains("code") || lower.Contains("text") || lower.Contains("value");
+    }
+
+    static MethodInvocationAction? TryExtractProjectPageNavigationDeclaration(
+        LocalDeclarationStatementSyntax statement, int line)
+    {
+        if (statement.Declaration.Variables.Count != 1)
+            return null;
+
+        var variable = statement.Declaration.Variables[0];
+        var initializer = variable.Initializer?.Value;
+        var invocation = initializer switch
+        {
+            InvocationExpressionSyntax direct => direct,
+            AwaitExpressionSyntax { Expression: InvocationExpressionSyntax awaited } => awaited,
+            _ => null
+        };
+        if (invocation == null)
+            return null;
+
+        var receiver = GetReceiverText(invocation);
+        var methodName = GetMethodName(invocation);
+        if (!string.Equals(receiver, "Navigation", StringComparison.Ordinal)
+            || !methodName.StartsWith("Open", StringComparison.Ordinal)
+            || !methodName.EndsWith("Page", StringComparison.Ordinal)
+            || methodName.Length <= "OpenPage".Length)
+            return null;
+
+        return new MethodInvocationAction(
+            line, receiver, methodName, invocation.ToString(),
+            invocation.ArgumentList.Arguments.Select(a => a.Expression.ToString()).ToArray(),
+            GetGenericArgumentTexts(invocation),
+            variable.Identifier.ValueText,
+            RecognitionConfidence.SyntaxFallback,
+            initializer is AwaitExpressionSyntax);
     }
 
     static readonly Regex NavigationOpenPageRegex = new(

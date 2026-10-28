@@ -60,3 +60,11 @@ A synthetic no-proprietary-source regression proves already-Playwright tests wit
 `FullyConvertedTests` now requires **both** a safe intermediate action model and no unresolved TODO/risk markers in the generated test method. TODOs in shared setup, class members or unrecognized scopes prevent declaring any test in that file fully converted. Ambiguous method attribution fails closed. This prevents the ArBilling pilot false-green case where the model reported 10/10 complete despite 72 renderer TODO comments. The ordinary `SuccessfullyConvertedTests` compatibility counter retains its historical meaning and **must not** be used as an acceptance signal.
 
 The regression tests are synthetic and contain no third-party source.
+
+## Project Page Object and LocalStorage evidence (preview.5)
+
+The Roslyn frontend now retains `var result = Navigation.Open*Page()` as a structured, result-producing invocation, allowing **explicit** `Methods` mappings and correct result binding. When unmapped, its returned Selenium Page Object variable is blocked and a targeted `POM_NAVIGATION_REQUIRES_MAPPING` TODO/finding is emitted. An explicit mapped navigation statement that does not produce a result variable also leaves downstream POM accesses blocked; URL navigation alone cannot prove Page Object equivalence.
+
+`LocalStorage.Clear/SetItem/RemoveItem/SettingPeriod` invocations produce actionable `LOCAL_STORAGE_REQUIRES_MAPPING` TODOs and findings unless explicitly mapped. No automatic conversion to `Page.EvaluateAsync` is attempted: browser origin, pre-navigation timing, serialized values and side effects must first be verified from source truth. These findings carry source line numbers for agent review.
+
+These are **quality and mapping extensibility improvements**, not automatic business-semantic preservation. Private ArBilling source is intentionally absent from repository regressions; only synthetic fixtures are committed.

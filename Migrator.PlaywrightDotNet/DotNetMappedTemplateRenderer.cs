@@ -53,6 +53,18 @@ public partial class PlaywrightDotNetRenderer
                 RegisterTargetLocalsFromMappedActiveStatement(substituted, originalStatement, action);
             }
         }
+        // A mapping that navigates the browser without declaring its original
+        // result variable does NOT preserve the returned Selenium Page Object.
+        // Keep later uses of that variable blocked until the mapping explicitly
+        // supplies a target-side binding. This prevents the core navigation
+        // mapping from silently unblocking unrelated POM actions.
+        if (!string.IsNullOrWhiteSpace(action.ResultVariable))
+        {
+            var resultName = action.ResultVariable!.Trim().TrimStart('@');
+            if (!_targetLocals.Contains(resultName) && !_sourceVarMap.ContainsKey(resultName))
+                BlockSymbol(resultName);
+        }
+
         if (action.RequiresReviewForTarget("playwright-dotnet"))
         {
             AppendSmartTodo(
