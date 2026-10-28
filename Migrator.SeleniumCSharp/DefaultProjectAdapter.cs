@@ -2635,25 +2635,31 @@ public class DefaultProjectAdapter : IProjectAdapter
         var innerEnd = litText.Length - 1;
         var inner = litText.Substring(innerStart, innerEnd - innerStart);
 
-        bool needsInterpolation = false;
-        foreach (var ph in placeholders)
-        {
-            if (inner.Contains("{" + ph.Key + "}") && !ph.Value.IsStringLiteral)
-            {
-                needsInterpolation = true;
-                break;
-            }
-        }
+        // Existing C# string literal contents are already escaped by the author.
+        // Running a generic escaping pass over the *entire* literal doubles
+        // backslashes before CSS attribute quotes even when the mapped
+        // parameter appears in a different statement. The C# still compiles,
+        // but the browser gets a broken selector. Preserve raw C# literal
+        // spelling, and only replace explicitly recognized placeholders.
+        var matchedPlaceholders = placeholders
+            .Where(ph => inner.Contains("{" + ph.Key + "}", StringComparison.Ordinal))
+            .ToArray();
+        if (matchedPlaceholders.Length == 0)
+            return litText;
 
+        var needsInterpolation = matchedPlaceholders.Any(ph => !ph.Value.IsStringLiteral);
         if (!needsInterpolation)
         {
-            // All placeholders are string literals — safe to do simple substitution
             var result = inner;
-            foreach (var ph in placeholders)
+            foreach (var ph in matchedPlaceholders)
             {
-                result = result.Replace("{" + ph.Key + "}", ph.Value.Content);
+                // Placeholder.Content for a quoted C# source argument has
+                // already had its outer quotes stripped but retains valid
+                // inner C# escapes. Re-escaping them corrupts selectors.
+                result = result.Replace("{" + ph.Key + "}", ph.Value.Content,
+                    StringComparison.Ordinal);
             }
-            return litText.Substring(0, innerStart) + EscapeForStringLiteral(result) + "\"";
+            return litText.Substring(0, innerStart) + result + "\"";
         }
 
         // Some placeholder is a variable — convert to interpolated string

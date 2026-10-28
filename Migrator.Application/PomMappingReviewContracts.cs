@@ -17,6 +17,12 @@ public sealed record PomMappingTargetEffect(
     string Effect,
     string TargetCall);
 
+public sealed record PomParameterFlowEvidence(
+    string ParameterName,
+    int SourceArgumentUses,
+    int TargetArgumentUses,
+    bool Preserved);
+
 public sealed record PomMappingReview(
     string SchemaVersion,
     string SourceTreeHash,
@@ -32,4 +38,6 @@ public sealed record PomMappingReview(
     IReadOnlyList<string> Limitations)
 {
     public bool BehaviorallyVerified => false;
+    public IReadOnlyList<PomParameterFlowEvidence> ParameterFlows { get; init; }
+        = Array.Empty<PomParameterFlowEvidence>();
 }
