@@ -156,3 +156,22 @@ Core now supports a separately generated `[SetUpFixture]` target class from sour
 Only explicit standalone, Page-independent mapped actions are active in target `SetUpFixture` hooks. Unmapped source operations become visible `NUNIT_SETUPFIXTURE_ACTION_REQUIRES_MAPPING` blockers plus `Assert.Inconclusive`. A duplicate setup fixture at one namespace level, invalid per-test hook, non-public/no-default-constructor type, source member state and unsupported inherited behavior fail closed. Host target namespaces that do not preserve source containment, xUnit conversion, and experimental IR V2 produce explicit errors rather than fake successful tests.
 
 `NUNIT_SETUPFIXTURE_DEPENDENCY_REQUIRES_REVIEW` and `NUNIT_SETUPFIXTURE_SCOPE_REQUIRES_REVIEW` remain until generated suite artifacts, actual NUnit execution, authentication/context and browser observables are validated. Even source-complete mappings are only review candidates, never automatic proof of behavior. This alpha slice does not infer missing setup fixtures outside the known project source compilation. No private ArBilling source is committed.
+
+## Project-level NUnit target assembly (preview.17)
+
+Core now produces a **content-addressed assembly plan** from the whole source C# SDK project, not a set of unrelated test files. `MigrationEngine.PlanTargetAssembly(sourceDirectory, configPath)` calls current analysis/preview and inspects source-backed namespace/assembly `SetUpFixture` dependencies. It requires one source `.csproj`, checks every generated source, expected fixture/test count, namespace identity and scoped dependency closure, then generates an exact `Migrator.Generated.Tests.csproj` plus `migrator-assembly-manifest.json` containing source analysis ID, candidate ID, source/preview tree hashes and per-file SHA-256.
+
+The generated SDK project sets `EnableDefaultCompileItems=false` and lists **every** target `.cs` file in explicit `<Compile Include>` entries. No implicit MSBuild glob can silently include a stray source file or mask a missing `SetUpFixture`. All SetUpFixture files are compiled in the same NUnit assembly; their original global/namespace scopes remain intact.
+
+`MaterializeTargetAssembly` is explicit and atomic: it writes only to a **new directory outside the source tree**, without overwriting an existing target. `VerifyTargetAssembly` checks the exact tree, manifest SHA, project bytes and explicit Compile set, refusing missing/extra/edited `.cs` or project files and symlinked paths. Build output directories `obj/`, `bin/`, `TestResults/` are excluded from source-artifact comparison only after the generated file set is fixed.
+
+Real `dotnet build` and `dotnet test` are separate opt-in stages. NUnit runtime is `passed` only after a real nonzero TRX count confirms all tests passed (no failures/skips). No runtime or behavior success is invented from syntax or successful project generation. Actual target browser access, credentials and business observables are not managed by the generator.
+
+CLI (from the Core repository):
+```bash
+dotnet run --project Migrator.AssemblyCli -- plan ./source-project --config ./adapter.json
+dotnet run --project Migrator.AssemblyCli -- generate ./source-project ./new-target-project --config ./adapter.json --build --test
+dotnet run --project Migrator.AssemblyCli -- verify ./source-project ./new-target-project --config ./adapter.json --build
+```
+
+The new generated-assembly smoke runs a full synthetic project with assembly-global, parent and nested namespace SetUpFixtures, two nested test classes and one sibling-namespace fixture: **3/3 real NUnit tests** assert once-per-scope state, parent-to-child setup and reverse teardown. Negative tests delete a required SetUpFixture, add an unexpected source, modify the target csproj and attempt cross-project or overlapping source/target operations; none may be reported buildable. No customer source, selector or URL is included.
