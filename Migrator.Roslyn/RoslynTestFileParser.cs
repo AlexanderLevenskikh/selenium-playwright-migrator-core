@@ -180,12 +180,19 @@ public class RoslynTestFileParser : ITestFileParser
             .SelectMany(al => al.Attributes)
             .Any(a => IsAttributeNamed(a, "SetUp"))).ToArray();
         var setUpMethod = setUpMethods.FirstOrDefault();
-        var setUpActions = setUpMethod != null
+        var lifecycle = NUnitLifecycleInspector.Inspect(
+            testClass, semanticModel, compilation,
+            (method, model) => RecognizeFixturePageAliases(method, model,
+                ParseMethodBody(method, model).ToList()));
+
+        var setUpActions = lifecycle == null && setUpMethod != null
             ? RecognizeFixturePageAliases(setUpMethod, semanticModel,
                 ParseMethodBody(setUpMethod, semanticModel).ToList())
             : new List<TestAction>();
 
-        foreach (var extra in lifecycleMethods.Where(m => m != setUpMethod))
+        foreach (var extra in lifecycle == null
+                     ? lifecycleMethods.Where(m => m != setUpMethod)
+                     : Array.Empty<MethodDeclarationSyntax>())
         {
             var line = extra.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
             setUpActions.Insert(0, new UnsupportedAction(line,
@@ -212,6 +219,7 @@ public class RoslynTestFileParser : ITestFileParser
         )
         {
             ClassFields = classFields,
+            NUnitLifecycle = lifecycle,
             PreservedClassAttributes = ParsePreservedClassAttributes(testClass)
         };
     }
