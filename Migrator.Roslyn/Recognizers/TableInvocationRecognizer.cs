@@ -72,12 +72,15 @@ public class TableInvocationRecognizer : IInvocationRecognizer
                     "Be" => TextAssertionKind.TextEquals,
                     "NotBe" => TextAssertionKind.TextNotEquals,
                     "Contain" => TextAssertionKind.TextContains,
+                    "NotContain" => TextAssertionKind.TextNotContains,
                     "BeEmpty" => TextAssertionKind.TextEmpty,
                     "NotBeEmpty" => TextAssertionKind.TextNotEmpty,
-                    _ => TextAssertionKind.TextEquals
+                    _ => (TextAssertionKind?)null
                 };
 
-                return new TextAssertionAction(ctx.SourceLine, tableTextTarget, kind, expectedValue, RecognitionConfidence.Semantic);
+                return kind is null ? null : new TextAssertionAction(
+                    ctx.SourceLine, tableTextTarget, kind.Value, expectedValue,
+                    RecognitionConfidence.Semantic, ctx.FullText);
             }
         }
 
