@@ -14,7 +14,7 @@ namespace Migrator.Application;
 /// Conservative read-only API over the existing production pipeline.
 /// In alpha an unsupported source shape is reported, never silently counted as transformed.
 /// </summary>
-public sealed class MigrationEngine
+public sealed partial class MigrationEngine
 {
     public MigrationAnalysis Analyze(string sourcePath, string? configPath = null, CancellationToken cancellationToken = default)
     {

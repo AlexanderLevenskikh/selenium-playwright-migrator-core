@@ -6,6 +6,7 @@ public static class ContractVersions
     public const string Analysis = "migrator-analysis/v1alpha1";
     public const string Preview = "migrator-preview/v1alpha1";
     public const string Explanation = "migrator-explanation/v1alpha1";
+    public const string Verification = "migrator-verification/v1alpha1";
 }
 
 public sealed record MigrationFinding(
@@ -73,4 +74,40 @@ public sealed record FindingExplanation(
     IReadOnlyList<SourceExcerptLine> SourceExcerpt,
     string SuggestedNextAction,
     string? CandidateId,
+    IReadOnlyList<string> Limitations);
+
+public sealed record CandidateFileEvidence(string RelativePath, string ContentSha256, long ByteLength);
+
+/// <summary>Content-addressed revision of exact target file bytes.</summary>
+public sealed record CandidateRevision(
+    string CandidateId,
+    string? ParentCandidateId,
+    string Origin,
+    string AnalysisId,
+    string SourceTreeHash,
+    string ConfigurationHash,
+    string TargetTreeHash,
+    IReadOnlyList<CandidateFileEvidence> Files);
+
+public sealed record VerificationDiagnostic(
+    string Code,
+    string RelativePath,
+    int Line,
+    int Column,
+    string Message);
+
+/// <summary>Independent evidence for one verification level; not a combined migration-success flag.</summary>
+public sealed record VerificationStage(
+    string Status,
+    string EvidenceKind,
+    IReadOnlyList<VerificationDiagnostic> Diagnostics);
+
+public sealed record ArtifactVerification(
+    string SchemaVersion,
+    CandidateRevision Candidate,
+    VerificationStage Syntax,
+    VerificationStage Compile,
+    VerificationStage Runtime,
+    VerificationStage Observables,
+    string? ReferenceContextHash,
     IReadOnlyList<string> Limitations);
