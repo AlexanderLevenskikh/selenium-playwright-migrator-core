@@ -212,7 +212,14 @@ internal static class PomMethodLineage
             .Where(n => n is IfStatementSyntax or WhileStatementSyntax or ForStatementSyntax
                 or ForEachStatementSyntax or DoStatementSyntax or SwitchStatementSyntax
                 or TryStatementSyntax or CatchClauseSyntax or FinallyClauseSyntax
-                or ThrowStatementSyntax or ConditionalExpressionSyntax)
+                or ThrowStatementSyntax or ConditionalExpressionSyntax
+                or BreakStatementSyntax
+                || ((n is PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax)
+                    && n.Ancestors().Any(parent => parent is CatchClauseSyntax)
+                    && (n.IsKind(SyntaxKind.PostIncrementExpression)
+                        || n.IsKind(SyntaxKind.PreIncrementExpression)
+                        || n.IsKind(SyntaxKind.PostDecrementExpression)
+                        || n.IsKind(SyntaxKind.PreDecrementExpression))))
             .OrderBy(n => n.SpanStart).Take(50)
             .Select(n => new PomControlFlowEvidence(FlowKind(n), Line(n),
                 Clip(n switch
@@ -225,6 +232,8 @@ internal static class PomMethodLineage
                     SwitchStatementSyntax a => a.Expression.ToString(),
                     ConditionalExpressionSyntax a => a.Condition.ToString(),
                     CatchClauseSyntax a => a.Declaration?.ToString() ?? "catch",
+                    BreakStatementSyntax => "break",
+                    PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax => n.ToString(),
                     _ => ""
                 }, 170)))
             .ToArray();
@@ -244,6 +253,8 @@ internal static class PomMethodLineage
         CatchClauseSyntax => "catch",
         FinallyClauseSyntax => "finally",
         ThrowStatementSyntax => "throw",
+        BreakStatementSyntax => "break",
+        PostfixUnaryExpressionSyntax or PrefixUnaryExpressionSyntax => "retry_increment",
         _ => "unknown"
     };
 
