@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Migrator.Core;
+using Migrator.Core.Models;
 using Migrator.Roslyn;
 using Migrator.SeleniumCSharp;
 using Migrator.PlaywrightDotNet;
@@ -202,6 +203,42 @@ public sealed partial class MigrationEngine
             foreach (var unsupported in result.Report.UnsupportedActions)
                 findings.Add(Finding(relative, unsupported.SourceLine, "UNSUPPORTED_ACTION",
                     unsupported.Reason + ": " + unsupported.SourceText, "recognized"));
+            // Report actionable, source-line-addressable debts instead of a
+            // single opaque TODO count. Match the actual renderer markers: an
+            // invocation resolved through explicit mapping must not be reported
+            // as unresolved merely because another invocation in the file was.
+            var emittedTodos = result.GeneratedOutput.Split('\n')
+                .Where(line => line.TrimStart().StartsWith("// TODO:", StringComparison.Ordinal))
+                .ToArray();
+            var sourceActions = TestActionTraversal.Flatten(result.SourceModel.SetUpActions)
+                .Concat(result.SourceModel.Tests.SelectMany(test => TestActionTraversal.Flatten(test.BodyActions)))
+                .OfType<MethodInvocationAction>();
+            foreach (var invocation in sourceActions)
+            {
+                var code = invocation.ReceiverExpression switch
+                {
+                    "Navigation" when invocation.MethodName.StartsWith("Open", StringComparison.Ordinal)
+                        && invocation.MethodName.EndsWith("Page", StringComparison.Ordinal)
+                        => "POM_NAVIGATION_REQUIRES_MAPPING",
+                    "LocalStorage" when invocation.MethodName is "Clear" or "SetItem" or "RemoveItem" or "SettingPeriod"
+                        => "LOCAL_STORAGE_REQUIRES_MAPPING",
+                    _ => null
+                };
+                if (code == null)
+                    continue;
+
+                var codeMarker = "[MIGRATOR:" + code + "]";
+                var lineMarker = "[MIGRATOR-SOURCE-LINE:" + invocation.SourceLine + "]";
+                if (!emittedTodos.Any(line => line.Contains(codeMarker, StringComparison.Ordinal)
+                    && line.Contains(lineMarker, StringComparison.Ordinal)))
+                    continue;
+
+                var message = code == "POM_NAVIGATION_REQUIRES_MAPPING"
+                    ? $"The source {invocation.MethodName} returns a project Page Object; no verified target binding was provided."
+                    : $"The source LocalStorage.{invocation.MethodName} needs an explicit origin/timing-aware target mapping.";
+                findings.Add(Finding(relative, invocation.SourceLine, code, message, "renderer"));
+            }
+
             if (result.Report.TodoComments > 0)
                 findings.Add(Finding(relative, 0, "GENERATED_TODO",
                     $"Generated output includes {result.Report.TodoComments} TODO comments; manual review required.", "generated"));
@@ -296,6 +333,10 @@ public sealed partial class MigrationEngine
         "READ_ERROR" => "Check file access and input encoding before retrying.",
         "GENERATION_ERROR" => "Inspect the adapter/renderer diagnostic and candidate configuration; do not invent a replacement.",
         "UNSUPPORTED_ACTION" => "Inspect the invoked helper and its resolved symbol before proposing a project-specific mapping.",
+        "POM_NAVIGATION_REQUIRES_MAPPING" =>
+            "Inspect the source Navigation.Open*Page implementation and derive target URL plus Page Object member mappings. Keep returned source aliases blocked until verified.",
+        "LOCAL_STORAGE_REQUIRES_MAPPING" =>
+            "Identify when and on which origin the source helper updates storage. Map pre-navigation setup and JSON serialization only from verified source behavior; never auto-replace with Page.EvaluateAsync.",
         "GENERATED_TODO" => "Review the TODO and source evidence. A generated comment does not count as migrated behavior.",
         _ => "Inspect the source and supporting diagnostics. Do not assume the conversion is correct."
     };

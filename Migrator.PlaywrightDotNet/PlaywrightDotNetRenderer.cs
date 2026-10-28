@@ -217,6 +217,12 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             return;
         }
 
+        // A skipped result-producing helper cannot establish a target Page Object.
+        // This matters when Host.SetUpStatements replaces the original Selenium
+        // setup: its original declaration is preserved only in comments.
+        if (action is MethodInvocationAction method && !string.IsNullOrWhiteSpace(method.ResultVariable))
+            BlockSymbol(method.ResultVariable!);
+
         // If action is raw/unsupported, declared variables are blocked (not resolved)
         if (action is RawStatementAction or UnsupportedAction)
         {
@@ -580,6 +586,39 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         if (action is MappedMethodInvocationAction mappedMethod)
         {
             RenderMappedMethodInvocation(sb, mappedMethod);
+            return;
+        }
+
+        // Source Navigation.Open*Page() produces a Selenium Page Object, *not*
+        // Playwright's IPage. Never invent a URL or a page alias. The adapter
+        // may resolve it to MappedMethodInvocationAction with an explicit
+        // source-backed mapping; otherwise preserve an actionable TODO and
+        // block dependent symbols instead of creating false-green tests.
+        if (action is MethodInvocationAction projectNav && IsProjectPageNavigation(projectNav))
+        {
+            if (!string.IsNullOrWhiteSpace(projectNav.ResultVariable))
+                BlockSymbol(projectNav.ResultVariable!);
+            AppendSmartTodo(
+                sb,
+                $"project Page Object navigation requires mapping: {EscapeComment(projectNav.MethodName)}",
+                "POM_NAVIGATION_REQUIRES_MAPPING",
+                "The source navigation returns a project-specific Page Object. Its URL, login context and locator bindings are not proven equivalent to Playwright.Page.",
+                "Inspect the source helper and configure an explicit Methods/ParameterizedMethods target statement. Bind the returned variable only after its target type and member mappings are validated.",
+                projectNav.FullSourceText);
+            return;
+        }
+
+        if (action is MethodInvocationAction storage && IsProjectLocalStorage(storage))
+        {
+            if (!string.IsNullOrWhiteSpace(storage.ResultVariable))
+                BlockSymbol(storage.ResultVariable!);
+            AppendSmartTodo(
+                sb,
+                $"project LocalStorage operation requires mapping: {EscapeComment(storage.MethodName)}",
+                "LOCAL_STORAGE_REQUIRES_MAPPING",
+                "The source helper may write storage before navigation, change origin state or rely on application-specific JSON. Blind Page.EvaluateAsync translation can change behavior.",
+                "Inspect the source helper and choose a verified target setup/initialization strategy. Only use configured Methods mappings with matching origin, timing and data semantics.",
+                storage.FullSourceText);
             return;
         }
 
@@ -1283,6 +1322,16 @@ public partial class PlaywrightDotNetRenderer : IRenderer
                 "Add Method/ParameterizedMethod mapping when source truth confirms deterministic target behavior.");
         }
     }
+
+    static bool IsProjectPageNavigation(MethodInvocationAction action) =>
+        string.Equals(action.ReceiverExpression, "Navigation", StringComparison.Ordinal)
+        && action.MethodName.StartsWith("Open", StringComparison.Ordinal)
+        && action.MethodName.EndsWith("Page", StringComparison.Ordinal)
+        && action.MethodName.Length > "OpenPage".Length;
+
+    static bool IsProjectLocalStorage(MethodInvocationAction action) =>
+        string.Equals(action.ReceiverExpression, "LocalStorage", StringComparison.Ordinal)
+        && action.MethodName is "Clear" or "SetItem" or "RemoveItem" or "SettingPeriod";
 
     static bool IsUnqualifiedHelperInvocation(MethodInvocationAction action) =>
         string.IsNullOrWhiteSpace(action.ReceiverExpression)

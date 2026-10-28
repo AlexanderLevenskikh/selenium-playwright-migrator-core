@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>0.1.0-preview.4</Version>
+    <Version>0.1.0-preview.5</Version>
     <PackageVersion>$(Version)</PackageVersion>
     <Authors>Selenium Playwright Migrator Contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
