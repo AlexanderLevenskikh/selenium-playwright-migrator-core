@@ -173,7 +173,8 @@ public class RoslynTestFileParser : ITestFileParser
                 .Any(a => a.Name.ToString() == "SetUp"));
 
         var setUpActions = setUpMethod != null
-            ? ParseMethodBody(setUpMethod, semanticModel).ToList()
+            ? RecognizeFixturePageAliases(setUpMethod, semanticModel,
+                ParseMethodBody(setUpMethod, semanticModel).ToList())
             : new List<TestAction>();
 
         var tests = testClass.DescendantNodes().OfType<MethodDeclarationSyntax>()
@@ -197,7 +198,57 @@ public class RoslynTestFileParser : ITestFileParser
             ClassFields = classFields,
             PreservedClassAttributes = ParsePreservedClassAttributes(testClass)
         };
-    }    static bool IsSeleniumByAlias(UsingDirectiveSyntax usingDirective)
+    }
+    /// <summary>
+    /// Preserve only source field/local identity assignments inside the NUnit
+    /// SetUp method. Roslyn symbol identity (not a name regex) rules out a
+    /// shadowing local, a property setter and arbitrary assignment expressions.
+    /// No target Playwright binding is implied by this source-only evidence.
+    /// </summary>
+    static List<TestAction> RecognizeFixturePageAliases(
+        MethodDeclarationSyntax setUp,
+        SemanticModel semantics,
+        List<TestAction> actions)
+    {
+        var candidates = new Dictionary<(int Line, string Source), (string Field, string Local)>();
+        foreach (var statement in setUp.Body?.Statements.OfType<ExpressionStatementSyntax>()
+                     ?? Enumerable.Empty<ExpressionStatementSyntax>())
+        {
+            if (statement.Expression is not AssignmentExpressionSyntax assignment
+                || !assignment.IsKind(SyntaxKind.SimpleAssignmentExpression)
+                || assignment.Left is not IdentifierNameSyntax fieldName
+                || assignment.Right is not IdentifierNameSyntax localName)
+                continue;
+
+            var field = semantics.GetSymbolInfo(fieldName).Symbol as IFieldSymbol;
+            var local = semantics.GetSymbolInfo(localName).Symbol as ILocalSymbol;
+            if (field == null || local == null
+                || field.IsStatic
+                || !SymbolEqualityComparer.Default.Equals(
+                    field.ContainingType, semantics.GetDeclaredSymbol(setUp)?.ContainingType)
+                || !(field.Type.Name.EndsWith("Page", StringComparison.Ordinal)
+                     || field.Type.Name.EndsWith("PageObject", StringComparison.Ordinal)))
+                continue;
+
+            var line = statement.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+            candidates[(line, statement.ToString().Trim().TrimEnd(';'))] =
+                (field.Name, local.Name);
+        }
+
+        return actions.Select(action =>
+        {
+            if (action is RawStatementAction raw
+                && candidates.TryGetValue(
+                    (raw.SourceLine, raw.SourceText.Trim().TrimEnd(';')), out var alias))
+            {
+                return (TestAction)new FixturePageAliasAction(
+                    raw.SourceLine, alias.Field, alias.Local, raw.SourceText);
+            }
+            return action;
+        }).ToList();
+    }
+
+    static bool IsSeleniumByAlias(UsingDirectiveSyntax usingDirective)
     {
         if (usingDirective.Alias == null || usingDirective.Name == null)
             return false;
