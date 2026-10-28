@@ -127,7 +127,9 @@ internal static class MappedTableAssertionWithSetupSmoke
                 new DefaultProjectAdapter(withLoader)).ProcessFile(source);
             var loaderRendered = withLoaderResult.GeneratedOutput;
             Check(Count(loaderRendered, "while (attempt < 2)") == 2,
-                "both fixture and test helper calls must preserve retry loops");
+                "both fixture and test helper calls must preserve retry loops: got "
+                + Count(loaderRendered, "while (attempt < 2)")
+                + "\n" + loaderRendered[..Math.Min(loaderRendered.Length, 5200)]);
             Check(Count(loaderRendered, "await Page.ReloadAsync();") == 2,
                 "both retry helpers must retain source navigation side effects");
             Check(Count(loaderRendered, "catch (Microsoft.Playwright.TimeoutException)") == 2,
