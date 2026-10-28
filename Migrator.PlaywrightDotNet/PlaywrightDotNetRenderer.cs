@@ -17,6 +17,9 @@ public partial class PlaywrightDotNetRenderer : IRenderer
     HashSet<string> _sourceOnlyIdentifiers = new(StringComparer.Ordinal);
     HashSet<string> _setupBlockedSymbols = new(StringComparer.Ordinal);
     HashSet<string> _setupDeclaredVars = new(StringComparer.Ordinal);
+    readonly HashSet<string> _fixturePageAliases = new(StringComparer.Ordinal);
+    readonly HashSet<string> _setupActiveNavigationResults = new(StringComparer.Ordinal);
+    bool _renderingSetUp;
     readonly HashSet<string> _localAliases = new(StringComparer.Ordinal);
     readonly HashSet<string> _targetLocals = new(StringComparer.Ordinal);
     HashSet<string> _targetKnownTypes = new(StringComparer.Ordinal);
@@ -120,6 +123,9 @@ public partial class PlaywrightDotNetRenderer : IRenderer
         // Setup method — collect fixture-scoped blocked symbols for downstream test body blocking
         _setupBlockedSymbols.Clear();
         _setupDeclaredVars.Clear();
+        _fixturePageAliases.Clear();
+        _setupActiveNavigationResults.Clear();
+        _renderingSetUp = false;
         if (hasTestHostSetup)
         {
             ResetMethodScope();
@@ -253,6 +259,9 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             case MappedMethodInvocationAction mm:
                 AppendCommentBlock(sb, _indent + _indent, mm.FullSourceText, "  ");
                 break;
+            case FixturePageAliasAction fixtureAlias:
+                AppendCommentBlock(sb, _indent + _indent, fixtureAlias.SourceText, "source fixture alias: ");
+                break;
             case AssertMultipleAction multiple:
                 AppendCommentBlock(sb, _indent + _indent, multiple.FullSourceText, "  ");
                 break;
@@ -280,9 +289,16 @@ public partial class PlaywrightDotNetRenderer : IRenderer
     void RenderSetUp(StringBuilder sb, IEnumerable<TestAction> actions)
     {
         RenderSetUpMethodHeader(sb);
-
-        foreach (var action in actions)
-            RenderActionWithSafety(sb, action);
+        _renderingSetUp = true;
+        try
+        {
+            foreach (var action in actions)
+                RenderActionWithSafety(sb, action);
+        }
+        finally
+        {
+            _renderingSetUp = false;
+        }
 
         sb.AppendLine($"{_indent}}}");
     }
@@ -530,6 +546,84 @@ public partial class PlaywrightDotNetRenderer : IRenderer
     }
 
 
+    void RenderFixturePageAlias(StringBuilder sb, FixturePageAliasAction action)
+    {
+        var mappedNavigationActive = _renderingSetUp
+            && action.HasExplicitNavigationMapping
+            && _setupActiveNavigationResults.Contains(action.SourceLocal);
+
+        // These names remain source-only symbols. They are not emitted as
+        // fields or C# locals of type IPage, which would silently change POM
+        // semantics and frequently cause invalid target compilation.
+        BlockSymbol(action.SourceField);
+        if (!mappedNavigationActive)
+        {
+            AppendSmartTodo(
+                sb,
+                $"fixture page alias cannot be established: {EscapeComment(action.SourceText)}",
+                "UNRESOLVED_SYMBOL",
+                "The source SetUp assigns a Page Object field from a local whose explicit Playwright navigation and prior setup effects were not proven.",
+                "Map Navigation.Open*Page and any dependent setup operations first; do not declare a fake target Page Object.",
+                action.SourceText);
+            return;
+        }
+
+        _fixturePageAliases.Add(action.SourceField);
+        sb.AppendLine($"{_indent}{_indent}// Source fixture field {EscapeComment(action.SourceField)} aliases {EscapeComment(action.SourceLocal)}; independently mapped target locators use {_pageVariable}.");
+        AppendSmartTodo(
+            sb,
+            $"review source fixture Page Object lifetime: {EscapeComment(action.SourceText)}",
+            "FIXTURE_PAGE_ALIAS_REQUIRES_REVIEW",
+            "The source field is represented by explicit target locators after mapped navigation, not a target Selenium Page Object instance. SetUp ordering was preserved syntactically only.",
+            "Validate navigation, setup waits, field lifetime, and all mapped member behavior in the actual target runtime before accepting the test.",
+            action.SourceText);
+    }
+
+    bool TryRenderFixtureBoundLocatorAction(
+        StringBuilder sb, TestAction action, string rootSymbol, string sourceText)
+    {
+        if (!_fixturePageAliases.Contains(rootSymbol)
+            || !_setupBlockedSymbols.Contains(rootSymbol)
+            || !ActionHasResolvedTarget(action))
+            return false;
+
+        // No broad bypass for raw statements, unsupported methods, local
+        // declarations, or unresolved POM helper calls. A mapped locator must
+        // be independently Page-rooted; a valid source alias alone cannot
+        // establish DOM selector or target project symbol equivalence.
+        var target = action switch
+        {
+            ClickAction a => a.Target,
+            SendKeysAction a => a.Target,
+            PressAction a => a.Target,
+            TextAssertionAction a => a.Target,
+            VisibilityAssertionAction a => a.Target,
+            TableCountAssertionAction a => a.Target,
+            TableRowAccessAction a => a.Target,
+            TableRowTextAccessAction a => a.Target,
+            ControlStateAssertionAction a => a.Target,
+            _ => null
+        };
+        if (target is not MappedTarget)
+            return false;
+
+        var renderedTarget = RenderTargetExpression(target).Trim();
+        var page = Regex.Escape(_pageVariable);
+        if (!Regex.IsMatch(renderedTarget,
+                @"^" + page + @"\.(?:Locator|GetByTestId|GetByText|GetByRole|GetByLabel|GetByPlaceholder)\s*\(",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        var checkable = GetCheckableSourceText(action, sourceText);
+        if (FindReferencedSymbol(checkable, _sourceOnlyIdentifiers) != null
+            || FindReferencedSymbol(checkable, _blockedSymbols) != null
+            || !AllSymbolsResolved(checkable, Array.Empty<string>()))
+            return false;
+
+        RenderAction(sb, action);
+        return true;
+    }
+
     bool TryRenderMappedTableAssertionWithBlockedSetupAlias(
         StringBuilder sb, TestAction action, string rootSymbol)
     {
@@ -579,6 +673,16 @@ public partial class PlaywrightDotNetRenderer : IRenderer
     {
         var sourceText = GetActionSourceText(action);
         var declaredVariables = ExtractVariableNames(sourceText).ToArray();
+
+        // A source fixture field and the local Page Object from which it was
+        // assigned do not exist as target C# objects. Handle their validated
+        // source relation before the normal blocked-root checks, without
+        // inventing a Selenium Page Object or marking its lifecycle proven.
+        if (action is FixturePageAliasAction fixtureAlias)
+        {
+            RenderFixturePageAlias(sb, fixtureAlias);
+            return;
+        }
 
         // Scaffolding is explicit and narrow. It never happens merely because a call is
         // unknown or suppressed: adapter config must name the helper/POM boundary.
@@ -758,6 +862,14 @@ public partial class PlaywrightDotNetRenderer : IRenderer
 
             if (rootBlocked != null)
             {
+                // A source fixture Page Object field may be *logically* bound
+                // after a source-backed, active target navigation. Only actions
+                // that have an independent, resolved target-side Page locator
+                // can bypass the blocked field. Unknown POM operations still
+                // fail closed; the lifecycle itself retains a setup TODO.
+                if (TryRenderFixtureBoundLocatorAction(sb, action, rootBlocked, sourceText))
+                    return;
+
                 // An explicitly mapped table-row text assertion may already have
                 // a self-contained Playwright locator, even though a Selenium
                 // fixture field named page was blocked by its original setup.
@@ -2499,6 +2611,7 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             UrlAssertionAction a => $"UrlAssertion({a.ExpectedValue})",
             MethodInvocationAction a => a.FullSourceText,
             MappedMethodInvocationAction a => a.FullSourceText,
+            FixturePageAliasAction a => a.SourceText,
             MappedExpressionAssertionAction a => a.FullSourceText,
             AssertMultipleAction a => a.FullSourceText,
             UnsupportedAction a => a.SourceText,

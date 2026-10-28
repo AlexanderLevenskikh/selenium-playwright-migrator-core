@@ -57,6 +57,9 @@ public partial class PlaywrightDotNetRenderer
             case MappedMethodInvocationAction mappedInv:
                 RenderMappedMethodInvocation(sb, mappedInv);
                 break;
+            case FixturePageAliasAction fixtureAlias:
+                RenderFixturePageAlias(sb, fixtureAlias);
+                break;
             case MappedExpressionAssertionAction mappedExpr:
                 RenderMappedExpressionAssertion(sb, mappedExpr);
                 break;

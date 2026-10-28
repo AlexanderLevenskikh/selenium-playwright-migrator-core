@@ -93,7 +93,7 @@ public class DefaultProjectAdapter : IProjectAdapter
         var resolved = GetResolvedConfig(sourceModel.FilePath);
 
         var adaptedTests = sourceModel.Tests.Select(t => AdaptTest(t, resolved)).ToList();
-        var adaptedSetup = sourceModel.SetUpActions.SelectMany(a => AdaptAction(a, resolved)).ToList();
+        var adaptedSetup = AdaptFixtureSetUp(sourceModel.SetUpActions, resolved);
 
         var testHost = sourceModel.TestHost ?? resolved._testHost;
 
@@ -633,6 +633,91 @@ public class DefaultProjectAdapter : IProjectAdapter
                 result.Add(item.Trim());
         }
         return result.ToArray();
+    }
+
+    /// <summary>
+    /// Prove the *order* of a source fixture alias: a class field can only be
+    /// associated with a source local previously produced by an explicitly
+    /// mapped Navigation.Open*Page call that navigates Playwright.Page. It does
+    /// not convert the Selenium Page Object into an IPage or approve its DOM.
+    /// </summary>
+    List<TestAction> AdaptFixtureSetUp(
+        IEnumerable<TestAction> sourceActions, ResolvedFileConfig resolved)
+    {
+        var boundNavigationLocals = new HashSet<string>(StringComparer.Ordinal);
+        var result = new List<TestAction>();
+        foreach (var sourceAction in sourceActions)
+        {
+            foreach (var action in AdaptAction(sourceAction, resolved))
+            {
+                if (action is FixturePageAliasAction alias)
+                {
+                    result.Add(new FixturePageAliasAction(
+                        alias.SourceLine, alias.SourceField, alias.SourceLocal,
+                        alias.SourceText,
+                        boundNavigationLocals.Contains(alias.SourceLocal)));
+                    continue;
+                }
+
+                // Unknown source-side setup operations on the local may change
+                // its lifecycle and must break navigation provenance. Reviewed
+                // mapped helpers can preserve it, but a generic wait or an
+                // unmapped method can never silently become a no-op.
+                var unsafeSource = action switch
+                {
+                    RawStatementAction raw => raw.SourceText,
+                    UnsupportedAction unsupported => unsupported.SourceText,
+                    MethodInvocationAction method => method.FullSourceText,
+                    WaitForAction wait => wait.FullSourceText,
+                    _ => null
+                };
+                if (!string.IsNullOrWhiteSpace(unsafeSource))
+                {
+                    foreach (var local in boundNavigationLocals.ToArray())
+                    {
+                        if (Regex.IsMatch(unsafeSource,
+                                @"(?<![A-Za-z0-9_])" + Regex.Escape(local) + @"\b",
+                                RegexOptions.CultureInvariant))
+                            boundNavigationLocals.Remove(local);
+                    }
+                }
+
+                if (action is MappedMethodInvocationAction mapped)
+                {
+                    // A new result assignment shadows any previous binding.
+                    if (!string.IsNullOrWhiteSpace(mapped.ResultVariable))
+                        boundNavigationLocals.Remove(mapped.ResultVariable!.TrimStart('@'));
+                    if (IsExplicitPageNavigationMapping(mapped))
+                        boundNavigationLocals.Add(mapped.ResultVariable!.TrimStart('@'));
+                }
+
+                result.Add(action);
+            }
+        }
+        return result;
+    }
+
+    static bool IsExplicitPageNavigationMapping(MappedMethodInvocationAction action)
+    {
+        if (string.IsNullOrWhiteSpace(action.ResultVariable)
+            || !Regex.IsMatch(action.ResultVariable, @"^@?[A-Za-z_]\w*$",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        // A project navigation method name by itself proves nothing. Require
+        // an explicit mapping whose target actually performs Playwright Goto.
+        if (!Regex.IsMatch(action.FullSourceText,
+                @"^\s*Navigation\s*\.\s*Open\w*Page\s*(?:<[^>]+>)?\s*\(",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        return action.GetTargetStatements("playwright-dotnet").Any(statement =>
+            Regex.IsMatch(statement, @"^\s*await\s+Page\s*\.\s*GotoAsync\s*\(",
+                RegexOptions.CultureInvariant)
+            && !statement.Contains("TODO", StringComparison.OrdinalIgnoreCase)
+            && !statement.Contains("MIGRATOR:", StringComparison.Ordinal)
+            && !statement.Contains("{TARGET}", StringComparison.Ordinal)
+            && !statement.Contains("{result}", StringComparison.Ordinal));
     }
 
     static IReadOnlyDictionary<string, string> MergeNavigationUrls(

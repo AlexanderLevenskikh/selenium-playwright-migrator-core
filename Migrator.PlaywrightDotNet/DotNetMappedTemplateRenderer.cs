@@ -30,6 +30,7 @@ public partial class PlaywrightDotNetRenderer
             .Select(stmt => SubstituteResultPlaceholderBeforeDedup(stmt, action))
             .ToArray();
         var processed = DeduplicateInvocationVariables(resultPreprocessed);
+        var activePageNavigation = false;
 
         for (var i = 0; i < processed.Length; i++)
         {
@@ -51,8 +52,24 @@ public partial class PlaywrightDotNetRenderer
             {
                 sb.AppendLine($"{_indent}{_indent}{substituted} // line {action.SourceLine}");
                 RegisterTargetLocalsFromMappedActiveStatement(substituted, originalStatement, action);
+                if (_renderingSetUp
+                    && Regex.IsMatch(substituted, @"^\s*await\s+Page\s*\.\s*GotoAsync\s*\(",
+                        RegexOptions.CultureInvariant))
+                    activePageNavigation = true;
             }
         }
+        // The source ResultVariable remains a source-only POM local. Record
+        // target navigation provenance *separately*, only if the mapped
+        // navigation was actually emitted in SetUp; a later source field
+        // assignment may use it exclusively for independently mapped locators.
+        if (_renderingSetUp && activePageNavigation
+            && !string.IsNullOrWhiteSpace(action.ResultVariable)
+            && Regex.IsMatch(action.ResultVariable!, @"^@?[A-Za-z_]\w*$")
+            && Regex.IsMatch(action.FullSourceText,
+                @"^\s*Navigation\s*\.\s*Open\w*Page\s*(?:<[^>]+>)?\s*\(",
+                RegexOptions.CultureInvariant))
+            _setupActiveNavigationResults.Add(action.ResultVariable!.TrimStart('@'));
+
         // A mapping that navigates the browser without declaring its original
         // result variable does NOT preserve the returned Selenium Page Object.
         // Keep later uses of that variable blocked until the mapping explicitly
