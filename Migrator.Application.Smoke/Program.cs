@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--multi-project-only", StringComparer.Ordinal))
+{
+    MultiProjectSolutionSmoke.Run();
+    Console.WriteLine("Multi-project target solution build and NUnit TRX passed.");
+    return;
+}
 if (args.Contains("--project-assembly-only", StringComparer.Ordinal))
 {
     ProjectTargetAssemblySmoke.Run();
