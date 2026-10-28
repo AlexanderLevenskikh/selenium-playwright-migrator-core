@@ -143,7 +143,7 @@ internal static class PomMappingReviewerSmoke
             var escapedSelector = reviewer.Review(root, "ComboBox", combo.Method,
                 combo.SourceLine, hash, new[]
                 {
-                    \"\"\"var combo = Page.Locator("[data-test=\\\\\\\"picker\\\\\\\"]");\"\"\",
+                    """var combo = Page.Locator("[data-test=\\\"picker\\\"]");""",
                     "await combo.ClickAsync();",
                     "await Page.Locator(\"#input\").WaitForAsync();",
                     "await Page.Locator(\"#input\").FillAsync(value);",
