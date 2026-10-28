@@ -80,3 +80,11 @@ Every `ProposedPlaywrightExpression` is marked `requires_review`. Unknown select
 A source `Items.ElementAt(N).Click()` represents a browser side effect. The Roslyn table recognizer now preserves it as a ClickAction with the original index, so a reviewed selector mapping can emit `await locator.Nth(N).ClickAsync()` rather than a passive locator variable.
 
 Unrecognized operations/assertions after `ElementAt(N)` are explicitly marked `TABLE_ROW_OPERATION_REQUIRES_MAPPING`. Their behavior must not disappear merely because a target locator is available. A synthetic regression covers preserved clicks and fail-closed assertion tails.
+
+## Multi-step Page Object method lineage (preview.8)
+
+The read-only `PomSourceInspector.Inspect(...)` now emits `migrator-pom-evidence/v1alpha2` with ordered invocation chains for Page Object methods (combobox, loader, date picker and storage helpers). It follows direct same-class private helper calls to a bounded depth and records source file/line, per-method SHA-256, lexical call sequence, control-flow markers (branches, loops, try/catch), and review-risk flags.
+
+`StorageAndNavigationFlows` captures NUnit test and setup calls to LocalStorage relative to the first navigation within the method. These are only syntax-level relationships: fixture inheritance, dynamic dispatch, browser origins and runtime order through loops or exception paths are not attested. Nothing is automatically translated or marked behavior-preserving; evidence is input to explicit reviewed `Methods` mappings.
+
+Synthetic regression covers multi-step combobox interactions, loader retries, a date picker with reachable private blur helper, multi-key storage writes and storage before/after navigation. No private input is committed.
