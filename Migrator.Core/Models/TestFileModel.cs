@@ -12,6 +12,12 @@ public sealed record TestFileModel
     public string ClassName { get; init; } = null!;
     public string? BaseClassName { get; init; }
     public IEnumerable<TestAction> SetUpActions { get; init; } = Array.Empty<TestAction>();
+
+    /// <summary>
+    /// Roslyn-bound NUnit lifecycle across local/inherited source classes.
+    /// Null for ordinary single-SetUp fixtures using the legacy rendering path.
+    /// </summary>
+    public NUnitLifecyclePlan? NUnitLifecycle { get; init; }
     public IEnumerable<TestModel> Tests { get; init; } = Array.Empty<TestModel>();
 
     /// <summary>
