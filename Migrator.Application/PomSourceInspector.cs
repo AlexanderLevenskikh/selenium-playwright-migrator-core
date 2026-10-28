@@ -126,7 +126,8 @@ public sealed class PomSourceInspector
             }
         }
 
-        var selectedPublicMethods = allClasses.SelectMany(c => ExtractHelperMethods(c.Source, c.Class))
+        var selectedPublicMethods = allClasses.SelectMany(c =>
+            ExtractHelperMethods(c.Source, c.Class, explicitlyRequested: filters.Contains(c.Class.Identifier.ValueText)))
             .Where(m => filters.Count == 0 || filters.Contains(m.SourceType)
                 || m.SourceType.Equals("LocalStorage", StringComparison.Ordinal))
             .Take(MaxResults).ToArray();
@@ -315,14 +316,18 @@ public sealed class PomSourceInspector
         }
     }
 
-    private static IEnumerable<SourceHelperEvidence> ExtractHelperMethods(string path, ClassDeclarationSyntax type)
+    private static IEnumerable<SourceHelperEvidence> ExtractHelperMethods(
+        string path, ClassDeclarationSyntax type, bool explicitlyRequested)
     {
         var className = type.Identifier.ValueText;
         var isStorage = className.Equals("LocalStorage", StringComparison.Ordinal);
         var isControl = className.EndsWith("Page", StringComparison.Ordinal)
             || className is "TableItem" or "ScCombobox" or "ScComboBox" or "Loader" or "DatePicker"
             || isStorage;
-        if (!isControl)
+        // Explicitly selected control types can have arbitrary domain names.
+        // A read-only evidence inspector must not silently ignore a user-named
+        // class merely because it isn't on a small builtin helper whitelist.
+        if (!isControl && !explicitlyRequested)
             yield break;
 
         foreach (var method in type.Members.OfType<MethodDeclarationSyntax>()
@@ -331,7 +336,7 @@ public sealed class PomSourceInspector
             var calls = method.DescendantNodes().OfType<InvocationExpressionSyntax>()
                 .Select(Method).Where(name => !string.IsNullOrWhiteSpace(name))
                 .Select(name => name!).Distinct(StringComparer.Ordinal).Take(30).ToArray();
-            if (calls.Length == 0 && !isStorage)
+            if (calls.Length == 0 && !isStorage && !explicitlyRequested)
                 continue;
             var source = method.ToString();
             var keys = method.DescendantNodes().OfType<InvocationExpressionSyntax>()
