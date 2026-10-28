@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Migrator.Core;
 using Migrator.PlaywrightDotNet;
 using Migrator.Roslyn;
@@ -24,6 +26,7 @@ internal static class MappedTableAssertionWithSetupSmoke
                         page = pagef;
                     }
                     [Test] public void FiltersTableRows() {
+                        page.Loader.ValidateLoading();
                         page.Table.Items.ElementAt(0).Text.Get().Should().Be("code");
                         page.Table.Items.ElementAt(1).Text.Get().Should().Contain("region");
                     }
@@ -69,6 +72,71 @@ internal static class MappedTableAssertionWithSetupSmoke
                 "unresolved source fixture assignment must remain disclosed");
             Check(result.Report.FullyConvertedTests == 0,
                 "active assertions without verified setup are never complete");
+
+
+            // Explicit, multiline source-backed helper mapping must retain
+            // retry, conditional reload, state waits and assertion failure.
+            // Source semantics are not declared equivalent until browser review.
+            var loaderStatements = new[]
+            {
+                "var attempt = 0;",
+                "while (attempt < 2)",
+                "{",
+                "try",
+                "{",
+                "if (await Page.Locator(\"#load-error\").IsVisibleAsync())",
+                "{",
+                "await Page.ReloadAsync();",
+                "await Page.Locator(\"#loading\").WaitForAsync(new() { State = WaitForSelectorState.Hidden });",
+                "}",
+                "await Page.Locator(\"#ready\").WaitForAsync(new() { State = WaitForSelectorState.Visible });",
+                "break;",
+                "}",
+                "catch (Microsoft.Playwright.TimeoutException)",
+                "{",
+                "attempt++;",
+                "if (attempt == 2)",
+                "{",
+                "Assert.Fail(\"Page did not become ready\");",
+                "}",
+                "}",
+                "}"
+            };
+            var withLoader = new ProjectAdapterConfig
+            {
+                SourceProjectName = "Synthetic",
+                UiTargets = config.UiTargets,
+                Methods = config.Methods.Concat(new[]
+                {
+                    new MethodMapping
+                    {
+                        SourceMethod = "page.Loader.ValidateLoading()",
+                        TargetStatements = loaderStatements,
+                        RequiresReview = true
+                    },
+                    new MethodMapping
+                    {
+                        SourceMethod = "pagef.Loader.ValidateLoading()",
+                        TargetStatements = loaderStatements,
+                        RequiresReview = true
+                    }
+                }).ToArray()
+            };
+            var withLoaderResult = new MigrationPipeline(
+                new RoslynTestFileParser(withLoader), new PlaywrightDotNetRenderer(),
+                new DefaultProjectAdapter(withLoader)).ProcessFile(source);
+            var loaderRendered = withLoaderResult.GeneratedOutput;
+            Check(Count(loaderRendered, "while (attempt < 2)") == 2,
+                "both fixture and test helper calls must preserve retry loops");
+            Check(Count(loaderRendered, "await Page.ReloadAsync();") == 2,
+                "both retry helpers must retain source navigation side effects");
+            Check(Count(loaderRendered, "catch (Microsoft.Playwright.TimeoutException)") == 2,
+                "retry catch path may not disappear during multiline mapping rendering");
+            Check(!CSharpSyntaxTree.ParseText(loaderRendered).GetDiagnostics()
+                .Any(d => d.Severity == DiagnosticSeverity.Error),
+                "multiline Loader mapping must remain syntactically valid C#");
+            Check(withLoaderResult.Report.FullyConvertedTests == 0,
+                "review-only loader and unresolved setup still block migration acceptance");
 
             var unsupported = new ProjectAdapterConfig
             {
