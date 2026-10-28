@@ -46,3 +46,11 @@ Five packages are built together at version `0.1.0-preview.1`: `Migrator.Core`, 
 - No target or source files are written by verification. Old candidates cannot acquire evidence for new edited bytes.
 
 Preview.2 is a pre-release contract; the Core CI builds version-matched NuGet packages but does not publish them publicly.
+
+## Existing Playwright source guard (preview.3)
+
+This engine's production frontend migrates **Selenium C# NUnit inputs**. It must not re-migrate tests already written in Playwright .NET.
+
+`Analyze` returns `already_playwright` / `ALREADY_PLAYWRIGHT_SOURCE` for test files with strong Playwright AST evidence or an in-scope project reference to `Microsoft.Playwright` / `Microsoft.Playwright.NUnit`. A project combining Selenium and Playwright references returns `mixed_frameworks` / `MIXED_SELENIUM_PLAYWRIGHT_SOURCE` and needs an explicit Selenium-only scope. Both dispositions are counted in discovery and block `Preview`; existing tests are never silently regenerated. This is a conservative syntax/project reference guard and is **not** a complete MSBuild evaluation.
+
+A synthetic no-proprietary-source regression proves already-Playwright tests with ordinary filenames and parent project metadata are rejected. The private project supplied for the follow-up evaluation is not copied into this repository.

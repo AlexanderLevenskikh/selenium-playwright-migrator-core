@@ -60,6 +60,7 @@ try
         throw new Exception("stale analysis was accepted");
     }
     catch (InvalidOperationException ex) when (ex.Message.StartsWith("STALE_ANALYSIS", StringComparison.Ordinal)) {}
+    ExistingPlaywrightGuardSmoke.Run();
     Console.WriteLine("Core alpha smoke passed.");
 }
 finally { Directory.Delete(work, recursive: true); }

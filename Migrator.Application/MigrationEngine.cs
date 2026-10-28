@@ -71,11 +71,20 @@ public sealed partial class MigrationEngine
                         }
                     }
 
+                    var existingFramework = SourceFrameworkGuard.Classify(
+                        tree.GetRoot(), file, scope);
+
                     if (hasXunit)
                     {
                         disposition = "unsupported_source_framework";
                         findings.Add(Finding(relative, 0, "UNSUPPORTED_SOURCE_FRAMEWORK",
                             "xUnit source [Fact]/[Theory] is not supported by this alpha. The declarations are counted but not converted.", "syntax"));
+                    }
+                    else if (declaredCount > 0 && existingFramework != null)
+                    {
+                        disposition = existingFramework.Disposition;
+                        findings.Add(Finding(relative, 0, existingFramework.Code,
+                            existingFramework.Explanation, existingFramework.EvidenceKind));
                     }
                     else if (fixtures.Count > 1)
                     {
@@ -276,6 +285,10 @@ public sealed partial class MigrationEngine
             "Split fixtures into individually supported source files or extend the parser; never mark the omitted fixture as converted.",
         "UNSUPPORTED_SOURCE_FRAMEWORK" =>
             "Use an explicitly supported NUnit input or implement and test the corresponding source frontend before migration.",
+        "ALREADY_PLAYWRIGHT_SOURCE" =>
+            "Do not run Selenium migration on existing Playwright tests. Use the target-project build and test workflow instead.",
+        "MIXED_SELENIUM_PLAYWRIGHT_SOURCE" =>
+            "Separate Selenium-only sources from Playwright tests before migration; verify both inventories independently.",
         "DECLARATION_COUNT_MISMATCH" =>
             "Review parser selection and compare the discovered declarations with the parsed model; block full-completion claims.",
         "SOURCE_PARSE_ERROR" => "Resolve the C# parse diagnostics in the source file and rerun analysis.",
