@@ -68,7 +68,6 @@ public sealed class PomMappingReviewer
         };
         var helperKeys = new HashSet<string>(StringComparer.Ordinal);
         ExpandMethod(method, 0);
-        AddControlFlowRequirements(method);
 
         var parse = ParseTargets(targetStatements);
         var targetEffects = parse.Effects;
@@ -109,7 +108,10 @@ public sealed class PomMappingReviewer
             flags.Add("extra_target_effects_need_review");
 
         var blockedTarget = parse.Diagnostics.Count > 0
-            || flags.Contains("target_contains_todo_or_placeholder");
+            || flags.Contains("target_contains_todo_or_placeholder")
+            || flags.Contains("source_obligations_truncated")
+            || flags.Contains("recursive_source_helper")
+            || flags.Contains("truncated_invocations");
         var status = blockedTarget ? "blocked"
             : missing.Count > 0 ? "rejected_incomplete"
             : "requires_review";
@@ -158,15 +160,32 @@ public sealed class PomMappingReviewer
                 return;
             }
 
-            foreach (var call in current.OrderedCalls)
+            // Lexical control-flow constructs must precede the source calls
+            // they govern; appending them after all calls would reject a correct
+            // target loop/try solely due to inconsistent ordering in the ledger.
+            var events = current.OrderedCalls
+                .Select(c => (Line: c.SourceLine, Flow: (PomControlFlowEvidence?)null, Call: (PomMethodCallEvidence?)c))
+                .Concat(current.ControlFlow.Select(f =>
+                    (Line: f.SourceLine, Flow: (PomControlFlowEvidence?)f, Call: (PomMethodCallEvidence?)null)))
+                .OrderBy(x => x.Line).ThenBy(x => x.Flow == null ? 1 : 0);
+            foreach (var entry in events)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (entry.Flow is PomControlFlowEvidence structure)
+                {
+                    Add(structure.SourceLine, structure.Kind + ": " + structure.Expression,
+                        StructureEffect(structure.Kind),
+                        current.SourceType + "." + current.Method + ".control_flow");
+                    continue;
+                }
+
+                var call = entry.Call!;
                 // Follow only receiverless/this direct same-class invocations.
                 // Inherited methods or overloaded dispatch without a resolved symbol
                 // must remain a separate review obligation.
                 var sameClass = string.IsNullOrWhiteSpace(call.Receiver)
                     || call.Receiver is "this" or "base";
-                if (sameClass && !IsBuiltInEffect(call))
+                if (sameClass && !IsBuiltInEffect(call, current.SourceType))
                 {
                     var next = evidence.Helpers.Where(x =>
                         x.SourceType == current.SourceType && x.Method == call.Method)
@@ -182,27 +201,7 @@ public sealed class PomMappingReviewer
                     Add(call.SourceLine, call.SourceText, effect,
                         current.SourceType + "." + current.Method);
             }
-            AddControlFlowRequirements(current);
             helperKeys.Remove(key);
-        }
-
-        void AddControlFlowRequirements(SourceHelperEvidence current)
-        {
-            foreach (var item in current.ControlFlow)
-            {
-                var effect = item.Kind switch
-                {
-                    "while" or "do" or "for" or "foreach" => "loop",
-                    "if" or "switch" or "conditional" => "conditional",
-                    "try" => "try",
-                    "catch" => "catch",
-                    "finally" => "finally",
-                    "throw" => "throw",
-                    _ => "unresolved_source_structure"
-                };
-                Add(item.SourceLine, item.Kind + ": " + item.Expression, effect,
-                    current.SourceType + "." + current.Method + ".control_flow");
-            }
         }
 
         void Add(int line, string source, string kind, string provenance)
@@ -219,11 +218,22 @@ public sealed class PomMappingReviewer
         }
     }
 
-    private static bool IsBuiltInEffect(PomMethodCallEvidence call)
+    private static bool IsBuiltInEffect(PomMethodCallEvidence call, string sourceType)
     {
-        return SourceEffects(call, string.Empty)
-            .All(x => x != "unresolved_source_helper");
+        var effects = SourceEffects(call, sourceType).ToArray();
+        return effects.Length > 0 && !effects.Contains("unresolved_source_helper", StringComparer.Ordinal);
     }
+
+    private static string StructureEffect(string kind) => kind switch
+    {
+        "while" or "do" or "for" or "foreach" => "loop",
+        "if" or "switch" or "conditional" => "conditional",
+        "try" => "try",
+        "catch" => "catch",
+        "finally" => "finally",
+        "throw" => "throw",
+        _ => "unresolved_source_structure"
+    };
 
     private static IEnumerable<string> SourceEffects(
         PomMethodCallEvidence call, string sourceType)
@@ -232,7 +242,7 @@ public sealed class PomMappingReviewer
         var chain = call.CallChain;
         var isStorage = sourceType == "LocalStorage"
             || call.Receiver.Contains("LocalStorage", StringComparison.Ordinal);
-        if (isStorage && name is "SetItem" or "SettingPeriod" or "RemoveItem" or "Clear")
+        if (isStorage && name is ("SetItem" or "SettingPeriod" or "RemoveItem" or "Clear"))
         {
             yield return name switch
             {
@@ -284,8 +294,7 @@ public sealed class PomMappingReviewer
 
         // For real project helper calls there is no lossless inference from name.
         // Their definitions must be found and expanded or the proposal is incomplete.
-        if (name is not "Visible" and not "Displayed"
-            && !chain.Any(n => n is "Wait" or "WaitFor" or "Until"))
+        if (!chain.Any(n => n is "Wait" or "WaitFor" or "Until"))
         {
             yield return "unresolved_source_helper";
         }
