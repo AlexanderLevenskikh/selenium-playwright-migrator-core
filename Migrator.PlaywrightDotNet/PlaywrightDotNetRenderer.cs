@@ -259,6 +259,9 @@ public partial class PlaywrightDotNetRenderer : IRenderer
             case MappedMethodInvocationAction mm:
                 AppendCommentBlock(sb, _indent + _indent, mm.FullSourceText, "  ");
                 break;
+            case FixturePageAliasAction fixtureAlias:
+                AppendCommentBlock(sb, _indent + _indent, fixtureAlias.SourceText, "source fixture alias: ");
+                break;
             case AssertMultipleAction multiple:
                 AppendCommentBlock(sb, _indent + _indent, multiple.FullSourceText, "  ");
                 break;
