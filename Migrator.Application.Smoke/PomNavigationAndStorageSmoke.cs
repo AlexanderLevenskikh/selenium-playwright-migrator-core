@@ -20,7 +20,7 @@ internal static class PomNavigationAndStorageSmoke
                     [SetUp] public void SetUp() { LocalStorage.Clear(); }
                     [Test] public void ProjectNavigation() {
                         var page = Navigation.OpenDashboardPage();
-                        page.Loader.ValidateLoading();
+                        page.Button.Click();
                     }
                     [Test] public void BrowserStorage() {
                         LocalStorage.SetItem("k", "v");
