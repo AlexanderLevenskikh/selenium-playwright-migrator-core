@@ -63,6 +63,7 @@ try
     ExistingPlaywrightGuardSmoke.Run();
     RenderedTodoCompletenessSmoke.Run();
     PomNavigationAndStorageSmoke.Run();
+    PomSourceEvidenceSmoke.Run();
     Console.WriteLine("Core alpha smoke passed.");
 }
 finally { Directory.Delete(work, recursive: true); }
