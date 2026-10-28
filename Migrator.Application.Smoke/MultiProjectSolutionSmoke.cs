@@ -203,7 +203,7 @@ internal static class MultiProjectSolutionSmoke
                 ExpectIncomplete("edited " + relative);
                 File.WriteAllBytes(path, original);
             }
-            NegativeFile("TestsA/GlobalScopePlaywright.cs");
+            NegativeFile("TestsA/RootAPlaywright.cs");
             NegativeFile("TestsB/Migrator.Generated.Tests.csproj");
             NegativeFile(plan.SolutionFile);
             NegativeFile(plan.ManifestFile);
