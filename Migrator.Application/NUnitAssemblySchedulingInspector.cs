@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -50,6 +49,15 @@ internal static class NUnitAssemblySchedulingInspector
         var output = new List<NUnitAssemblyScheduleAttribute>();
         var issues = new List<TargetAssemblyIssue>();
 
+        var shadowing = sources.SelectMany(source => source.Root
+                .DescendantNodes().OfType<TypeDeclarationSyntax>())
+            .Select(type => type.Identifier.ValueText)
+            .Where(name => name is "ParallelScope" or "Parallelizable"
+                or "ParallelizableAttribute" or "NonParallelizable"
+                or "NonParallelizableAttribute" or "LevelOfParallelism"
+                or "LevelOfParallelismAttribute")
+            .ToHashSet(StringComparer.Ordinal);
+
         foreach (var (sourcePath, node) in sources)
         {
             if (node is not CompilationUnitSyntax root) continue;
@@ -60,19 +68,10 @@ internal static class NUnitAssemblySchedulingInspector
                     usingDirective.Alias != null &&
                     usingDirective.Name?.ToString()
                         .Contains("NUnit.Framework.", StringComparison.Ordinal) == true)
-                .ToDictionary(usingDirective =>
-                    usingDirective.Alias!.Name.Identifier.ValueText,
-                    usingDirective => usingDirective.Name!.ToString(),
-                    StringComparer.Ordinal);
-
-            var shadowing = sources.SelectMany(source => source.Root
-                    .DescendantNodes().OfType<TypeDeclarationSyntax>())
-                .Select(type => type.Identifier.ValueText)
-                .Where(name => name is "ParallelScope" or "Parallelizable"
-                    or "ParallelizableAttribute" or "NonParallelizable"
-                    or "NonParallelizableAttribute" or "LevelOfParallelism"
-                    or "LevelOfParallelismAttribute")
-                .ToHashSet(StringComparer.Ordinal);
+                .GroupBy(usingDirective => usingDirective.Alias!.Name.Identifier.ValueText,
+                    StringComparer.Ordinal)
+                .ToDictionary(group => group.Key,
+                    group => group.First().Name!.ToString(), StringComparer.Ordinal);
 
             void Report(string code, string explanation, int line) =>
                 issues.Add(new TargetAssemblyIssue(code, "error",
@@ -145,7 +144,7 @@ internal static class NUnitAssemblySchedulingInspector
                             emitted = "NUnit.Framework.Parallelizable";
                         else if (count == 1)
                         {
-                            var value = arguments![0].Expression.ToString()
+                            var value = attribute.ArgumentList!.Arguments[0].Expression.ToString()
                                 .Replace("global::", "", StringComparison.Ordinal);
                             // Whitelist direct, literal enum access only. No
                             // combined flags, casts, computed values or aliases.
