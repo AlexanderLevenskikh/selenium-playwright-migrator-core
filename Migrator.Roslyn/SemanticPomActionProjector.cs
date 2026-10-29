@@ -92,8 +92,12 @@ public static class SemanticPomActionProjector
         var symbol = semantic.GetDeclaredSymbol(method) as IMethodSymbol;
         var origin = selected.Tree.FilePath;
         var methodSha = Hash(method);
-        var methodSymbol = symbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-            ?? string.Empty;
+        var methodSymbol = symbol == null ? string.Empty
+            : symbol.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                + "." + symbol.Name + "("
+                + string.Join(", ", symbol.Parameters.Select(parameter =>
+                    parameter.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+                + ")";
         var parameters = method.ParameterList.Parameters.Select(p => p.Identifier.ValueText).ToArray();
         var pattern = receiver + "." + sourceMethod + "("
             + string.Join(", ", parameters.Select(p => "{" + p + "}")) + ")";
