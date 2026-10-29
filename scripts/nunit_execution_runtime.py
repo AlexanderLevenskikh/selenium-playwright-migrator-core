@@ -19,7 +19,6 @@ PACKAGE = {
 SUITE = r"""
 using NUnit.Framework;
 [TestFixture]
-[NonParallelizable]
 public class GateFixture
 {
     private static readonly object[][] Rows = new object[][] {
@@ -156,7 +155,7 @@ def main():
         config = work / "adapter.json"
         config.write_text(json.dumps({"testHost": {
             "baseClass": "object", "className": "GateFixture",
-            "classAttributes": ["TestFixture", "NonParallelizable"]}}),
+            "classAttributes": ["TestFixture"]}}),
             encoding="utf-8")
         cli = root_repo / "Migrator.AssemblyCli" / "bin" / "Release" / "net10.0" / "Migrator.AssemblyCli.dll"
         check(cli.exists(), "Build Migrator.AssemblyCli before NUnit regression")
