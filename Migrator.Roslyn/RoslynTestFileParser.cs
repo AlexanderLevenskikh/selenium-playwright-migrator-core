@@ -150,7 +150,8 @@ public class RoslynTestFileParser : ITestFileParser
             throw new InvalidOperationException(
                 $"PROJECT_SEMANTIC_TREE_MISSING: compilation does not contain '{filePath}'.");
 
-        var nunitExecution = NUnitExecutionSemanticsInspector.Inspect(root);
+        var nunitExecution = NUnitExecutionSemanticsInspector.Inspect(root,
+            compilation.SyntaxTrees.Select(source => source.GetRoot()));
         if (!nunitExecution.Safe)
         {
             var firstIssue = nunitExecution.Issues[0];
