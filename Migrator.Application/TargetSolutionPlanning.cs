@@ -278,12 +278,12 @@ public sealed partial class MigrationEngine
             TargetAssemblyPlan? nunit = null;
             if (kind == "library")
             {
-                foreach (var (file, sourceRoot) in parsedRoots)
+                foreach (var (file, parsedRoot) in parsedRoots)
                 {
-                    var tokens = sourceRoot.DescendantTokens()
+                    var tokens = parsedRoot.DescendantTokens()
                         .Where(token => token.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IdentifierToken))
                         .Select(token => token.ValueText).ToHashSet(StringComparer.Ordinal);
-                    var forbidden = sourceRoot.DescendantNodes()
+                    var forbidden = parsedRoot.DescendantNodes()
                         .OfType<UsingDirectiveSyntax>().Any(u =>
                             u.Name?.ToString() is "NUnit.Framework"
                                 or "OpenQA.Selenium" or "Microsoft.Playwright")
