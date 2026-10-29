@@ -497,3 +497,67 @@ per-fixture BrowserContext creation/closure, failure-only logs and screenshots,
 nested one-time provider disposal, and real NUnit TRX counters. This does
 **not** use an actual browser and is not customer E2E evidence. No private
 customer source, URLs, selectors or secrets enter GitHub or CI.
+
+
+## Preview.27 — concrete, opt-in Playwright / .NET DI browser runtime
+
+\`ReviewPlaywrightFixtureLifetime(...)\` now returns **two** separate,
+SHA-256-bound source-backed review artifacts after every source role is
+explicitly attested:
+
+- \`Candidate\`: original NUnit fixture base plus nested cleanup-only
+  \`SetUpFixture\` with \`IBrowserContext\`/\`IPage\` ownership.
+- \`ConcreteBridge\`: a real \`MigratorPlaywrightDiBridge\` implementation
+  of \`IMigratorReviewedPlaywrightLifecycleBridge\`, compiling against
+  Microsoft.Playwright and Microsoft.Extensions.DependencyInjection.
+
+The concrete bridge accepts an externally created shared \`IBrowser\` or
+can launch an owned Chromium instance through
+\`LaunchChromiumAsync(rootProvider, options)\`. It acquires an
+\`IServiceScope\` for each NUnit fixture, opens a separate
+\`IBrowserContext\` via \`IBrowser.NewContextAsync\`, records bounded
+per-page console/page-error messages, and exposes the page through the
+generated fixture. It captures failure logs **before** a full-page
+screenshot at test teardown (not on successful tests); artifacts are
+saved under an explicitly selected absolute directory and registered
+with NUnit. At fixture teardown, the bridge releases the DI scope,
+while the generated base closes its context in a \`finally\` even if
+the service scope fails. Nested source-style
+\`[OneTimeTearDown]\` performs shared browser/provider disposal only
+after all fixture scopes have returned.
+
+### Explicit retry contract
+
+Unlike Selenium's private listener reflection, NUnit retry attributes
+cannot be injected retrospectively by a fixture-level
+\`OneTimeSetUp\`. The concrete bridge therefore validates **explicit
+per-test \`[Retry(N)]\`** annotations against
+\`RequiredRetryAttempts\` (for example, three source retries after
+the first attempt require explicit NUnit \`[Retry(4)]\`). A missing
+annotation fails closed before test execution. NUnit's own retry
+command may repeat SetUp/TearDown differently from an original
+custom listener; migration is **not behaviorally equivalent** merely
+because the attempt counts match.
+
+### Integration and test status
+
+This is a compile-capable, opt-in runtime implementation but still a
+\`requires_review\` proposal, **not automatically materialized** into
+the full target solution. A real customer source must explicitly
+provide the application-specific DI registrations, browser launch
+environment, authentication, navigation, storage/POM implementations,
+exact retry policy and required artifact directory. The engine does
+not invent URLs, selectors, credentials or per-environment settings.
+
+Public synthetic Core CI builds against real \`Microsoft.Playwright\`
+and \`Microsoft.Extensions.DependencyInjection\` packages, injects an
+instrumented \`IBrowser\` proxy (no browser download or real website)
+and runs NUnit/TRX for success, final failure, retry success, DI
+release failure and missing retry policy. It verifies one context
+per fixture, context closure and single global browser/provider
+disposal; logs-before-screenshot and screenshot attachment only
+on failures; and conservative review-only statuses. This is
+**type-compatible NUnit runtime evidence**, not an actual browser
+session or private application E2E. The real Chromium launch path
+and its environmental dependencies require a separate browser
+smoke before production usage.
