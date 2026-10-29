@@ -107,9 +107,36 @@ public abstract class __BASE__
                     var page = await context.NewPageAsync();
                     return new FixtureLease(context, page);
                 }
-                catch
+                catch (Exception pageError)
                 {
-                    await context.CloseAsync();
+                    // The typed bridge acquired a DI IServiceScope before
+                    // opening the BrowserContext. A page creation failure
+                    // must release that scope and close the context before
+                    // nested NUnit global cleanup, without hiding the
+                    // original page error.
+                    Exception? cleanupError = null;
+                    try
+                    {
+                        await bridge.ReleaseFixtureServicesAsync(key);
+                    }
+                    catch (Exception releaseError)
+                    {
+                        cleanupError = releaseError;
+                    }
+                    try
+                    {
+                        await context.CloseAsync();
+                    }
+                    catch (Exception closeError)
+                    {
+                        cleanupError = cleanupError == null
+                            ? closeError
+                            : new AggregateException(cleanupError, closeError);
+                    }
+                    if (cleanupError != null)
+                        throw new AggregateException(
+                            "PLAYWRIGHT_LIFETIME_PAGE_CREATION_CLEANUP_FAILED",
+                            pageError, cleanupError);
                     throw;
                 }
             }, LazyThreadSafetyMode.ExecutionAndPublication));
