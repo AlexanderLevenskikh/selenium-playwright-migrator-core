@@ -22,6 +22,12 @@ public sealed record TargetSolutionFile(
     string Sha256,
     string? SourcePath);
 
+public sealed record TargetSolutionSourceScope(
+    bool Explicit,
+    IReadOnlyList<string> EntryProjects,
+    IReadOnlyList<string> IncludedProjects,
+    IReadOnlyList<string> ExcludedProjects);
+
 public sealed record TargetSolutionPlan(
     string SchemaVersion,
     string SourceRoot,
@@ -35,7 +41,8 @@ public sealed record TargetSolutionPlan(
     IReadOnlyList<TargetSolutionProject> Projects,
     IReadOnlyList<TargetSolutionFile> Files,
     IReadOnlyList<TargetAssemblyIssue> Issues,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations,
+    TargetSolutionSourceScope? Scope = null);
 
 public sealed record TargetSolutionProjectExecution(
     string ProjectFile,
