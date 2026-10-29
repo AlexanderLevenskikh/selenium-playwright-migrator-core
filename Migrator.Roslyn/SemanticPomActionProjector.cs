@@ -169,7 +169,11 @@ public static class SemanticPomActionProjector
         explanation = "The method call or its Selenium/NUnit identity is unresolved; do not infer a locator, state or side effect.";
         var called = model.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
         if (called == null) return false;
-        callSymbol = called.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        callSymbol = called.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            + "." + called.Name + "("
+            + string.Join(", ", called.Parameters.Select(p =>
+                p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+            + ")";
         receiverType = called.ContainingType.ToDisplayString();
         returnType = called.ReturnType.ToDisplayString();
         var member = invocation.Expression as MemberAccessExpressionSyntax;
