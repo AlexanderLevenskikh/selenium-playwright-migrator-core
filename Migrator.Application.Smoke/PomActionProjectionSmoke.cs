@@ -102,9 +102,13 @@ internal static class PomActionProjectionSmoke
                     && plan.Actions.All(x => x.SourcePath == "SyntheticCatalogPage.cs"
                         && x.SourceLine > 0 && x.SourceSha256.Length == 64
                         && x.TargetSha256.Length == 64
-                        && x.SourceSymbol.Contains("OpenQA.Selenium.", StringComparison.Ordinal) || x.SourceSymbol.Contains("NUnit.Framework.", StringComparison.Ordinal)
+                        && (x.SourceSymbol.Contains("OpenQA.Selenium.", StringComparison.Ordinal)
+                            || x.SourceSymbol.Contains("NUnit.Framework.", StringComparison.Ordinal))
                         && x.RequiresReview),
-                    method + " method/step SHA, Roslyn symbols or review gate missing.");
+                    method + " method/step SHA, Roslyn symbols or review gate missing: "
+                    + System.Text.Json.JsonSerializer.Serialize(new {
+                        plan.SourceMethodSha256, plan.SourceLine, plan.Actions
+                    }));
             }
 
             foreach (var (method, expected) in new[]
