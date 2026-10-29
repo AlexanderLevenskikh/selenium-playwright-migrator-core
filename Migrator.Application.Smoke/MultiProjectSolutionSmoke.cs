@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json;
 using Migrator.Application;
 using Migrator.Core;
@@ -246,6 +247,76 @@ internal static class MultiProjectSolutionSmoke
                 "  <ItemGroup><PackageReference Include=\"Synthetic.Optional\" Version=\"1.0.0\" /></ItemGroup>\n</Project>",
                 StringComparison.Ordinal));
             ExpectProblem("SOLUTION_LIBRARY_PACKAGE_UNSUPPORTED");
+            var failFast = engine.PlanTargetSolution(source, configPath);
+            Check(failFast.Status == "blocked"
+                && failFast.Projects.Where(project => project.Kind == "nunit")
+                    .All(project => project.CandidateId == null)
+                && failFast.Issues.Any(issue =>
+                    issue.Code == "SOLUTION_NUNIT_PLANNING_DEFERRED"),
+                "invalid shared dependency must be detected before any expensive NUnit plan");
+
+            // A reviewer may opt in to copying only a literal, exact package
+            // version from a source-safe shared library. The allowlist itself
+            // is part of the content-addressed configuration, never inferred
+            // from the source dependency name alone.
+            var safePackageProject = originalFoundation.Replace(
+                "</Project>",
+                "  <ItemGroup><PackageReference Include=\"System.Collections.Immutable\" Version=\"9.0.0\" /></ItemGroup>\n</Project>",
+                StringComparison.Ordinal);
+            Put("Foundation/Foundation.csproj", safePackageProject);
+            var configOriginal = File.ReadAllText(configPath);
+            var configReviewed = JsonNode.Parse(configOriginal)!.AsObject();
+            configReviewed["TargetSolutionReviewedPackages"] =
+                JsonSerializer.SerializeToNode(new[] {
+                    new {
+                        SourceProject = "Foundation/Foundation.csproj",
+                        Reviewed = true,
+                        Packages = new[] {
+                            new { Id = "System.Collections.Immutable", Version = "9.0.0" }
+                        }
+                    }
+                });
+            File.WriteAllText(configPath, configReviewed.ToJsonString());
+            var reviewed = engine.PlanTargetSolution(source, configPath);
+            Check(reviewed.Status == "ready_for_build"
+                && reviewed.Projects.Single(project => project.SourceProject
+                        == "Foundation/Foundation.csproj")
+                    .PackageReferences!.Single().Version == "9.0.0"
+                && reviewed.Files.Single(file => file.RelativePath ==
+                        "Foundation/Migrator.Generated.Library.csproj")
+                    .Content.Contains(
+                        "<PackageReference Include=\"System.Collections.Immutable\" Version=\"9.0.0\" />",
+                        StringComparison.Ordinal),
+                "exact reviewer-approved source package must appear in target library");
+
+            Put("Foundation/Foundation.csproj", safePackageProject.Replace(
+                "Version=\"9.0.0\"", "Version=\"9.0.1\"",
+                StringComparison.Ordinal));
+            ExpectProblem("SOLUTION_PACKAGE_REVIEW_MISMATCH");
+            Put("Foundation/Foundation.csproj", safePackageProject.Replace(
+                "Version=\"9.0.0\"", "Version=\"9.*\"",
+                StringComparison.Ordinal));
+            ExpectProblem("SOLUTION_PACKAGE_REFERENCE_DYNAMIC");
+
+            Put("Foundation/Foundation.csproj", safePackageProject);
+            var unsafeConfig = JsonNode.Parse(
+                File.ReadAllText(configPath))!.AsObject();
+            unsafeConfig["TargetSolutionReviewedPackages"] =
+                JsonSerializer.SerializeToNode(new[] {
+                    new {
+                        SourceProject = "../outside.csproj",
+                        Reviewed = true,
+                        Packages = new[] {
+                            new { Id = "System.Collections.Immutable", Version = "9.0.0" }
+                        }
+                    }
+                });
+            File.WriteAllText(configPath, unsafeConfig.ToJsonString());
+            ExpectProblem("SOLUTION_PACKAGE_REVIEW_PROFILE_INVALID");
+
+            // Both the source graph and config must return to their exact
+            // original state for the remaining independent negative tests.
+            File.WriteAllText(configPath, configOriginal);
             Put("Foundation/Foundation.csproj", originalFoundation);
 
             // A package-free library carrying Selenium driver types also

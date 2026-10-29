@@ -198,3 +198,46 @@ dotnet run --project Migrator.AssemblyCli -- solution-verify ./source-solution .
 Source NUnit `[Ignore]` and `[Explicit]` attributes, including `Ignore` and `Explicit` named arguments on `[TestCase]` or `[TestFixture]`, can change whether a test executes at all. Until a source-backed attribute-preserving renderer is implemented, `Analyze` returns `unsupported_nunit_execution_gate` and `NUNIT_EXECUTION_GATE_REQUIRES_REVIEW` with source line evidence. `Preview` refuses to produce any runnable target file for that fixture. Declared tests remain counted, preventing false-green loss.
 
 Only local syntax-recognizable gates are covered by this preview; inherited aliases, dynamic `TestCaseData` skip logic and other NUnit scheduling/selection attributes still require explicit source/project review. Synthetic Core regression tests six common gate spellings plus an unaffected regular NUnit test. Private customer code is not shipped.
+
+## Preview.20 — fast source-graph preflight and reviewed shared NuGet libraries
+
+Full multi-project planning now validates the complete .csproj graph, source
+library safety, and package review profile **before** calling expensive
+per-project Roslyn/NUnit analysis. When a graph is already blocked, output
+contains \`SOLUTION_NUNIT_PLANNING_DEFERRED\` and no runnable NUnit target files;
+the plan cannot be materialized. This prevents impractical repeated source
+compilation on large, already-invalid solutions. Valid graphs retain independent
+NUnit assemblies and source-bound content-addressed plans.
+
+A shared library with **literal, pinned** NuGet PackageReferences can now be
+projected into its generated target .csproj *only after* an explicit source-exact
+review approval. Add this optional section to the existing adapter JSON (all
+values are fictional):
+
+\`\`\`json
+{
+  "SourceProjectName": "Synthetic",
+  "TargetSolutionReviewedPackages": [
+    {
+      "SourceProject": "Shared/Shared.csproj",
+      "Reviewed": true,
+      "Packages": [{ "Id": "System.Collections.Immutable", "Version": "9.0.0" }]
+    }
+  ]
+}
+\`\`\`
+
+The exact source project path, every package ID and version must match the
+source project, with no unapproved extras. Floating/ranged versions, central
+package management, conditions, non-NuGet references, package metadata,
+unknown profile projects, unsafe browser/test-framework dependencies, and
+driver-bearing shared C# code remain blocked. The entire adapter config hash
+is part of the target plan ID and generated .csproj is included in the exact
+target SHA manifest. A reviewer approval **does not** assert third-party
+package trust, source/target API compatibility, real MSBuild equivalence, or
+runtime/business behavior. Restore/build/test and source-specific review are
+still required. The plan never silently invents dependencies.
+
+Core smoke includes synthetic positive exact dependency projection plus
+negative changed version, floating version, invalid project path and
+NUnit-planning short circuit. No private/customer code is used.
