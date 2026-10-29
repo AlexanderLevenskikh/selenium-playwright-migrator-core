@@ -384,7 +384,7 @@ def main():
                 "source_test_runtime": "real_NUnit_httpclient_control_suite_not_selenium_browser",
                 "target_test_runtime": "real_NUnit_Playwright_Chromium",
                 "source_target_behavioral_equivalence": "not_verified",
-                "private_ArBilling": "not_run",
+                "private_customer_application": "not_run",
                 "effects": [x["effect"] for p in projections.values()
                             for x in p["actions"]],
                 "trace": events,
