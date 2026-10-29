@@ -204,6 +204,18 @@ internal static class ConcretePlaywrightDiBridgeSmoke
                 && teardownFailure.Count(x => x == "browser-close") == 1,
                 "DI dispose exception must not skip Context.CloseAsync and shared browser cleanup");
 
+            // Remove only the first fixture's [Retry(4)] attribute to
+            // prove the bridge fails the suite closed rather than silently
+            // changing the original listener's retry policy.
+            var testPath = Path.Combine(target, "Fixtures.cs");
+            var originalTests = File.ReadAllText(testPath);
+            const string annotated = "[Test, Retry(4)]";
+            var firstRetry = originalTests.IndexOf(annotated,
+                StringComparison.Ordinal);
+            Assert(firstRetry >= 0, "synthetic NUnit retry attribute missing");
+            File.WriteAllText(testPath,
+                originalTests[..firstRetry] + "[Test]"
+                + originalTests[(firstRetry + annotated.Length)..]);
             var missingRetry = Execute(target, "missing-retry",
                 expectedPass: 1, expectedFail: 1, expectedExit: 1);
             Assert(!missingRetry.Any(x => x.StartsWith("context-open:",
