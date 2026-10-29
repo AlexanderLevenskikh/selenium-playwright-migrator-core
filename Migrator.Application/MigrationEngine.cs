@@ -25,6 +25,12 @@ public sealed partial class MigrationEngine
         var beforeHash = HashScope(scope);
         var surveys = new List<FileSurvey>(files.Count);
         var allFindings = new List<MigrationFinding>();
+        // Include sibling source declarations so inherited NUnit gates cannot
+        // disappear when a fixture base is declared in another C# file.
+        // Parsing syntax trees has no user-code execution side effects.
+        var scopeRoots = files.Select(file =>
+            (Microsoft.CodeAnalysis.SyntaxNode)CSharpSyntaxTree.ParseText(
+                File.ReadAllText(file), path: file).GetRoot()).ToArray();
 
         foreach (var file in files)
         {
@@ -84,7 +90,7 @@ public sealed partial class MigrationEngine
 
                     var existingFramework = SourceFrameworkGuard.Classify(
                         tree.GetRoot(), file, scope);
-                    var executionReview = NUnitExecutionSemanticsInspector.Inspect(tree.GetRoot());
+                    var executionReview = NUnitExecutionSemanticsInspector.Inspect(tree.GetRoot(), scopeRoots);
                     nunitAttributes.AddRange(executionReview.Evidence.Select(e =>
                         new NUnitAttributeEvidence(relative, e.Line, e.Kind,
                             e.SourceSha256, e.TargetExpression, e.RequiresReview, e.Reason)));
