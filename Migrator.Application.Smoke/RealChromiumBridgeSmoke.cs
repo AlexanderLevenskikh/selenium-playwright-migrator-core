@@ -159,6 +159,9 @@ internal static class RealChromiumBridgeSmoke
                 "Playwright Chromium installation failed: " + install.Tail);
 
             var results = new List<object>();
+            var published = Path.Combine(Environment.CurrentDirectory,
+                "artifacts", "real-chromium-preview28");
+            Directory.CreateDirectory(published);
             foreach (var scenario in new[] { "success", "retry-once",
                          "final-failure" })
             {
@@ -243,6 +246,15 @@ internal static class RealChromiumBridgeSmoke
                                Array.IndexOf(events, "failed-logs-saved"),
                             "failed browser logs must be saved before screenshot");
                 }
+                if (scenario == "final-failure")
+                {
+                    File.Copy(screenshots[0],
+                        Path.Combine(published, "synthetic-final-failure.png"),
+                        overwrite: true);
+                    File.Copy(logFiles[0],
+                        Path.Combine(published, "synthetic-browser-console.txt"),
+                        overwrite: true);
+                }
                 var attempts = events.Count(e => e == "fixture-a-attempt");
                 Check(attempts == (scenario == "success" ? 1
                     : scenario == "retry-once" ? 2 : 3),
@@ -252,6 +264,9 @@ internal static class RealChromiumBridgeSmoke
                 {
                     scenario,
                     chromiumReal = true,
+                    chromiumVersion = events.FirstOrDefault(x =>
+                        x.StartsWith("browser-version:", StringComparison.Ordinal))
+                        ?["browser-version:".Length..],
                     sourceBound = true,
                     executedTests = 2, passedTests = expectedPass,
                     failedTests = expectedFailed, attempts,
@@ -277,10 +292,8 @@ internal static class RealChromiumBridgeSmoke
                 coreReviewStatus = review.Status,
                 results
             }, new JsonSerializerOptions { WriteIndented = true });
-            var resultDir = Path.Combine(Environment.CurrentDirectory,
-                "artifacts", "real-chromium-preview28");
-            Directory.CreateDirectory(resultDir);
-            File.WriteAllText(Path.Combine(resultDir, "summary.json"), summary);
+            File.WriteAllText(Path.Combine(published, "summary.json"),
+                summary);
             Console.WriteLine("REAL_CHROMIUM_SMOKE_PASSED=" + summary);
         }
         finally
