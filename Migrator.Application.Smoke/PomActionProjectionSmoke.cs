@@ -149,7 +149,8 @@ internal static class PomActionProjectionSmoke
                     statement.Contains("PressSequentiallyAsync({value})", StringComparison.Ordinal))
                 && candidate.TargetStatementTemplates.Any(statement =>
                     statement.Contains("[data-test='option']", StringComparison.Ordinal)),
-                "Source-derived review candidate must bind parameters, preserve literal selectors.");
+                "Source-derived review candidate must bind parameters, preserve literal selectors: "
+                + System.Text.Json.JsonSerializer.Serialize(candidate));
 
             var fixture = Path.Combine(folder, "MappingFixture.cs");
             File.WriteAllText(fixture, """
