@@ -30,7 +30,8 @@ public sealed partial class MigrationEngine
         string[] References,
         TargetAssemblyPlan? NUnitPlan,
         TargetSolutionPackage[] Packages,
-        int DeclaredTestMethods);
+        int DeclaredTestMethods,
+        NUnitAssemblyScheduleAttribute[] Scheduling);
 
     /// <summary>
     /// Read-only complete graph planning. Every NUnit source project gets one
@@ -321,7 +322,7 @@ public sealed partial class MigrationEngine
             byPath[project] = new SourceSolutionNode(project, relativeProject,
                 projectDir, relativeDir, assemblyName, kind,
                 files, references.ToArray(), nunit, packages,
-                declaredTestMethods);
+                declaredTestMethods, assemblySchedule.Attributes.ToArray());
         }
 
         foreach (var node in byPath.Values)
@@ -494,12 +495,21 @@ public sealed partial class MigrationEngine
         slnxLines.Add("</Solution>");
         var slnx = string.Join("\n", slnxLines) + "\n";
         plannedFiles.Add(SolutionFile(SolutionArtifactName, slnx, null));
+        var scheduleLedger = byPath.Values.Where(node => node.Kind == "nunit")
+            .SelectMany(node => node.Scheduling.Select(attribute =>
+                new TargetSolutionSchedulingSource(node.RelativeProject,
+                    attribute.SourcePath, attribute.SourceLine,
+                    attribute.SourceExpression, attribute.TargetExpression)))
+            .OrderBy(attribute => attribute.SourceProject, StringComparer.Ordinal)
+            .ThenBy(attribute => attribute.SourcePath, StringComparer.Ordinal)
+            .ThenBy(attribute => attribute.SourceLine).ToArray();
         var manifest = JsonSerializer.Serialize(new
         {
             schemaVersion = SolutionSchema,
             sourceTreeHash = sourceTree,
             configHash,
             scope = sourceScope,
+            assemblyScheduling = scheduleLedger,
             solutionFile = SolutionArtifactName,
             projects = projects.OrderBy(p => p.ProjectFile, StringComparer.Ordinal),
             files = plannedFiles.OrderBy(file => file.RelativePath,
@@ -552,7 +562,7 @@ public sealed partial class MigrationEngine
                 "DeclaredTests counts source NUnit methods, even when target generation was deferred; it never implies target tests were generated.",
                 "Ready for build is source closure evidence, not compilation or business behavior.",
                 "dotnet build and NUnit runtime require explicit opt-in and are reported separately."
-            }, sourceScope);
+            }, sourceScope, scheduleLedger);
     }
 
     private static bool AttributeMatches(AttributeSyntax attribute,
