@@ -274,7 +274,10 @@ public sealed partial class MigrationEngine
                 "Scoped SetUpFixtures execute once per target assembly; per-suite namespace, state and failure-path semantics require runtime verification.",
                 "Source-attested assembly NUnit scheduling attributes are copied into a separate compile-listed file; actual parallel execution still requires runtime review.",
                 "Target test execution is opt-in, never performed by a read-only plan."
-            });
+            }, scheduling.Attributes.Select(attribute =>
+                new TargetAssemblySchedulingSource(attribute.SourcePath,
+                    attribute.SourceLine, attribute.SourceExpression,
+                    attribute.TargetExpression)).ToArray());
     }
 
     private static bool ValidTargetAssemblyPath(string path)
