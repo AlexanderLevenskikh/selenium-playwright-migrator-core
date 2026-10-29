@@ -356,3 +356,48 @@ hoisted into assembly-global scope. Source-specific fixture DI,
 listener reflection, pooled browser lifetime, log/screenshot teardown
 and third-party extensions require independent migration and review.
 No private customer source or test evidence is used in GitHub/CI.
+
+
+## Preview.24 — NUnit lifecycle source evidence and standalone cleanup scopes
+
+\`MigrationEngine.InspectNUnitLifecycle(sourceDirectory)\` provides a
+**read-only, source-hashed Roslyn inventory** of the original NUnit lifecycle,
+including hooks in abstract base classes and nested \`SetUpFixture\` declarations.
+The bounded ledger records method SHA-256, source paths/lines, zero-argument
+same-class private helper lineage (up to five levels), original test-method
+counts, and source evidence of project DI/browser effects:
+
+- Scoped service and pooled WebDriver ownership, navigation, storage
+- OneTimeSetUp/SetUp/TearDown/OneTimeTearDown declarations
+- NUnit internal listener/reflection and retry helpers
+- Browser log and screenshot side effects
+- Per-fixture and suite-wide DI cleanup, including nested cleanup-only scope
+
+The inspector does not return original C# bodies, URLs, selectors or literal
+configuration values. \`sourceTreeHash\` changes whenever included source
+bytes change. The ledger **does not** evaluate dynamic dispatch, external DI
+registrations or NUnit runtime results. All report execution stages remain
+\`not_run\`. A nested \`[SetUpFixture]\` is always an error-level issue:
+its \`OneTimeTearDown\` cannot be promoted into an assembly-global cleanup
+by naming convention or an invented dependency injection mapping.
+
+Separately, a **valid standalone namespace/assembly SetUpFixture** can now
+declare only \`[OneTimeTearDown]\` with no matching
+\`[OneTimeSetUp]\`. NUnit owns that cleanup lifetime; the Roslyn
+lifecycle parser exempts *only* that scoped one-time cleanup from the
+ordinary fixture-level paired setup guard. This is **not** permission to
+move invalid nested classes or dispose shared browser resources from an
+arbitrary target fixture. Explicit mapped actions still require a
+source-backed review. Synthetic Core CI verifies generated NUnit test
+assemblies, namespace and assembly cleanup ordering, and exact target file
+closure using real \`dotnet build\` and NUnit TRX.
+
+A public fictional \`TestBase\` regression verifies source-bound DI/browser
+dependencies, reachable private reflection listener logic, nested
+cleanup-only blockers, source hash invalidation, and honest
+\`not_run\`/unverified statuses. No proprietary customer source or
+observations are sent to GitHub/CI.
+
+**Remaining work:** reviewed browser-context/page binding to original DI,
+safe listener/retry replacement, teardown screenshot/log fidelity and
+independent failure-path NUnit + real product/browser execution.
