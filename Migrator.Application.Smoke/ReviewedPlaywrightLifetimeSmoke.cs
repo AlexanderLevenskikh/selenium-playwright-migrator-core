@@ -244,7 +244,8 @@ internal static class ReviewedPlaywrightLifetimeSmoke
                 && failed.Last() == "global-dispose",
                 "test failure: logs before screenshot before fixture/global cleanup");
 
-            var releaseError = Execute(dir, "release-failure", 1, 1);
+            var releaseError = Execute(dir, "release-failure", 2, 0,
+                expectedProcessSuccess: false);
             Check(releaseError.Count(x =>
                     x.StartsWith("context-close:", StringComparison.Ordinal)) == 2
                 && releaseError.Last() == "global-dispose",
@@ -270,7 +271,8 @@ internal static class ReviewedPlaywrightLifetimeSmoke
     }
 
     private static List<string> Execute(
-        string directory, string scenario, int passed, int failed)
+        string directory, string scenario, int passed, int failed,
+        bool? expectedProcessSuccess = null)
     {
         var trace = Path.Combine(directory, "events.txt");
         if (File.Exists(trace)) File.Delete(trace);
@@ -303,7 +305,8 @@ internal static class ReviewedPlaywrightLifetimeSmoke
         }
         var outText = stdout.GetAwaiter().GetResult();
         var errText = stderr.GetAwaiter().GetResult();
-        Check((proc.ExitCode == 0) == (failed == 0),
+        Check((proc.ExitCode == 0) ==
+                (expectedProcessSuccess ?? failed == 0),
             "synthetic test process exit: " + outText[
                 ^Math.Min(1500, outText.Length)..] + errText[
                 ^Math.Min(1500, errText.Length)..]);
