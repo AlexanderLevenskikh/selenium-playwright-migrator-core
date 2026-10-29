@@ -28,7 +28,7 @@ jobs:
         if: always()
         with:
           name: migrator-real-chromium-preview28-evidence
-          path: artifacts/real-chromium-preview28/*.json
+          path: artifacts/real-chromium-preview28/*
           if-no-files-found: warn
       - name: Observe synthetic NUnit 3 and NUnit 4 nested cleanup baseline
         run: python3 scripts/nunit_nested_source_probe.py
