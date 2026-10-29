@@ -21,6 +21,15 @@ jobs:
         run: dotnet restore Migrator.Application.Smoke/Migrator.Application.Smoke.csproj
       - name: Build engine and smoke test
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: Real installed Chromium + local HTTP NUnit browser smoke
+        timeout-minutes: 15
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --real-chromium-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-real-chromium-preview28-evidence
+          path: artifacts/real-chromium-preview28/*.json
+          if-no-files-found: warn
       - name: Observe synthetic NUnit 3 and NUnit 4 nested cleanup baseline
         run: python3 scripts/nunit_nested_source_probe.py
       - name: Run Core smoke
@@ -31,15 +40,6 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --project-assembly-only
       - name: Generate complete multi-project solution and verify independent NUnit assemblies
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --multi-project-only
-      - name: Real installed Chromium + local HTTP NUnit browser smoke
-        timeout-minutes: 15
-        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --real-chromium-only
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: migrator-real-chromium-preview28-evidence
-          path: artifacts/real-chromium-preview28/*.json
-          if-no-files-found: warn
       - name: Pack version-matched Core NuGet packages
         run: |
           mkdir -p artifacts/nuget
