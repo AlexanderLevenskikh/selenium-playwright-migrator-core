@@ -73,7 +73,7 @@ internal static class NUnitExecutionGateSmoke
                     using NUnit.Framework;
                     [TestFixture] public class FictionalFixture {
                         private static readonly NUnit.Framework.TestCaseData[] Rows = new[] {
-                            new TestCaseData(9), new TestCaseData(10)
+                            new NUnit.Framework.TestCaseData(9), new NUnit.Framework.TestCaseData(10)
                         };
                         [TestCaseSource(nameof(Rows))]
                         public void Example(int value) { Assert.That(value > 0, Is.True); }
@@ -158,6 +158,25 @@ internal static class NUnitExecutionGateSmoke
                         [Test] public void Example() {}
                     }
                     """, "NUNIT_INHERITED_GATE_REQUIRES_REVIEW"),
+                ("""
+                    using NUnit.Framework;
+                    [TestFixture] public class FictionalFixture {
+                        private static readonly object[][] Rows = new[] { new object[] { 5 } };
+                        static FictionalFixture() { System.Console.WriteLine("static-side-effect"); }
+                        [TestCaseSource(nameof(Rows))]
+                        public void Example(int value) {}
+                    }
+                    """, "NUNIT_TEST_CASE_SOURCE_UNSAFE"),
+                ("""
+                    using NUnit.Framework;
+                    [TestFixture] public class FictionalFixture {
+                        private static readonly object[][] Other = Generate();
+                        private static readonly object[][] Rows = new[] { new object[] { 5 } };
+                        private static object[][] Generate() => new[] { new object[] { 1 } };
+                        [TestCaseSource(nameof(Rows))]
+                        public void Example(int value) {}
+                    }
+                    """, "NUNIT_TEST_CASE_SOURCE_UNSAFE"),
                 ("""
                     using NUnit.Framework;
                     [TestFixture] public class FictionalFixture {
