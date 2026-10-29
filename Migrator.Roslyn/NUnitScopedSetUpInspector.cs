@@ -92,9 +92,10 @@ internal static class NUnitScopedSetUpInspector
                 or NUnitLifecycleKind.TearDown))
                 Problem("NUNIT_SETUPFIXTURE_PER_TEST_HOOK_INVALID",
                     "[SetUpFixture] cannot contain per-test SetUp or TearDown methods.");
-            if (!hooks.Any(hook => hook.Kind == NUnitLifecycleKind.OneTimeSetUp))
-                Problem("NUNIT_SETUPFIXTURE_SETUP_MISSING",
-                    "Scoped setup requires a source OneTimeSetUp to preserve lifecycle dependencies.");
+            if (!hooks.Any(hook => hook.Kind is NUnitLifecycleKind.OneTimeSetUp
+                or NUnitLifecycleKind.OneTimeTearDown))
+                Problem("NUNIT_SETUPFIXTURE_HOOKS_MISSING",
+                    "A standalone scope must have a one-time setup or cleanup hook.");
             if (hooks.Any(hook => hook.InheritanceLevel < (inherited?.SourceTypeLevels ?? 1) - 1))
                 Problem("NUNIT_SETUPFIXTURE_INHERITED_HOOKS_REVIEW",
                     "Inherited scoped hooks require explicit implementation/lifetime review.");
