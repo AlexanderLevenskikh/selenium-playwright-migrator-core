@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string SolutionArtifactName = "Migrator.Generated.slnx";
     private const string SolutionManifestName = "migrator-solution-manifest.json";
-    private const string SolutionSchema = "migrator-target-solution/v1alpha4";
+    private const string SolutionSchema = "migrator-target-solution/v1alpha5";
     private const int SolutionProjectLimit = 20;
     private const int SolutionFileLimit = 256;
     private const long SolutionBytesLimit = 24 * 1024 * 1024;
@@ -207,7 +207,6 @@ public sealed partial class MigrationEngine
             // Keep Roslyn source trees from the single preflight parse: do
             // not reparse all library files a second time.
             var parsedRoots = new List<(string File, SyntaxNode Root)>();
-            var assemblyScheduling = new List<(string File, string Attribute, int Line)>();
             foreach (var file in files)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -267,25 +266,18 @@ public sealed partial class MigrationEngine
                             relativeFile));
                 }
 
-                if (syntax is CompilationUnitSyntax unit)
-                    foreach (var list in unit.AttributeLists.Where(list =>
-                        list.Target?.Identifier.ValueText == "assembly"))
-                        foreach (var attr in list.Attributes)
-                            if (AttributeMatches(attr, "Parallelizable",
-                                    "NonParallelizable", "LevelOfParallelism"))
-                                assemblyScheduling.Add((relativeFile,
-                                    attr.Name.ToString(),
-                                    attr.GetLocation().GetLineSpan()
-                                        .StartLinePosition.Line + 1));
             }
             var kind = hasTests || hasScopes ? "nunit" : "library";
-            if (kind == "nunit")
-                foreach (var setting in assemblyScheduling)
-                    issues.Add(new("SOLUTION_ASSEMBLY_SCHEDULING_REQUIRES_REVIEW",
-                        "error", "Assembly-level NUnit scheduling attribute "
-                        + setting.Attribute + " at line " + setting.Line
-                        + " is not safely carried into the target assembly.",
-                        setting.File));
+            var assemblySchedule = NUnitAssemblySchedulingInspector.Inspect(
+                parsedRoots.Select(item => (
+                    SourcePath: Path.GetRelativePath(root, item.File)
+                        .Replace('\\', '/'), Root: item.Root)));
+            issues.AddRange(assemblySchedule.Issues);
+            if (kind == "library" && assemblySchedule.Attributes.Count > 0)
+                issues.Add(new("SOLUTION_LIBRARY_ASSEMBLY_SCHEDULING_UNSAFE",
+                    "error", "NUnit assembly scheduling attributes cannot be "
+                    + "copied into a shared library without a target NUnit runner.",
+                    relativeProject));
             // Finish inexpensive, source-backed graph validation before any
             // expensive Roslyn/NUnit target generation. Invalid solutions
             // must fail quickly instead of repeatedly recompiling fixtures.
@@ -554,7 +546,7 @@ public sealed partial class MigrationEngine
             new[]
             {
                 "Explicit project entries include their full transitive ProjectReference closure; excluded projects and their tests are listed as out of scope.",
-                "Each included NUnit project stays a separate target NUnit assembly; global SetUpFixtures do not cross ProjectReference boundaries.",
+                "Each included NUnit project stays a separate target NUnit assembly; global SetUpFixtures and source-backed scheduling attributes do not cross ProjectReference boundaries.",
                 "Shared source libraries require safe C# and exact reviewed literal NuGet package IDs/versions; unsupported dependencies block before NUnit planning.",
                 "Dynamic MSBuild, custom Compile items, unreviewed/dynamic dependencies, external references, cycles and nested project ownership fail closed.",
                 "DeclaredTests counts source NUnit methods, even when target generation was deferred; it never implies target tests were generated.",
