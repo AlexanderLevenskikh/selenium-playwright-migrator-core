@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string SolutionArtifactName = "Migrator.Generated.slnx";
     private const string SolutionManifestName = "migrator-solution-manifest.json";
-    private const string SolutionSchema = "migrator-target-solution/v1alpha1";
+    private const string SolutionSchema = "migrator-target-solution/v1alpha2";
     private const int SolutionProjectLimit = 20;
     private const int SolutionFileLimit = 256;
     private const long SolutionBytesLimit = 24 * 1024 * 1024;
@@ -28,7 +28,8 @@ public sealed partial class MigrationEngine
         string Kind,
         string[] Sources,
         string[] References,
-        TargetAssemblyPlan? NUnitPlan);
+        TargetAssemblyPlan? NUnitPlan,
+        TargetSolutionPackage[] Packages);
 
     /// <summary>
     /// Read-only complete graph planning. Every NUnit source project gets one
@@ -87,6 +88,7 @@ public sealed partial class MigrationEngine
         var byPath = new Dictionary<string, SourceSolutionNode>(
             StringComparer.OrdinalIgnoreCase);
         var byDirectory = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var reviewedPackages = TargetSolutionPackageReview.Read(configPath, issues);
         foreach (var project in projectPaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -204,37 +206,14 @@ public sealed partial class MigrationEngine
                                 "SetUpFixture")));
             }
             var kind = hasTests || hasScopes ? "nunit" : "library";
-            if (kind == "library"
-                && doc.Descendants().Any(node =>
-                    node.Name.LocalName is "PackageReference" or "Reference"
-                        or "FrameworkReference"))
-                issues.Add(new("SOLUTION_LIBRARY_PACKAGE_UNSUPPORTED", "error",
-                    "Shared source libraries with external package/assembly references require a reviewed target dependency profile.",
-                    relativeProject));
-
+            // Finish inexpensive, source-backed graph validation before any
+            // expensive Roslyn/NUnit target generation. Invalid solutions
+            // must fail quickly instead of repeatedly recompiling fixtures.
+            var packages = kind == "library"
+                ? TargetSolutionPackageReview.Validate(doc, relativeProject,
+                    reviewedPackages, issues)
+                : Array.Empty<TargetSolutionPackage>();
             TargetAssemblyPlan? nunit = null;
-            if (kind == "nunit" && files.Length > 0
-                && byDirectory.Count <= SolutionProjectLimit
-                && !projectPaths.Any(other => other != project &&
-                    PathInside(projectDir, Path.GetDirectoryName(other)!)))
-            {
-                try
-                {
-                    nunit = PlanTargetAssembly(projectDir, configPath,
-                        cancellationToken: cancellationToken);
-                    if (nunit.Status != "ready_for_build")
-                        issues.Add(new("SOLUTION_NUNIT_PROJECT_BLOCKED", "error",
-                            "The source NUnit assembly has incomplete source or scoped SetUpFixture evidence: "
-                            + string.Join(", ", nunit.Issues.Select(issue => issue.Code)),
-                            relativeProject));
-                }
-                catch (Exception ex)
-                {
-                    issues.Add(new("SOLUTION_NUNIT_PROJECT_FAILED", "error",
-                        "Source NUnit assembly cannot be planned: " + ex.GetType().Name,
-                        relativeProject));
-                }
-            }
             if (kind == "library")
             {
                 foreach (var file in files)
@@ -271,7 +250,7 @@ public sealed partial class MigrationEngine
                     relativeProject));
             byPath[project] = new SourceSolutionNode(project, relativeProject,
                 projectDir, relativeDir, assemblyName, kind,
-                files, references.ToArray(), nunit);
+                files, references.ToArray(), nunit, packages);
         }
 
         foreach (var node in byPath.Values)
@@ -318,6 +297,57 @@ public sealed partial class MigrationEngine
             issues.Add(new("SOLUTION_NUNIT_PROJECT_MISSING", "error",
                 "No source NUnit test project was found."));
 
+
+        foreach (var entry in reviewedPackages.Keys)
+            if (!byPath.Values.Any(node => string.Equals(
+                node.RelativeProject, entry, StringComparison.Ordinal)
+                && node.Kind == "library"))
+                issues.Add(new("SOLUTION_PACKAGE_REVIEW_PROFILE_INVALID", "error",
+                    "A reviewed package profile references an absent or non-library project.",
+                    entry));
+
+        // Two phases: first validate every source .csproj, NuGet review profile,
+        // project owner and graph edge. Only a globally safe graph may begin
+        // expensive Roslyn analysis, repeated fixture previews or assembly
+        // planning. This also produces useful blockers on large source trees
+        // that cannot currently be migrated.
+        if (!issues.Any(issue => issue.Severity == "error"))
+        {
+            foreach (var node in byPath.Values.Where(node =>
+                         node.Kind == "nunit")
+                     .OrderBy(node => node.RelativeProject, StringComparer.Ordinal)
+                     .ToArray())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var plan = PlanTargetAssembly(node.Directory, configPath,
+                        cancellationToken: cancellationToken);
+                    byPath[node.ProjectFile] = node with { NUnitPlan = plan };
+                    if (plan.Status != "ready_for_build")
+                        issues.Add(new("SOLUTION_NUNIT_PROJECT_BLOCKED", "error",
+                            "NUnit assembly has incomplete source or scoped "
+                            + "SetUpFixture evidence: "
+                            + string.Join(", ",
+                                plan.Issues.Select(issue => issue.Code)),
+                            node.RelativeProject));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    issues.Add(new("SOLUTION_NUNIT_PROJECT_FAILED", "error",
+                        "Source NUnit assembly cannot be planned: "
+                        + ex.GetType().Name, node.RelativeProject));
+                }
+            }
+        }
+        else
+        {
+            issues.Add(new("SOLUTION_NUNIT_PLANNING_DEFERRED", "warning",
+                "Source graph already has blocking errors; expensive NUnit "
+                + "candidate generation was not run, and no runnable NUnit "
+                + "target files were produced."));
+        }
+
         var plannedFiles = new List<TargetSolutionFile>();
         var projects = new List<TargetSolutionProject>();
         foreach (var node in byPath.Values.OrderBy(node =>
@@ -354,7 +384,8 @@ public sealed partial class MigrationEngine
                 targetFile, node.AssemblyName,
                 node.Kind, dependencies, node.NUnitPlan?.DeclaredTests ?? 0,
                 node.NUnitPlan?.ScopedSetUpFixtures ?? 0,
-                node.NUnitPlan?.AnalysisId, node.NUnitPlan?.CandidateId));
+                node.NUnitPlan?.AnalysisId, node.NUnitPlan?.CandidateId,
+                node.Packages));
         }
 
         // SLNX requires unique project display names within each solution
@@ -431,8 +462,8 @@ public sealed partial class MigrationEngine
             new[]
             {
                 "Each source NUnit project stays a separate target NUnit assembly; global SetUpFixtures do not cross ProjectReference boundaries.",
-                "Shared source libraries are copied only under the restricted target-safe SDK/no-package subset and retain separate project references.",
-                "Dynamic MSBuild, custom Compile items, PackageReference-heavy libraries, external references, cycles and nested project ownership fail closed.",
+                "Shared source libraries require safe C# and exact reviewed literal NuGet package IDs/versions; unsupported dependencies block before NUnit planning.",
+                "Dynamic MSBuild, custom Compile items, unreviewed/dynamic dependencies, external references, cycles and nested project ownership fail closed.",
                 "Ready for build is source closure evidence, not compilation or business behavior.",
                 "dotnet build and NUnit runtime require explicit opt-in and are reported separately."
             });
@@ -505,6 +536,15 @@ public sealed partial class MigrationEngine
             lines.Add("    <PackageReference Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.14.1\" />");
             lines.Add("    <PackageReference Include=\"NUnit3TestAdapter\" Version=\"4.5.0\" />");
             lines.Add("    <PackageReference Include=\"NUnit\" Version=\"3.14.0\" />");
+            lines.Add("  </ItemGroup>");
+        }
+        if (node.Kind == "library" && node.Packages.Length > 0)
+        {
+            lines.Add("  <ItemGroup>");
+            foreach (var package in node.Packages)
+                lines.Add("    <PackageReference Include=\\\"" + SecurityElement.Escape(
+                    package.Id) + "\\" Version=\\\"" + SecurityElement.Escape(
+                    package.Version) + "\\" />");
             lines.Add("  </ItemGroup>");
         }
         lines.Add("  <ItemGroup>");
