@@ -542,9 +542,9 @@ public sealed partial class MigrationEngine
         {
             lines.Add("  <ItemGroup>");
             foreach (var package in node.Packages)
-                lines.Add("    <PackageReference Include=\\\"" + SecurityElement.Escape(
-                    package.Id) + "\\" Version=\\\"" + SecurityElement.Escape(
-                    package.Version) + "\\" />");
+                lines.Add("    <PackageReference Include=\"" + SecurityElement.Escape(
+                    package.Id) + "\" Version=\"" + SecurityElement.Escape(
+                    package.Version) + "\" />");
             lines.Add("  </ItemGroup>");
         }
         lines.Add("  <ItemGroup>");
