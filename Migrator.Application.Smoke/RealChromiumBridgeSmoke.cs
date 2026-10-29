@@ -139,6 +139,7 @@ internal static class RealChromiumBridgeSmoke
                 </Project>
                 """);
 
+            Console.WriteLine("REAL_BROWSER_STAGE=compile_target");
             var build = RunProcess("dotnet",
                 ["build", Path.Combine(target, "RealBrowser.csproj"),
                     "-c", "Release", "--verbosity", "quiet"],
@@ -150,6 +151,7 @@ internal static class RealChromiumBridgeSmoke
                 "net10.0", "playwright.ps1");
             Check(File.Exists(installer),
                 "Playwright NuGet generated install helper is missing.");
+            Console.WriteLine("REAL_BROWSER_STAGE=install_chromium");
             var install = RunProcess("pwsh",
                 [installer, "install", "chromium"], target,
                 TimeSpan.FromMinutes(8));
@@ -166,6 +168,7 @@ internal static class RealChromiumBridgeSmoke
                 Directory.CreateDirectory(artifacts);
                 Directory.CreateDirectory(trxDir);
 
+                Console.WriteLine("REAL_BROWSER_STAGE=run_" + scenario);
                 var test = RunProcess("dotnet",
                     ["test", Path.Combine(target, "RealBrowser.csproj"),
                         "-c", "Release", "--no-build", "--no-restore",
@@ -310,8 +313,16 @@ internal static class RealChromiumBridgeSmoke
         if (!process.WaitForExit((int)timeout.TotalMilliseconds))
         {
             process.Kill(entireProcessTree: true);
+            process.WaitForExit(5000);
+            var partialStdout = output.IsCompletedSuccessfully
+                ? output.GetAwaiter().GetResult() : "";
+            var partialStderr = error.IsCompletedSuccessfully
+                ? error.GetAwaiter().GetResult() : "";
+            var partial = partialStdout + "\n" + partialStderr;
             throw new InvalidOperationException(
-                "REAL_CHROMIUM_PROCESS_TIMEOUT: " + program);
+                "REAL_CHROMIUM_PROCESS_TIMEOUT: " + program + " "
+                + string.Join(" ", args)
+                + " output=" + partial[^Math.Min(1800, partial.Length)..]);
         }
         var body = output.GetAwaiter().GetResult() + "\n"
             + error.GetAwaiter().GetResult();
