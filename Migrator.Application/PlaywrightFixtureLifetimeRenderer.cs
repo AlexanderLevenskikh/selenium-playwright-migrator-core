@@ -22,8 +22,16 @@ internal static class PlaywrightFixtureLifetimeRenderer
                 !SyntaxFacts.IsValidIdentifier(identifier)))
             throw new InvalidOperationException(
                 "PLAYWRIGHT_LIFETIME_UNSAFE_TARGET_IDENTIFIERS");
-        if (identifiers.Distinct(StringComparer.Ordinal).Count() <
-            identifiers.Length)
+        // C# member names must be unique only *within the same class*.
+        // A valid nested SetUpFixture may define End() while its enclosing
+        // abstract fixture has its own End() teardown method. Conflating
+        // these two independent scopes caused an unnecessary MCP review error.
+        if (baseName == nestedName ||
+            new[] { once, after, onceAfter }.Distinct(
+                StringComparer.Ordinal).Count() != 3 ||
+            new[] { once, after, onceAfter }.Contains(baseName,
+                StringComparer.Ordinal) ||
+            nestedAfter == nestedName)
             throw new InvalidOperationException(
                 "PLAYWRIGHT_LIFETIME_TARGET_NAME_COLLISION");
 
