@@ -78,7 +78,8 @@ internal static class NUnitScopedSetUpInspector
                     "Stateful source SetUpFixture has fields/properties not automatically portable to target scope.");
 
             var inherited = NUnitLifecycleInspector.Inspect(
-                declaration, model, compilation, parseActions);
+                declaration, model, compilation, parseActions,
+                allowUnpairedScopedOneTimeTearDown: true);
             var hooks = inherited?.Hooks
                 .OrderBy(hook => hook.InheritanceLevel)
                 .ThenBy(hook => hook.SourcePath, StringComparer.Ordinal)
