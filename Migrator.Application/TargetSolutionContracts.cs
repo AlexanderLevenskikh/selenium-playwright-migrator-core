@@ -2,6 +2,8 @@ namespace Migrator.Application;
 
 /// <summary>One target assembly. Each NUnit test project keeps its own
 /// global and namespace SetUpFixture scope; library projects are independent.</summary>
+public sealed record TargetSolutionPackage(string Id, string Version);
+
 public sealed record TargetSolutionProject(
     string SourceProject,
     string ProjectFile,
@@ -11,7 +13,8 @@ public sealed record TargetSolutionProject(
     int DeclaredTests,
     int ScopedSetUpFixtures,
     string? AnalysisId,
-    string? CandidateId);
+    string? CandidateId,
+    IReadOnlyList<TargetSolutionPackage>? PackageReferences = null);
 
 public sealed record TargetSolutionFile(
     string RelativePath,
