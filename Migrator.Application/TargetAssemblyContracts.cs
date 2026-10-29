@@ -17,6 +17,12 @@ public sealed record TargetAssemblyIssue(
     string Explanation,
     string? SourcePath = null);
 
+public sealed record TargetAssemblySchedulingSource(
+    string SourcePath,
+    int SourceLine,
+    string SourceExpression,
+    string TargetExpression);
+
 public sealed record TargetAssemblyPlan(
     string SchemaVersion,
     string SourceRoot,
@@ -32,7 +38,8 @@ public sealed record TargetAssemblyPlan(
     int ScopedSetUpFixtures,
     IReadOnlyList<TargetAssemblyFile> Files,
     IReadOnlyList<TargetAssemblyIssue> Issues,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations,
+    IReadOnlyList<TargetAssemblySchedulingSource>? AssemblyScheduling = null);
 
 /// <summary>
 /// Stage-specific evidence. An NUnit run is reported only after dotnet test
