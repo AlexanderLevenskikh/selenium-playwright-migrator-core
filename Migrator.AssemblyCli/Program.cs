@@ -35,6 +35,8 @@ if (args.Length >= 5 && args[0] == "pom-plan")
             }),
             plan.Blockers, plan.RuntimeVerified,
             plan.CanAutoApply,
+            adapterCandidate = emit && plan.Status == "requires_review"
+                ? plan.AdapterCandidate : null,
             targetStatements = emit && plan.Status == "requires_review"
                 ? plan.TargetStatements : Array.Empty<string>()
         };
