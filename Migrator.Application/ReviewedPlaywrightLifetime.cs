@@ -194,7 +194,7 @@ public sealed partial class MigrationEngine
                 Block("PLAYWRIGHT_LIFETIME_SOURCE_CLASS_SHAPE_UNSAFE",
                     "Only a unique public, abstract, non-generic source base "
                     + "and public nested cleanup type can be rendered.");
-            else if (!fixtureBaseType.Contains('.', StringComparison.Ordinal))
+            else if (!fixtureBaseType.Contains(".", StringComparison.Ordinal))
                 Block("PLAYWRIGHT_LIFETIME_NAMESPACE_REQUIRED",
                     "A source namespace is needed to preserve the nested NUnit cleanup scope.");
             else
