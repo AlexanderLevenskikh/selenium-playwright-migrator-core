@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string TargetAssemblyProjectName = "Migrator.Generated.Tests.csproj";
     private const string TargetAssemblyManifestName = "migrator-assembly-manifest.json";
-    private const string TargetAssemblySchema = "migrator-target-assembly/v1alpha1";
+    private const string TargetAssemblySchema = "migrator-target-assembly/v1alpha2";
     private const int MaximumAssemblyFiles = 128;
 
     /// <summary>
@@ -67,6 +67,21 @@ public sealed partial class MigrationEngine
                     "Source file was not safely parsed: " + survey.Disposition,
                     survey.RelativePath));
         }
+
+        // Assembly attributes may be declared in a source file with no
+        // [Test] methods. A per-test preview silently omits that file;
+        // inspect the complete project source set before creating its exact
+        // target assembly and retain source-path/line evidence.
+        var scheduling = NUnitAssemblySchedulingInspector.Inspect(
+            Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
+                .Where(path => !SolutionExcluded(path, root))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .Select(path => (SourcePath: Path.GetRelativePath(root, path)
+                        .Replace('\\', '/'),
+                    Root: (Microsoft.CodeAnalysis.SyntaxNode)CSharpSyntaxTree
+                        .ParseText(File.ReadAllText(path), path: path).GetRoot())));
+        issues.AddRange(scheduling.Issues);
+        var assemblySchedulingSource = scheduling.RenderTarget();
 
         if (preview.Files.Count == 0 || preview.Files.Count > MaximumAssemblyFiles)
             issues.Add(new("TARGET_FILE_SET_INVALID", "error",
@@ -171,17 +186,30 @@ public sealed partial class MigrationEngine
             }
         }
 
-        var targetNames = preview.Files.Select(file => file.RelativePath).ToArray();
+        var targetNames = preview.Files.Select(file => file.RelativePath)
+            .Concat(assemblySchedulingSource == null
+                ? Array.Empty<string>()
+                : new[] { NUnitAssemblySchedulingResult.GeneratedFileName })
+            .ToArray();
         if (targetNames.Distinct(StringComparer.OrdinalIgnoreCase).Count() != targetNames.Length
             || targetNames.Any(name => !ValidTargetAssemblyPath(name)))
             issues.Add(new("TARGET_FILE_NAME_COLLISION", "error",
                 "Every source file must map to one safe, uniquely named target file."));
 
-        var csharp = preview.Files
-            .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
+        var csharpSources = preview.Files
             .Select(file => new TargetAssemblyFile(file.RelativePath,
                 file.Content, HashAssemblyText(file.Content), file.SourcePath))
-            .ToArray();
+            .ToList();
+        if (assemblySchedulingSource != null)
+            csharpSources.Add(new TargetAssemblyFile(
+                NUnitAssemblySchedulingResult.GeneratedFileName,
+                assemblySchedulingSource, HashAssemblyText(assemblySchedulingSource),
+                null));
+        var csharp = csharpSources.OrderBy(file => file.RelativePath,
+            StringComparer.Ordinal).ToArray();
+        if (csharp.Length > MaximumAssemblyFiles)
+            issues.Add(new("TARGET_FILE_SET_INVALID", "error",
+                "NUnit assembly plus scheduling sources exceed 128 C# files."));
         var projectContent = RenderAssemblyProject(csharp.Select(file => file.RelativePath));
         var projectFile = new TargetAssemblyFile(TargetAssemblyProjectName,
             projectContent, HashAssemblyText(projectContent), null);
@@ -195,6 +223,13 @@ public sealed partial class MigrationEngine
             previewTargetTreeHash = preview.TargetTreeHash,
             projectFile = TargetAssemblyProjectName,
             declaredTests = analysis.DeclaredTests,
+            assemblyScheduling = scheduling.Attributes.Select(attribute => new
+            {
+                attribute.SourcePath,
+                attribute.SourceLine,
+                attribute.SourceExpression,
+                attribute.TargetExpression
+            }),
             sourceProject = projects.Length == 1 ? Path.GetFileName(projects[0]) : null,
             files = csharp.Append(projectFile)
                 .OrderBy(file => file.RelativePath, StringComparer.Ordinal)
@@ -237,6 +272,7 @@ public sealed partial class MigrationEngine
                 "One original source SDK-style project is required; dynamic MSBuild item conditions and external suite dependencies are not fully evaluated.",
                 "Playwright/NUnit package versions are fixed for reproducible target compilation.",
                 "Scoped SetUpFixtures execute once per target assembly; per-suite namespace, state and failure-path semantics require runtime verification.",
+                "Source-attested assembly NUnit scheduling attributes are copied into a separate compile-listed file; actual parallel execution still requires runtime review.",
                 "Target test execution is opt-in, never performed by a read-only plan."
             });
     }
