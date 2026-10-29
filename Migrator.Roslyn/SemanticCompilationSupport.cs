@@ -108,8 +108,18 @@ internal static class SemanticCompilationSupport
                 {
                     void Click();
                     void SendKeys(string text);
+                    void Clear();
+                    string Text { get; }
+                    bool Displayed { get; }
                     IWebElement FindElement(By by);
+                    System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> FindElements(By by);
+                    INavigation Navigate();
                 }
+                public interface INavigation
+                {
+                    void GoToUrl(string url);
+                }
+                
                 """);
         }
 
@@ -122,6 +132,14 @@ internal static class SemanticCompilationSupport
                     IWebElement FindElement(By by);
                 }
                 """);
+        }
+
+        if (compilation.GetTypeByMetadataName("OpenQA.Selenium.Support.UI.WebDriverWait") == null)
+        {
+            // The compile-only anchor is not evidence that Selenium.Support
+            // is restored by a real customer project. Projected wait clauses
+            // still require a reviewed target and runtime comparison.
+            // Namespace is separate, so emitted below as a second namespace.
         }
 
         if (compilation.GetTypeByMetadataName("OpenQA.Selenium.Keys") == null)
@@ -140,9 +158,22 @@ internal static class SemanticCompilationSupport
         if (declarations.Count == 0)
             return string.Empty;
 
-        return "#nullable enable\nnamespace OpenQA.Selenium\n{\n"
+        var body = "#nullable enable\nnamespace OpenQA.Selenium\n{\n"
             + string.Join("\n", declarations.Select(Indent))
             + "\n}\n";
+        if (compilation.GetTypeByMetadataName("OpenQA.Selenium.Support.UI.WebDriverWait") == null)
+            body += """
+                namespace OpenQA.Selenium.Support.UI
+                {
+                    public sealed class WebDriverWait
+                    {
+                        public WebDriverWait(OpenQA.Selenium.IWebDriver driver, System.TimeSpan timeout) {}
+                        public TResult Until<TResult>(System.Func<OpenQA.Selenium.IWebDriver, TResult> condition)
+                            => default!;
+                    }
+                }
+                """;
+        return body;
     }
 
     static string BuildMissingNUnitAnchors(CSharpCompilation compilation)
