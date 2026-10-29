@@ -266,3 +266,54 @@ regressions cover the extra diagnostics, genuine declared method counts,
 source hash safety and ordinary generated NUnit assembly behavior.
 These gates preserve source/test safety; they do **not** automatically migrate
 customer hooks, data providers, browser state or test concurrency.
+
+## Preview.22 — explicit entry-project scope and dependency closure
+
+A large SDK source graph may include independent API test assemblies, code
+generators or tools that are **not** part of the requested UI migration. Set
+\`TargetSolutionEntryProjects\` in the same adapter JSON to select one or more
+**NUnit entry projects** explicitly. Only the selected entry projects and
+**all reachable literal in-root ProjectReference dependencies** are planned;
+nothing is inferred or silently dropped:
+
+\`\`\`json
+{
+  "SourceProjectName": "Synthetic",
+  "TargetSolutionEntryProjects": ["UiTests/UiTests.csproj"],
+  "TargetSolutionReviewedPackages": [
+    {
+      "SourceProject": "Shared/Shared.csproj",
+      "Reviewed": true,
+      "Packages": [
+        { "Id": "System.Collections.Immutable", "Version": "9.0.0" }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+The library list is illustrative, **not automatically approved**. Entry paths
+must be unique, exact, normalized source-relative .csproj paths, and each
+entry must own NUnit tests or a source-backed SetUpFixture. The scope closure
+is computed from literal ProjectReference edges. Missing/dynamic/external
+dependencies fail closed. Referencing another test assembly pulls that project
+into scope and still fails the test-to-test reference rule. Nested projects
+and multiple project files in an included project's source directory remain
+blocked even when the nested/sibling project is excluded, because SDK default
+Compile globs make ownership ambiguous.
+
+The v1alpha4 plan includes \`scope.explicit\`, \`entryProjects\`,
+\`includedProjects\` and \`excludedProjects\`, and an
+\`SOLUTION_SCOPE_EXCLUDED_PROJECTS\` warning. Excluded NUnit tests are **not
+migrated or counted**. The content-addressed plan manifest includes the
+scope; changing the adapter invalidates plan and verification IDs. The
+source-tree hash continues to cover the original full workspace for
+conservative provenance, including excluded files. An explicit scope can
+contain one to twenty projects; the implicit whole-solution mode retains
+its original 2–20 project requirement and behavior.
+
+A synthetic regression runs a *real* independently generated scoped NUnit
+assembly with 2/2 tests and a separate full 3/3 solution. It verifies target
+.csproj/.slnx closure, omitted assembly/global SetUpFixture exclusion,
+missing/invalid entries and reachable test-to-test references. A real
+product's behavior, external APIs, auth and browser UI remain unverified.

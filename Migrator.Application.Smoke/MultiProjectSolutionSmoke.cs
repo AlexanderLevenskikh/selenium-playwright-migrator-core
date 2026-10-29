@@ -192,6 +192,101 @@ internal static class MultiProjectSolutionSmoke
                 && reread.TargetTreeHash == plan.TargetTreeHash,
                 "read-only verification cannot claim runtime by inheriting a prior run");
 
+            // A migration entry selects the UI NUnit project and its complete
+            // two-library transitive dependency closure. The unrelated test
+            // assembly and its global SetUpFixture must NOT be migrated,
+            // and their omission must be explicit in the plan/manifest.
+            var scopedConfigPath = Path.Combine(parent, "scoped-adapter.json");
+            var scopedConfig = JsonNode.Parse(File.ReadAllText(configPath))!.AsObject();
+            scopedConfig["TargetSolutionEntryProjects"] =
+                JsonSerializer.SerializeToNode(new[] { "TestsA/TestsA.csproj" });
+            File.WriteAllText(scopedConfigPath, scopedConfig.ToJsonString());
+            var selected = engine.PlanTargetSolution(source, scopedConfigPath);
+            Check(selected.Status == "ready_for_build"
+                && selected.Scope is {
+                    Explicit: true,
+                    EntryProjects.Count: 1,
+                    IncludedProjects.Count: 3,
+                    ExcludedProjects.Count: 1
+                }
+                && selected.Scope.EntryProjects[0] == "TestsA/TestsA.csproj"
+                && selected.Scope.ExcludedProjects[0] == "TestsB/TestsB.csproj"
+                && selected.Projects.Count == 3
+                && selected.Projects.Sum(p => p.DeclaredTests) == 2
+                && selected.Projects.Where(p => p.Kind == "nunit")
+                    .All(p => p.SourceProject == "TestsA/TestsA.csproj")
+                && selected.Files.All(file => !file.RelativePath.StartsWith(
+                    "TestsB/", StringComparison.Ordinal))
+                && selected.Files.Single(file =>
+                    file.RelativePath == selected.ManifestFile).Content
+                    .Contains("excludedProjects", StringComparison.OrdinalIgnoreCase)
+                && selected.PlanId != plan.PlanId
+                && selected.SourceTreeHash == plan.SourceTreeHash,
+                "project scope must include all dependencies, reveal omissions, "
+                + "keep original source hash, and exclude unrelated NUnit assembly");
+
+            var scopedTarget = Path.Combine(parent, "scoped-target");
+            var scopedExecuted = engine.MaterializeTargetSolution(
+                source, scopedTarget, selected.SourceTreeHash, selected.PlanId,
+                scopedConfigPath, runBuild: true, runNUnit: true);
+            Check(scopedExecuted.Completeness.Status == "passed"
+                && scopedExecuted.Build.Status == "passed"
+                && scopedExecuted.NUnitRuntime.Status == "passed"
+                && scopedExecuted.NUnitRuntime.ExecutedTests == 2
+                && scopedExecuted.NUnitRuntime.PassedTests == 2
+                && scopedExecuted.ProjectExecutions.Count == 1,
+                "selected NUnit assembly must independently build and execute "
+                + "2/2 tests; unrelated test project must not execute");
+
+            var selectedVerification = engine.VerifyTargetSolution(source,
+                scopedTarget, selected.SourceTreeHash, selected.PlanId,
+                scopedConfigPath);
+            Check(selectedVerification.Completeness.Status == "passed"
+                && selectedVerification.Build.Status == "not_run"
+                && selectedVerification.NUnitRuntime.Status == "not_run",
+                "read-only scoped verification cannot inherit runtime evidence");
+
+            // Adding another test project as a transitive dependency must
+            // re-include it (and then reject a test-to-test reference), not
+            // let explicit scope erase the edge or global SetUpFixture.
+            var originalTestsA = File.ReadAllText(Path.Combine(
+                source, "TestsA/TestsA.csproj"));
+            Put("TestsA/TestsA.csproj", originalTestsA.Replace(
+                "</ItemGroup>", "  <ProjectReference Include=\"../TestsB/TestsB.csproj\" />\n</ItemGroup>",
+                StringComparison.Ordinal));
+            var contaminated = engine.PlanTargetSolution(source, scopedConfigPath);
+            Check(contaminated.Status == "blocked"
+                && contaminated.Scope!.IncludedProjects.Count == 4
+                && contaminated.Scope.ExcludedProjects.Count == 0
+                && contaminated.Issues.Any(issue =>
+                    issue.Code == "SOLUTION_REFERENCE_TO_TEST_ASSEMBLY"),
+                "scope must reinclude and reject reachable NUnit test dependencies");
+            Put("TestsA/TestsA.csproj", originalTestsA);
+
+            // Unknown, invalid, empty or library-only entry definitions are
+            // errors, never implicit permission to migrate everything.
+            void ScopedNegative(string[] projects, string expected)
+            {
+                var changed = JsonNode.Parse(
+                    File.ReadAllText(scopedConfigPath))!.AsObject();
+                changed["TargetSolutionEntryProjects"] =
+                    JsonSerializer.SerializeToNode(projects);
+                File.WriteAllText(scopedConfigPath, changed.ToJsonString());
+                var result = engine.PlanTargetSolution(source, scopedConfigPath);
+                Check(result.Status == "blocked"
+                    && result.Issues.Any(issue => issue.Code == expected),
+                    "invalid entry list must fail closed: " + expected);
+            }
+            ScopedNegative(new[] { "../outside/Other.csproj" },
+                "SOLUTION_SCOPE_CONFIG_INVALID");
+            ScopedNegative(Array.Empty<string>(),
+                "SOLUTION_SCOPE_CONFIG_INVALID");
+            ScopedNegative(new[] { "TestsC/Unknown.csproj" },
+                "SOLUTION_SCOPE_ENTRY_MISSING");
+            ScopedNegative(new[] { "Foundation/Foundation.csproj" },
+                "SOLUTION_SCOPE_ENTRY_NOT_TEST_PROJECT");
+            File.WriteAllText(scopedConfigPath, scopedConfig.ToJsonString());
+
             void NegativeFile(string relative)
             {
                 var path = Path.Combine(target, relative.Replace('/',
