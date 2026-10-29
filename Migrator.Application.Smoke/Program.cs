@@ -10,6 +10,7 @@ if (args.Contains("--project-assembly-only", StringComparer.Ordinal))
     ProjectTargetAssemblySmoke.Run();
     NestedNUnitCleanupReviewSmoke.Run();
     ReviewedPlaywrightLifetimeSmoke.Run();
+    ConcretePlaywrightDiBridgeSmoke.Run();
     Console.WriteLine("Generated NUnit target assembly build and runtime smoke passed.");
     return;
 }
