@@ -287,7 +287,7 @@ def main():
             default_redacted = jrun(["dotnet", cli, "pom-plan", source_dir,
                                       "CatalogPage", "InputAndSelect", h], repo)
             check(default_redacted["targetStatements"] == []
-                  and "targetStatement" not in json.dumps(default_redacted)
+                  and all("targetStatement" not in action for action in default_redacted["actions"])
                   and "[data-test='option']" not in json.dumps(default_redacted)
                   and "[id=\\\"picker\\\"]" not in json.dumps(default_redacted),
                   "Default read-only Core CLI leaked target locator literals.")
