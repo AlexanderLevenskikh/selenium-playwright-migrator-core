@@ -325,7 +325,7 @@ internal static class RealChromiumBridgeSmoke
                 "REAL_CHROMIUM_SMOKE: " + why);
     }
 
-    private const string BrowserFixtureSource = """
+    private const string BrowserFixtureSource = """"
 using System;
 using System.IO;
 using System.Net;
@@ -487,5 +487,5 @@ public sealed class SecondFixture : FixtureBase
         await page.EvaluateAsync("console.error('synthetic-console-B')");
     }
 }
-""";
+"""";
 }
