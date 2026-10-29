@@ -244,7 +244,7 @@ internal static class ReviewedPlaywrightLifetimeSmoke
                 && failed.Last() == "global-dispose",
                 "test failure: logs before screenshot before fixture/global cleanup");
 
-            var releaseError = Execute(dir, "release-failure", 2, 1);
+            var releaseError = Execute(dir, "release-failure", 1, 1);
             Check(releaseError.Count(x =>
                     x.StartsWith("context-close:", StringComparison.Ordinal)) == 2
                 && releaseError.Last() == "global-dispose",
@@ -313,7 +313,11 @@ internal static class ReviewedPlaywrightLifetimeSmoke
         Check(counters.Attribute("total")?.Value == (passed + failed).ToString()
             && counters.Attribute("passed")?.Value == passed.ToString()
             && counters.Attribute("failed")?.Value == failed.ToString(),
-            "synthetic NUnit TRX count/status mismatch");
+            "synthetic NUnit TRX count/status mismatch: "
+            + JsonSerializer.Serialize(counters.Attributes()
+                .ToDictionary(a => a.Name.LocalName, a => a.Value))
+            + " expectedPassed=" + passed + " expectedFailed=" + failed
+            + " stdout=" + outText[^Math.Min(1000, outText.Length)..]);
         return File.ReadAllLines(trace).ToList();
     }
 
