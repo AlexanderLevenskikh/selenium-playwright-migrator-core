@@ -61,6 +61,16 @@ internal static class ProjectTargetAssemblySmoke
                     }
                 }
                 """);
+            WriteSource("SiblingCleanup.cs", """
+                using NUnit.Framework;
+                namespace DemoElse {
+                    [SetUpFixture] public class SiblingCleanup {
+                        [OneTimeTearDown] public void After() {
+                            Recorder.CleanupOnly();
+                        }
+                    }
+                }
+                """);
             WriteSource("SiblingTests.cs", """
                 using NUnit.Framework;
                 namespace DemoElse {
@@ -116,10 +126,16 @@ internal static class ProjectTargetAssemblySmoke
                     "NUnit.Framework.Assert.That(System.AppContext.GetData(\"childEnd\"), NUnit.Framework.Is.EqualTo(true));",
                     "System.AppContext.SetData(\"parentEnd\", true);"
                 },
+                ["Recorder.CleanupOnly()"] = new[]
+                {
+                    "NUnit.Framework.Assert.That(System.AppContext.GetData(\"siblingDone\"), NUnit.Framework.Is.EqualTo(true));",
+                    "System.AppContext.SetData(\"siblingCleaned\", true);"
+                },
                 ["Recorder.GlobalEnd()"] = new[]
                 {
                     "NUnit.Framework.Assert.That(System.AppContext.GetData(\"parentEnd\"), NUnit.Framework.Is.EqualTo(true));",
                     "NUnit.Framework.Assert.That(System.AppContext.GetData(\"siblingDone\"), NUnit.Framework.Is.EqualTo(true));",
+                    "NUnit.Framework.Assert.That(System.AppContext.GetData(\"siblingCleaned\"), NUnit.Framework.Is.EqualTo(true));",
                     "System.AppContext.SetData(\"globalEnd\", true);"
                 }
             };
@@ -144,17 +160,17 @@ internal static class ProjectTargetAssemblySmoke
             var engine = new MigrationEngine();
             var plan = engine.PlanTargetAssembly(source, configPath);
             Check(plan.Status == "ready_for_build"
-                && plan.ScopedSetUpFixtures == 3 && plan.DeclaredTests == 3
-                && plan.Files.Count == 8,
-                "one target assembly must contain all 6 generated C# sources, one .csproj and one manifest");
+                && plan.ScopedSetUpFixtures == 4 && plan.DeclaredTests == 3
+                && plan.Files.Count == 9,
+                "one target assembly must contain all 7 generated C# sources, one .csproj and one manifest");
             var project = plan.Files.Single(file =>
                 file.RelativePath == plan.ProjectFile).Content;
             Check(project.Contains("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>",
-                StringComparison.Ordinal) && Occurrences(project, "<Compile Include=") == 6,
+                StringComparison.Ordinal) && Occurrences(project, "<Compile Include=") == 7,
                 "target .csproj must list every generated file with no implicit glob");
             Check(plan.Files.Count(file => file.Content.Contains("[SetUpFixture]",
-                StringComparison.Ordinal)) == 3,
-                "all three SetUpFixtures must be included in one target assembly");
+                StringComparison.Ordinal)) == 4,
+                "all four SetUpFixtures must remain in their source namespace scopes");
             Check(plan.Files.Single(file => file.RelativePath == "SiblingTestsPlaywright.cs")
                     .Content.Contains("namespace DemoElse;", StringComparison.Ordinal),
                 "a similarly named sibling namespace cannot inherit Demo scope");
