@@ -34,7 +34,8 @@ public sealed record ReviewedPlaywrightLifetimePlan(
     bool BehavioralEquivalenceVerified,
     string SourceNUnitRuntime, string TargetBuild,
     string TargetNUnitRuntime, string BrowserE2E,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations,
+    ReviewedPlaywrightLifetimeCandidate? ConcreteBridge = null);
 
 /// <summary>
 /// Review only. Maps every observed lifecycle side effect to one of a
@@ -173,6 +174,7 @@ public sealed partial class MigrationEngine
         var methods = infrastructure.Methods;
 
         ReviewedPlaywrightLifetimeCandidate? candidate = null;
+        ReviewedPlaywrightLifetimeCandidate? concreteBridge = null;
         if (issues.Count == 0)
         {
             var sourceBase = FindSourceType(root, fixtureBaseType,
@@ -214,10 +216,18 @@ public sealed partial class MigrationEngine
                     Block("PLAYWRIGHT_LIFETIME_TARGET_SYNTAX_INVALID",
                         "The generated typed C# bridge did not parse.");
                 else
+                {
                     candidate = new ReviewedPlaywrightLifetimeCandidate(
                         "Migrator.Generated.PlaywrightFixtureLifetime.cs",
                         code, HashLifetime(code), fixtureBaseType,
                         nestedCleanupType, infrastructureType);
+                    var concrete = ConcretePlaywrightDiBridgeRenderer.Render(
+                        namespaceName);
+                    concreteBridge = new ReviewedPlaywrightLifetimeCandidate(
+                        ConcretePlaywrightDiBridgeRenderer.FileName,
+                        concrete, HashLifetime(concrete), fixtureBaseType,
+                        nestedCleanupType, infrastructureType);
+                }
             }
         }
 
@@ -235,8 +245,10 @@ public sealed partial class MigrationEngine
                 "The source maps fixture scopes by NUnit class name and uses a pooled Selenium driver; Playwright Context.CloseAsync does not itself prove identical pooling.",
                 "Browser logs and screenshots must be observed after failed tests and before fixture scope release, including failure paths.",
                 "Global FullDispose remains on the original nested NUnit OneTimeTearDown owner. Do not hoist the hook or dispose the browser per test.",
-                "The code is a review-only candidate, not automatically materialized by PlanTargetSolution; runtime, browser and DI equivalence remain unverified."
-            });
+                "The code is a review-only candidate, not automatically materialized by PlanTargetSolution; runtime, browser and DI equivalence remain unverified.",
+                "The additional concrete, typed Playwright DI bridge requires explicit IServiceProvider/IBrowser configuration and NUnit method [Retry(N)] annotations. It is compiled in synthetic CI but is not a customer runtime approval.",
+                "The source custom retry listener may replay NUnit methods differently from standard [Retry]; do not infer equivalent setup/teardown/attempt counts without real source-target tests."
+            }, concreteBridge);
     }
 
     private static (ClassDeclarationSyntax? Type, int Count) FindSourceType(
