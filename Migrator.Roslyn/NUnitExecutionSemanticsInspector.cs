@@ -255,6 +255,24 @@ public static class NUnitExecutionSemanticsInspector
             return false;
         }
 
+        // A literal source is not side-effect-free if accessing its declaring
+        // type triggers a static constructor or unrelated static field
+        // initializers. Never execute them during read-only migration.
+        if (fixture.Members.OfType<ConstructorDeclarationSyntax>().Any(c =>
+                c.Modifiers.Any(SyntaxKind.StaticKeyword)))
+        {
+            problem = "Fixture static constructor may affect NUnit data-source discovery.";
+            return false;
+        }
+        var otherStaticInitializers = fixture.Members.OfType<FieldDeclarationSyntax>()
+            .Where(field => field.Modifiers.Any(SyntaxKind.StaticKeyword)
+                && field.Declaration.Variables.All(v => v.Identifier.ValueText != name))
+            .Any(field => field.Declaration.Variables.Any(v => v.Initializer != null));
+        if (otherStaticInitializers)
+        {
+            problem = "Unrelated static field initializers may affect NUnit data-source discovery.";
+            return false;
+        }
         ExpressionSyntax? initializer = null;
         var fields = fixture.Members.OfType<FieldDeclarationSyntax>()
             .Where(f => f.Declaration.Variables.Any(v => v.Identifier.ValueText == name))
@@ -312,7 +330,8 @@ public static class NUnitExecutionSemanticsInspector
                 values = b.Expressions;
             else if (row is ObjectCreationExpressionSyntax { ArgumentList: { } ctor }
                 && row is ObjectCreationExpressionSyntax obj
-                && obj.Type.ToString().Split('.').Last() == "TestCaseData"
+                && obj.Type.ToString().Replace("global::", "", StringComparison.Ordinal)
+                    == "NUnit.Framework.TestCaseData"
                 && obj.Initializer == null)
                 values = ctor.Arguments.Select(a => a.Expression)
                     .Aggregate(new SeparatedSyntaxList<ExpressionSyntax>(),
