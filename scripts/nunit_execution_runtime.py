@@ -198,6 +198,30 @@ def main():
                 directory, label + "_failure",
                 ["--filter", "FullyQualifiedName~Crash"])
             regular = observations[label + "_default"]
+            expected_states = {
+                "Ordinary": "Passed",
+                "Inline(1)": "Passed",
+                "Inline(2)": "Passed",
+                "SourceRows(5)": "Passed",
+                "SourceRows(6)": "Passed",
+                "Ignored": "NotExecuted",
+                "OptIn": "NotExecuted",
+                "Crash": "NotExecuted",
+                "GatedInline(3)": "NotExecuted",
+                "GatedInline(4)": "NotExecuted",
+            }
+            check(regular["trx"]["cases"] == expected_states,
+                  label + " default NUnit run-state differs: "
+                  + str(regular["trx"]["cases"]))
+            expected_skip_reasons = {
+                "Ignored": "synthetic maintenance",
+                "OptIn": "synthetic opt-in",
+                "Crash": "expected failure when selected",
+                "GatedInline(3)": "row maintenance",
+            }
+            for case_name, reason in expected_skip_reasons.items():
+                check(reason in regular["trx"]["details"][case_name],
+                      label + " NUnit TRX lost the disabled-case reason for " + case_name)
             check(regular["process"]["exit_code"] == 0,
                   label + " default run failed")
             check(regular["trx"]["counters"]["failed"] == 0,
