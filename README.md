@@ -401,3 +401,49 @@ observations are sent to GitHub/CI.
 **Remaining work:** reviewed browser-context/page binding to original DI,
 safe listener/retry replacement, teardown screenshot/log fidelity and
 independent failure-path NUnit + real product/browser execution.
+
+
+## Preview.25 — observed nested NUnit cleanup and source-bound review candidate
+
+A synthetic NUnit runtime probe runs **NUnit 3.14.0** and **NUnit
+4.3.2**, including unrelated and inherited fixtures in the same
+namespace plus a failing \`[OneTimeSetUp]\`. Both runtimes execute
+a nested \`[SetUpFixture]\` \`[OneTimeTearDown]\` once after the
+namespace tests; omitting it or treating it as a per-test TearDown
+would silently lose behavior. The probe never uses customer source.
+
+\`MigrationEngine.ReviewNestedNUnitCleanup(sourceDirectory, sourceType,
+expectedSourceTreeHash, targetStatements, sourceRuntimeEvidenceSha256?)\`
+returns a read-only, source-attested
+\`migrator-nunit-nested-cleanup-review/v1alpha1\` contract. Supported
+cases are strictly limited to a single public, non-generic nested
+\`[SetUpFixture]\` inside a public, non-generic owner, with exactly one
+parameter-free synchronous \`[OneTimeTearDown]\`, no state and only
+direct invocation statements. Callers must supply one explicitly
+reviewed target call per source call. Candidate C# **retains the
+original outer/nested type envelope and NUnit namespace**; it never
+automatically moves the hook to an assembly fixture or into a test's
+ordinary teardown. Source tree hash, method SHA-256, original namespace,
+owner, method name and target SHA-256 attest provenance.
+
+Missing mappings, changed source, arbitrary control flow,
+invalid/missing types, competing same-scope SetUpFixtures, extra
+lifecycle methods and unsafe target statements are blocked. A valid
+target artifact remains \`requires_review\`, with
+\`BehavioralEquivalenceVerified=false\` and source/target build,
+NUnit and browser observations all \`not_run\`. An optional external
+runtime evidence SHA-256 is only a caller-supplied provenance
+identifier — the reviewer cannot authenticate or execute that run.
+The normal solution planner does **not** automatically include this
+candidate or clear the nested-scope blocker.
+
+The synthetic Core smoke uses the actual API to generate the candidate,
+then independently \`dotnet test\`-executes original and target NUnit
+3/4 projects, comparing successful two-test scope cleanup and failed
+fixture \`OneTimeSetUp\` paths. These are framework-focused checks, not
+evidence for any private product's DI, pooled browser, screenshot,
+listener, logs or global resource lifetime. A privately reviewed
+\`FullDispose\` mapping and source/target NUnit+browser parity are
+required before integrating a real cleanup candidate into a target
+solution. **Never ship a guessed cleanup action merely to unblock
+generation.**

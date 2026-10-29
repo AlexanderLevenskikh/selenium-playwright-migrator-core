@@ -21,6 +21,8 @@ jobs:
         run: dotnet restore Migrator.Application.Smoke/Migrator.Application.Smoke.csproj
       - name: Build engine and smoke test
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: Observe synthetic NUnit 3 and NUnit 4 nested cleanup baseline
+        run: python3 scripts/nunit_nested_source_probe.py
       - name: Run Core smoke
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
       - name: Build dedicated project assembly CLI
