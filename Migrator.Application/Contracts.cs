@@ -3,8 +3,8 @@ namespace Migrator.Application;
 /// <summary>Public DTOs intentionally do not expose mutable Roslyn/renderer objects.</summary>
 public static class ContractVersions
 {
-    public const string Analysis = "migrator-analysis/v1alpha1";
-    public const string Preview = "migrator-preview/v1alpha1";
+    public const string Analysis = "migrator-analysis/v1alpha2";
+    public const string Preview = "migrator-preview/v1alpha2";
     public const string Explanation = "migrator-explanation/v1alpha1";
     public const string Verification = "migrator-verification/v1alpha1";
 }
