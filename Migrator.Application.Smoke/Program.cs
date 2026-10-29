@@ -88,6 +88,7 @@ try
     TableRowActionSmoke.Run();
     PomMethodLineageSmoke.Run();
     PomMappingReviewerSmoke.Run();
+    PomActionProjectionSmoke.Run();
     PomLoaderControlFlowSmoke.Run();
     PomSourceBoundRetrySmoke.Run();
     MappingLiteralRoundTripSmoke.Run();
