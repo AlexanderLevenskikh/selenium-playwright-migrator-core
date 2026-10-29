@@ -349,6 +349,7 @@ public class RecordedProxy : DispatchProxy
     public string Kind = "";
     public IBrowserContext? ContextObject;
     private EventHandler<IPage>? _page;
+    private EventHandler<IBrowserContext>? _close;
     private EventHandler<IConsoleMessage>? _console;
 
     public static T New<T>(string kind) where T : class
@@ -376,6 +377,12 @@ public class RecordedProxy : DispatchProxy
             case ("context", "remove_Page"):
                 _page -= (EventHandler<IPage>)args![0]!;
                 return null;
+            case ("context", "add_Close"):
+                _close += (EventHandler<IBrowserContext>)args![0]!;
+                return null;
+            case ("context", "remove_Close"):
+                _close -= (EventHandler<IBrowserContext>)args![0]!;
+                return null;
             case ("context", "NewPageAsync"):
                 if (Trace.Scenario == "page-failure"
                     && TestContext.CurrentContext.Test.ClassName?.Contains(
@@ -392,6 +399,7 @@ public class RecordedProxy : DispatchProxy
                 return Task.FromResult(page);
             case ("context", "CloseAsync"):
                 Trace.Note("context-close:" + Guid.NewGuid().ToString("N"));
+                _close?.Invoke(null, ContextObject!);
                 return Task.CompletedTask;
             case ("page", "get_Context"):
                 return ContextObject;
