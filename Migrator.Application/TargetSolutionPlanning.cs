@@ -205,11 +205,11 @@ public sealed partial class MigrationEngine
 
                 var methods = syntax.DescendantNodes()
                     .OfType<MethodDeclarationSyntax>().ToArray();
-                var NUnitTest(MethodDeclarationSyntax method) =>
+                bool IsNUnitTest(MethodDeclarationSyntax method) =>
                     method.AttributeLists.SelectMany(list => list.Attributes)
                         .Any(attr => AttributeMatches(attr,
                             "Test", "TestCase", "TestCaseSource"));
-                var count = methods.Count(NUnitTest);
+                var count = methods.Count(IsNUnitTest);
                 declaredTestMethods += count;
                 hasTests |= count > 0;
 
