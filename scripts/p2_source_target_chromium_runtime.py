@@ -283,10 +283,19 @@ def main():
                 check(plan["status"] == "requires_review"
                       and plan["sourceMethodSha256"]
                       and plan["targetStatements"], "No source-backed projection for " + method)
+                candidate = plan.get("adapterCandidate")
+                check(candidate is not None and candidate["requiresReview"]
+                      and candidate["sourceMethodSha256"] == plan["sourceMethodSha256"],
+                      method + " review-only adapter candidate is missing")
+                if method == "InputAndSelect":
+                    check(any("PressSequentiallyAsync({value})" in stmt
+                              for stmt in candidate["targetStatementTemplates"]),
+                          "ComboBox parameter binding was not preserved")
                 projections[method] = plan
             default_redacted = jrun(["dotnet", cli, "pom-plan", source_dir,
                                       "CatalogPage", "InputAndSelect", h], repo)
             check(default_redacted["targetStatements"] == []
+                  and default_redacted["adapterCandidate"] is None
                   and all("targetStatement" not in action for action in default_redacted["actions"])
                   and "[data-test='option']" not in json.dumps(default_redacted)
                   and "[id=\\\"picker\\\"]" not in json.dumps(default_redacted),
