@@ -53,7 +53,7 @@ def run(args, cwd, timeout=360):
                           text=True, timeout=timeout,
                           env=dict(os.environ, DOTNET_CLI_TELEMETRY_OPTOUT="1"))
     return {"exit_code": proc.returncode,
-            "stdout_tail": proc.stdout[-3000:],
+            "stdout_tail": proc.stdout[-25000:],
             "stderr_tail": proc.stderr[-2000:]}
 
 
@@ -160,10 +160,18 @@ def main():
         cli = root_repo / "Migrator.AssemblyCli" / "bin" / "Release" / "net10.0" / "Migrator.AssemblyCli.dll"
         check(cli.exists(), "Build Migrator.AssemblyCli before NUnit regression")
         generated = run(["dotnet", str(cli), "generate", str(projects["nunit3"]),
-                         str(target), "--config", str(config), "--build"],
+                         str(target), "--config", str(config), "--build", "--test"],
                         root_repo)
         check(generated["exit_code"] == 0,
-              "Synthetic target generation/build failed: " + str(generated))
+              "Synthetic target generation/build/NUnit failed: " + str(generated))
+        verification = json.loads(generated["stdout_tail"])
+        runtime = verification["nUnitRuntime"]
+        check(runtime["status"] == "passed"
+              and runtime["executedTests"] == 5
+              and runtime["passedTests"] == 5
+              and verification["status"] == "runtime_passed_review_required",
+              "Target assembly NUnit TRX gate mishandled ignored/explicit cases: "
+              + json.dumps(runtime, ensure_ascii=False))
         source_body = (target / "GateFixturePlaywright.cs")
         check(source_body.exists(), "Expected generated source missing")
         generated_text = source_body.read_text(encoding="utf-8")
