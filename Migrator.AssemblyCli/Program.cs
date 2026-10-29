@@ -5,11 +5,11 @@ using Migrator.Application;
 // --emit-target is explicit because templates can contain private selectors.
 if (args.Length >= 2 && args[0] == "pom-inspect")
 {
-    var source = new PomSourceInspector().Inspect(args[1]);
+    var pomInspection = new PomSourceInspector().Inspect(args[1]);
     Console.WriteLine(JsonSerializer.Serialize(new
     {
-        source.SchemaVersion, source.SourceTreeHash, source.InspectedFiles,
-        source.TotalLocatorMembers,
+        pomInspection.SchemaVersion, pomInspection.SourceTreeHash,
+        pomInspection.InspectedFiles, pomInspection.TotalLocatorMembers,
         runtime = "not_run"
     }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     return 0;
