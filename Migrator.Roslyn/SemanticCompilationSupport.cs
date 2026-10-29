@@ -112,14 +112,7 @@ internal static class SemanticCompilationSupport
                     string Text { get; }
                     bool Displayed { get; }
                     IWebElement FindElement(By by);
-                    System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> FindElements(By by);
-                    INavigation Navigate();
                 }
-                public interface INavigation
-                {
-                    void GoToUrl(string url);
-                }
-                
                 """);
         }
 
@@ -130,6 +123,19 @@ internal static class SemanticCompilationSupport
                 public interface IWebDriver
                 {
                     IWebElement FindElement(By by);
+                    System.Collections.ObjectModel.ReadOnlyCollection<IWebElement> FindElements(By by);
+                    INavigation Navigate();
+                }
+                """);
+        }
+
+        if (compilation.GetTypeByMetadataName("OpenQA.Selenium.INavigation") == null)
+        {
+            declarations.Add(
+                """
+                public interface INavigation
+                {
+                    void GoToUrl(string url);
                 }
                 """);
         }
