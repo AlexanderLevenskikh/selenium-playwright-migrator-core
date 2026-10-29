@@ -25,6 +25,12 @@ public sealed partial class MigrationEngine
         var beforeHash = HashScope(scope);
         var surveys = new List<FileSurvey>(files.Count);
         var allFindings = new List<MigrationFinding>();
+        // Include sibling source declarations so inherited NUnit gates cannot
+        // disappear when a fixture base is declared in another C# file.
+        // Parsing syntax trees has no user-code execution side effects.
+        var scopeRoots = files.Select(file =>
+            (Microsoft.CodeAnalysis.SyntaxNode)CSharpSyntaxTree.ParseText(
+                File.ReadAllText(file), path: file).GetRoot()).ToArray();
 
         foreach (var file in files)
         {
@@ -35,6 +41,8 @@ public sealed partial class MigrationEngine
             var disposition = "supported";
             var parsedCount = 0;
             var declaredCount = 0;
+            var nunitAttributes = new List<NUnitAttributeEvidence>();
+            var nunitCases = new List<NUnitCaseInventory>();
             try
             {
                 var text = File.ReadAllText(file);
@@ -82,7 +90,13 @@ public sealed partial class MigrationEngine
 
                     var existingFramework = SourceFrameworkGuard.Classify(
                         tree.GetRoot(), file, scope);
-                    var executionGates = NUnitExecutionGateGuard.Find(tree.GetRoot());
+                    var executionReview = NUnitExecutionSemanticsInspector.Inspect(tree.GetRoot(), scopeRoots);
+                    nunitAttributes.AddRange(executionReview.Evidence.Select(e =>
+                        new NUnitAttributeEvidence(relative, e.Line, e.Kind,
+                            e.SourceSha256, e.TargetExpression, e.RequiresReview, e.Reason)));
+                    nunitCases.AddRange(executionReview.Cases.Select(c =>
+                        new NUnitCaseInventory(relative, c.Line, c.Method,
+                            c.TargetExpression, c.RunState, c.Reason)));
 
                     if (hasXunit)
                     {
@@ -96,20 +110,12 @@ public sealed partial class MigrationEngine
                         findings.Add(Finding(relative, 0, existingFramework.Code,
                             existingFramework.Explanation, existingFramework.EvidenceKind));
                     }
-                    else if (declaredCount > 0 && executionGates.Count > 0)
+                    else if (declaredCount > 0 && executionReview.Issues.Count > 0)
                     {
-                        // Never turn a skipped/opt-in NUnit test into a runnable
-                        // target by dropping [Ignore], [Explicit] or their
-                        // per-case named arguments.
-                        disposition = "unsupported_nunit_execution_gate";
-                        foreach (var gate in executionGates)
-                            findings.Add(Finding(relative, gate.SourceLine,
-                                "NUNIT_EXECUTION_GATE_REQUIRES_REVIEW",
-                                "NUnit source execution gate " + gate.GateName
-                                    + " on " + gate.Scope
-                                    + " is not attested in generated output; "
-                                    + "preserve the gate before opting in to migration.",
-                                "syntax"));
+                        disposition = "unsupported_nunit_execution_semantics";
+                        foreach (var issue in executionReview.Issues)
+                            findings.Add(Finding(relative, issue.Line, issue.Code,
+                                issue.Explanation, "source-backed-static-review"));
                     }
                     else if (scopedFixtureTypes.Length > 1
                              || scopedFixtureTypes.Length > 0 && declaredCount > 0)
@@ -163,7 +169,11 @@ public sealed partial class MigrationEngine
                 findings.Add(Finding(relative, 0, "READ_ERROR", ex.Message, "diagnostic"));
             }
 
-            var survey = new FileSurvey(relative, disposition, declaredCount, parsedCount, names, findings);
+            var survey = new FileSurvey(relative, disposition, declaredCount, parsedCount, names, findings)
+            {
+                NUnitAttributes = nunitAttributes,
+                NUnitCases = nunitCases
+            };
             surveys.Add(survey);
             allFindings.AddRange(findings);
         }
@@ -181,7 +191,7 @@ public sealed partial class MigrationEngine
             + "\n" + (configPath == null ? "unconfigured" : Path.GetFullPath(configPath)));
         return new MigrationAnalysis(ContractVersions.Analysis, id, scope, beforeHash, configHash,
             status, count, parsed, surveys, allFindings,
-            new[] { "Discovery is attribute-based and does not expand runtime data cases.",
+            new[] { "NUnit case inventory expands only statically proven literal cases; dynamic discovery and runtime execution are not claimed.",
                     "Lightweight Roslyn project resolution is not a complete MSBuild evaluation.",
                     "Only Selenium C# NUnit to Playwright .NET is in the supported alpha path." });
     }
@@ -289,7 +299,11 @@ public sealed partial class MigrationEngine
         var status = complete ? "complete" : parsed.Count == 0 ? "blocked" : "partial";
         var candidateId = Digest(before.AnalysisId + "\n" + artifact.TargetHash + "\nconservative");
         return new MigrationPreview(ContractVersions.Preview, before.AnalysisId, candidateId,
-            artifact.TargetHash, status, files, findings);
+            artifact.TargetHash, status, files, findings)
+        {
+            NUnitAttributes = after.Files.SelectMany(f => f.NUnitAttributes).ToArray(),
+            NUnitCases = after.Files.SelectMany(f => f.NUnitCases).ToArray()
+        };
     }
 
 

@@ -318,6 +318,13 @@ public partial class PlaywrightDotNetRenderer
         var constraint = ConvertConstraint(action.ConstraintExpression);
         var sourceLine = action.SourceLine;
 
+        // A literal-only NUnit constraint has no Selenium/DOM dependency.
+        // Keep it executable, including intentionally failing assertions in
+        // selected [Explicit] cases; commenting it out would mask failures.
+        // Dynamic/POM constraints still take the conservative TODO route.
+        if (TryRenderLiteralNUnitAssertion(sb, actual, constraint, sourceLine))
+            return;
+
         // A reviewed helper/POM mapping may intentionally materialize a scalar target local,
         // for example `var status = await locator.InnerTextAsync()`. In that case the source
         // NUnit equality assertion is already target-safe and preserving it is more faithful
@@ -335,6 +342,23 @@ public partial class PlaywrightDotNetRenderer
             "ASSERTION_CONSTRAINT",
             "The NUnit/Fluent assertion constraint was preserved as a comment because no equivalent Playwright assertion was inferred.",
             "Add a parameterized assertion mapping if this pattern is common.");
+    }
+
+    bool TryRenderLiteralNUnitAssertion(StringBuilder sb, string actual,
+        string constraint, int sourceLine)
+    {
+        var literal = actual.Trim();
+        if (!IsSafeScalarLiteral(literal))
+            return false;
+        var supportedConstraint = constraint.Trim() is "Is.True" or "Is.False"
+            or "Is.Null" or "Is.Not.Null"
+            || System.Text.RegularExpressions.Regex.IsMatch(constraint.Trim(),
+                @"^Is\.EqualTo\(\s*(?:true|false|null|-?\d+(?:\.\d+)?[mMdDfFlL]?|""(?:[^""\\]|\\.)*"")\s*\)$",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        if (!supportedConstraint)
+            return false;
+        sb.AppendLine($"{_indent}{_indent}Assert.That({literal}, {constraint}); // line {sourceLine}");
+        return true;
     }
 
     bool TryRenderTargetLocalLiteralEquality(StringBuilder sb, string actual, string constraint, int sourceLine)

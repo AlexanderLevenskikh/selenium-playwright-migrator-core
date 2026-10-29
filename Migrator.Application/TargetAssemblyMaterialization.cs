@@ -173,7 +173,7 @@ public sealed partial class MigrationEngine
                         "--logger", "trx;LogFileName=migrator-target-assembly.trx" },
                     "nunit-trx", cancellationToken);
                 if (runtime.Status == "passed")
-                    runtime = ValidateNUnitTrx(targetRoot, runtime, plan.DeclaredTests);
+                    runtime = ValidateNUnitTrx(targetRoot, runtime, plan.NUnitCases);
             }
             else if (runNUnit)
                 runtime = new TargetAssemblyStage("blocked", "nunit-trx",
@@ -388,7 +388,8 @@ public sealed partial class MigrationEngine
     }
 
     private static TargetAssemblyStage ValidateNUnitTrx(
-        string targetRoot, TargetAssemblyStage command, int expectedTestMethods)
+        string targetRoot, TargetAssemblyStage command,
+        IReadOnlyList<NUnitCaseInventory> plannedCases)
     {
         try
         {
@@ -405,17 +406,37 @@ public sealed partial class MigrationEngine
             int Number(string name) => int.TryParse(
                 counters.Attribute(name)?.Value, out var number) ? number : 0;
             var total = Number("total");
-            var passed = Number("passed");
-            var failed = Number("failed");
-            var skipped = Number("notExecuted");
-            if (total < Math.Max(1, expectedTestMethods)
-                || passed != total || failed > 0 || skipped > 0)
+            var countersPassed = Number("passed");
+            var countersFailed = Number("failed");
+
+            // NUnit3TestAdapter 4.5 and 5.1 can emit notExecuted=0 in
+            // TRX Counters even when individual UnitTestResult records have
+            // outcome=NotExecuted. Never infer activation/skips from Counters
+            // alone. Require exact per-case evidence and no unknown outcomes.
+            var results = root.Descendants().Where(node =>
+                    node.Name.LocalName == "UnitTestResult")
+                .Select(node => node.Attribute("outcome")?.Value ?? "Missing")
+                .ToArray();
+            var passed = results.Count(result => result == "Passed");
+            var failed = results.Count(result => result == "Failed");
+            var skipped = results.Count(result => result == "NotExecuted");
+            var unknown = results.Length - passed - failed - skipped;
+            var expectedRunnable = plannedCases.Count(c => c.RunState == "runnable");
+            var expectedDisabled = plannedCases.Count - expectedRunnable;
+            if (plannedCases.Count == 0
+                || results.Length != total
+                || total != plannedCases.Count
+                || passed != countersPassed
+                || failed != countersFailed
+                || passed != expectedRunnable
+                || skipped != expectedDisabled
+                || failed != 0 || unknown != 0)
                 return command with { Status = "failed",
-                    Details = $"NUnit TRX gate rejected total={total}, passed={passed}, failed={failed}, notExecuted={skipped}; expected at least {expectedTestMethods} tests.",
-                    ExecutedTests = total, PassedTests = passed };
+                    Details = $"NUnit TRX per-case gate rejected: planned={plannedCases.Count}, runnable={expectedRunnable}, disabled={expectedDisabled}; observed total={total}, passed={passed}, failed={failed}, notExecuted={skipped}, unknown={unknown}; counters passed={countersPassed}, failed={countersFailed}.",
+                    ExecutedTests = passed + failed, PassedTests = passed };
             return command with { Status = "passed",
-                Details = $"Actual NUnit TRX: {passed}/{total} tests passed, no failures or skips.",
-                ExecutedTests = total, PassedTests = passed };
+                Details = $"Actual NUnit TRX UnitTestResult: {passed} passed, {failed} failed, {skipped} notExecuted of {total}; matches static runnable={expectedRunnable}, disabled={expectedDisabled}. Counters.notExecuted is not authoritative; exact source-vs-target NUnit discovery names/reasons require independent comparison.",
+                ExecutedTests = passed + failed, PassedTests = passed };
         }
         catch (Exception ex) when (ex is IOException or System.Xml.XmlException
             or InvalidOperationException)

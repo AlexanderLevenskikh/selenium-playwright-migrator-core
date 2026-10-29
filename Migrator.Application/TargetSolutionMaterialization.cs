@@ -162,7 +162,7 @@ public sealed partial class MigrationEngine
                         "nunit-trx-per-assembly", cancellationToken);
                     if (evidence.Status == "passed")
                         evidence = ValidateNUnitTrx(dir, evidence,
-                            project.DeclaredTests);
+                            project.NUnitCases);
                     executions.Add(new TargetSolutionProjectExecution(
                         project.ProjectFile, project.Kind, evidence));
                     if (evidence.Status != "passed") anyFailure = true;

@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string SolutionArtifactName = "Migrator.Generated.slnx";
     private const string SolutionManifestName = "migrator-solution-manifest.json";
-    private const string SolutionSchema = "migrator-target-solution/v1alpha5";
+    private const string SolutionSchema = "migrator-target-solution/v1alpha6";
     private const int SolutionProjectLimit = 20;
     private const int SolutionFileLimit = 256;
     private const long SolutionBytesLimit = 24 * 1024 * 1024;
@@ -469,7 +469,10 @@ public sealed partial class MigrationEngine
                 node.NUnitPlan?.DeclaredTests ?? node.DeclaredTestMethods,
                 node.NUnitPlan?.ScopedSetUpFixtures ?? 0,
                 node.NUnitPlan?.AnalysisId, node.NUnitPlan?.CandidateId,
-                node.Packages));
+                node.Packages)
+            {
+                NUnitCases = node.NUnitPlan?.NUnitCases ?? Array.Empty<NUnitCaseInventory>()
+            });
         }
 
         // SLNX requires unique project display names within each solution

@@ -150,6 +150,15 @@ public class RoslynTestFileParser : ITestFileParser
             throw new InvalidOperationException(
                 $"PROJECT_SEMANTIC_TREE_MISSING: compilation does not contain '{filePath}'.");
 
+        var nunitExecution = NUnitExecutionSemanticsInspector.Inspect(root,
+            compilation.SyntaxTrees.Select(source => source.GetRoot()));
+        if (!nunitExecution.Safe)
+        {
+            var firstIssue = nunitExecution.Issues[0];
+            throw new InvalidOperationException(firstIssue.Code
+                + " at line " + firstIssue.Line + ": " + firstIssue.Explanation);
+        }
+
         var semanticModel = compilation.GetSemanticModel(tree, ignoreAccessibility: true);
 
         var namespaceDecl = root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
@@ -211,7 +220,7 @@ public class RoslynTestFileParser : ITestFileParser
 
         var tests = testClass.DescendantNodes().OfType<MethodDeclarationSyntax>()
             .Where(IsTestMethod)
-            .Select(m => ParseTestMethod(m, semanticModel))
+            .Select(m => ParseTestMethod(m, semanticModel, nunitExecution.ExpandedSources))
             .ToList();
 
         var classFields = testClass.ChildNodes()
@@ -471,7 +480,9 @@ public class RoslynTestFileParser : ITestFileParser
             .Where(a => IsAttributeNamed(a,
                 "FixtureLifeCycle",
                 "Parallelizable",
-                "NonParallelizable"))
+                "NonParallelizable",
+                "Ignore",
+                "Explicit"))
             .Select(a => a.ToString())
             .ToArray();
 
@@ -483,7 +494,9 @@ public class RoslynTestFileParser : ITestFileParser
                 "Order",
                 "Parallelizable",
                 "NonParallelizable",
-                "Timeout"))
+                "Timeout",
+                "Ignore",
+                "Explicit"))
             .Select(a => a.ToString())
             .ToArray();
 
@@ -509,7 +522,8 @@ public class RoslynTestFileParser : ITestFileParser
         return names.Any(candidate => string.Equals(name, candidate, StringComparison.Ordinal));
     }
 
-    TestModel ParseTestMethod(MethodDeclarationSyntax method, SemanticModel semanticModel)
+    TestModel ParseTestMethod(MethodDeclarationSyntax method, SemanticModel semanticModel,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> expandedSources)
     {
         var name = method.Identifier.Text;
 
@@ -518,7 +532,7 @@ public class RoslynTestFileParser : ITestFileParser
             ?.ArgumentList?.Arguments.FirstOrDefault()
             ?.Expression.ToString().Trim('"');
 
-        var caseData = ParseCaseData(method).ToList();
+        var caseData = ParseCaseData(method, expandedSources).ToList();
 
         var parameters = method.ParameterList?.Parameters
             .Select(p => new MethodParameterModel(
@@ -541,13 +555,23 @@ public class RoslynTestFileParser : ITestFileParser
         );
     }
 
-    static List<TestCaseData> ParseCaseData(MethodDeclarationSyntax method)
+    static List<TestCaseData> ParseCaseData(MethodDeclarationSyntax method,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> expandedSources)
     {
         var results = new List<TestCaseData>();
 
         foreach (var attr in method.AttributeLists.SelectMany(al => al.Attributes)
             .Where(a => IsAttributeNamed(a, "TestCase", "TestCaseSource")))
         {
+            if (IsAttributeNamed(attr, "TestCaseSource"))
+            {
+                if (!expandedSources.TryGetValue(attr.SpanStart, out var cases))
+                    throw new InvalidOperationException(
+                        "NUNIT_TEST_CASE_SOURCE_UNSAFE: source was not statically attested.");
+                foreach (var targetAttribute in cases)
+                    results.Add(new TestCaseData(Array.Empty<string>(), targetAttribute));
+                continue;
+            }
             var rawSource = attr.ToString();
             var args = attr.ArgumentList?.Arguments
                 .Select(ExtractArgText)

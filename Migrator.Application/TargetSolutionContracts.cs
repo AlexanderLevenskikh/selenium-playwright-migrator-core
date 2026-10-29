@@ -14,7 +14,11 @@ public sealed record TargetSolutionProject(
     int ScopedSetUpFixtures,
     string? AnalysisId,
     string? CandidateId,
-    IReadOnlyList<TargetSolutionPackage>? PackageReferences = null);
+    IReadOnlyList<TargetSolutionPackage>? PackageReferences = null)
+{
+    public IReadOnlyList<NUnitCaseInventory> NUnitCases { get; init; }
+        = Array.Empty<NUnitCaseInventory>();
+}
 
 public sealed record TargetSolutionFile(
     string RelativePath,

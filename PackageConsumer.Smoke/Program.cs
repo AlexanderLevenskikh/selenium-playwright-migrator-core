@@ -1,6 +1,6 @@
 using Migrator.Application;
 
-if (ContractVersions.Analysis != "migrator-analysis/v1alpha1")
+if (ContractVersions.Analysis != "migrator-analysis/v1alpha2")
     throw new InvalidOperationException("Unexpected public API version.");
 
 var temp = Path.Combine(Path.GetTempPath(), "migrator-nuget-consumer-" + Guid.NewGuid().ToString("N"));

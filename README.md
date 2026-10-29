@@ -610,3 +610,38 @@ Original Selenium browser pooling/retry and Playwright target behavior
 are still \`not_run\` / \`not_verified\`. The source-bound review
 contract remains \`requires_review\`: genuine synthetic Chromium
 success never automatically unblocks a private NUnit solution.
+
+## preview.29 — NUnit execution gates and bounded TestCaseSource
+
+Core preserves source-attested fixture/method `[Ignore("reason")]` and
+`[Explicit("reason")]`, plus NUnit `[TestCase(..., Ignore = "...")]`
+and `[TestCase(..., Explicit = true)]`, without silently activating
+previously disabled cases. Each safe attribute has a source relative path,
+line and SHA-256 digest; static NUnit cases report method, run-state and
+reason. A declared annotated method is **not** a discovered parameterized
+NUnit test case. Analysis and preview expose additive inventories using
+`migrator-analysis/v1alpha2` and `migrator-preview/v1alpha2`.
+
+`TestCaseSource` is lowered only when a local, uniquely named static
+readonly field or expression-bodied static property provides a nonempty
+literal-only array of object[] rows or plain `new TestCaseData(literal)`
+rows. Parameter count and conservative primitive type matching must agree.
+The parser never invokes user code to evaluate `IEnumerable` providers.
+Environment-dependent, external/inherited, side-effectful and ambiguous
+sources stay blocked with line-bound `NUNIT_TEST_CASE_SOURCE_UNSAFE`
+diagnostics. Inherited Ignore/Explicit fixture gates discovered in other
+source files stay blocked, not silently dropped. Broader NUnit compatibility
+is future work and must be separately runtime-proven.
+
+The synthetic CI explicitly runs `dotnet test --list-tests`, TRX default
+runs, selected `Explicit` success and a deliberately failing selected
+`Explicit` case on NUnit 3.14 and 4.3 source assemblies. It also compares
+NUnit 3 source with the actual generated target, including discovered
+case names, per-case outcomes, and skip reasons on Linux and Windows.
+The trusted CLI `--build --test` path validates actual target TRX.
+**NUnit3TestAdapter may report `notExecuted=0` in TRX Counters even when
+five `UnitTestResult` entries have outcome `NotExecuted`**; the assembly
+verifier reads individual outcomes and rejects missing, activated, unknown
+or failing cases. Passing synthetic tests does **not** mean a private customer-application build, NUnit runtime, browser E2E or semantic equivalence ran.
+Only explicitly executed and recorded test commands may establish runtime
+evidence.
