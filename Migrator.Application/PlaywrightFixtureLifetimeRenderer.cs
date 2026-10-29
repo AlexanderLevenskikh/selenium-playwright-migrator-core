@@ -111,9 +111,7 @@ public abstract class __BASE__
         }
         catch
         {
-            FixtureScopes.TryRemove(
-                new System.Collections.Generic.KeyValuePair<string,
-                    Lazy<Task<FixtureLease>>>(fixtureKey, lazy));
+            FixtureScopes.TryRemove(fixtureKey, out _);
             throw;
         }
     }
@@ -126,8 +124,10 @@ public abstract class __BASE__
 
     // Navigation and LocalStorage now bind explicitly to the same IPage.
     // Actual POM methods and DOM timing still require source-backed mapping.
-    protected async Task NavigateAsync(string url) =>
+    protected async Task NavigateAsync(string url)
+    {
         await (await GetPageAsync()).GotoAsync(url);
+    }
 
     protected async Task<T> EvaluatePageAsync<T>(string expression) =>
         await (await GetPageAsync()).EvaluateAsync<T>(expression);
