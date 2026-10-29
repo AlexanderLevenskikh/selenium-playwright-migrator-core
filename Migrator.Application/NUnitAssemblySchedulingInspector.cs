@@ -161,7 +161,7 @@ internal static class NUnitAssemblySchedulingInspector
                         }
                     }
                     else if (normalized == "LevelOfParallelism" && count == 1
-                        && arguments![0].Expression is LiteralExpressionSyntax literal
+                        && attribute.ArgumentList!.Arguments[0].Expression is LiteralExpressionSyntax literal
                         && literal.IsKind(SyntaxKind.NumericLiteralExpression)
                         && literal.Token.Value is int level
                         && level is >= 1 and <= 256)
