@@ -317,3 +317,42 @@ assembly with 2/2 tests and a separate full 3/3 solution. It verifies target
 .csproj/.slnx closure, omitted assembly/global SetUpFixture exclusion,
 missing/invalid entries and reachable test-to-test references. A real
 product's behavior, external APIs, auth and browser UI remain unverified.
+
+## Preview.23 — source-backed NUnit assembly scheduling
+
+The previous source-graph preflight deliberately blocked assembly-level
+\`[Parallelizable]\`, \`[NonParallelizable]\` and
+\`[LevelOfParallelism]\` because per-file target previews dropped them.
+Core now recognizes a small, strict syntax whitelist of **literal**
+NUnit assembly scheduling attributes, including
+\`ParallelScope.Fixtures\` and positive integer worker counts.
+Accepted source attributes produce a distinct
+\`Migrator.Generated.NUnitAssemblyScheduling.cs\` file in **that source
+NUnit assembly only**. Its full text, SHA-256 and explicit
+\`<Compile Include>\` participate in the target assembly/solution hashes
+and strict materialization verification.
+
+Both \`PlanTargetAssembly\` (v1alpha2) and
+\`PlanTargetSolution\` (v1alpha5) expose an \`assemblyScheduling\`
+ledger with original source paths and lines, original attribute
+expressions, and emitted fully-qualified NUnit expressions. The exact
+manifest embeds the same source-backed provenance. No arbitrary source
+assembly annotations are copied. An unsupported enum expression,
+nonliteral worker count, duplicate/conflicting attributes, scheduling
+alias, shadowing type or fixture/method-level scheduling produces an
+explicit blocker rather than a guessed default.
+
+CI generates two separate NUnit test assemblies with independent
+source parallelism values. It verifies actual \`dotnet build\` and
+per-assembly NUnit TRX, reflection-observed assembly attributes,
+source/target manifest hashes, missing/altered generated scheduling
+files and fail-closed negative cases. **These checks establish source
+attribute preservation and synthetic runtime tests, not behavioral
+equivalence for real browser/application scheduling**, thread safety,
+timeout behavior, or inherited setup/teardown effects.
+
+A nested \`SetUpFixture\` remains blocked rather than being silently
+hoisted into assembly-global scope. Source-specific fixture DI,
+listener reflection, pooled browser lifetime, log/screenshot teardown
+and third-party extensions require independent migration and review.
+No private customer source or test evidence is used in GitHub/CI.
