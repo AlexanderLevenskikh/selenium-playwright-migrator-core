@@ -22,7 +22,8 @@ internal static class NUnitLifecycleInspector
         ClassDeclarationSyntax fixture,
         SemanticModel semanticModel,
         Compilation compilation,
-        Func<MethodDeclarationSyntax, SemanticModel, IReadOnlyList<TestAction>> parseActions)
+        Func<MethodDeclarationSyntax, SemanticModel, IReadOnlyList<TestAction>> parseActions,
+        bool allowUnpairedScopedOneTimeTearDown = false)
     {
         var hooks = new List<NUnitLifecycleHook>();
         var diagnostics = new List<NUnitLifecycleDiagnostic>();
@@ -175,6 +176,13 @@ internal static class NUnitLifecycleInspector
         foreach (var teardown in hooks.Where(h => h.Kind is
                      NUnitLifecycleKind.TearDown or NUnitLifecycleKind.OneTimeTearDown))
         {
+            // NUnit SetUpFixtures may perform only one-time cleanup. This
+            // exception applies solely when the caller has established the
+            // namespace/assembly SetUpFixture owner; ordinary inherited
+            // fixture cleanup remains guarded by same-level setup evidence.
+            if (allowUnpairedScopedOneTimeTearDown
+                && teardown.Kind == NUnitLifecycleKind.OneTimeTearDown)
+                continue;
             var partner = teardown.Kind == NUnitLifecycleKind.TearDown
                 ? NUnitLifecycleKind.SetUp : NUnitLifecycleKind.OneTimeSetUp;
             if (!hooks.Any(h => h.InheritanceLevel == teardown.InheritanceLevel
