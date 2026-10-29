@@ -406,25 +406,36 @@ public sealed partial class MigrationEngine
             int Number(string name) => int.TryParse(
                 counters.Attribute(name)?.Value, out var number) ? number : 0;
             var total = Number("total");
-            var passed = Number("passed");
-            var failed = Number("failed");
-            var skipped = Number("notExecuted");
+            var countersPassed = Number("passed");
+            var countersFailed = Number("failed");
+
+            // NUnit3TestAdapter 4.5 and 5.1 can emit notExecuted=0 in
+            // TRX Counters even when individual UnitTestResult records have
+            // outcome=NotExecuted. Never infer activation/skips from Counters
+            // alone. Require exact per-case evidence and no unknown outcomes.
+            var results = root.Descendants().Where(node =>
+                    node.Name.LocalName == "UnitTestResult")
+                .Select(node => node.Attribute("outcome")?.Value ?? "Missing")
+                .ToArray();
+            var passed = results.Count(result => result == "Passed");
+            var failed = results.Count(result => result == "Failed");
+            var skipped = results.Count(result => result == "NotExecuted");
+            var unknown = results.Length - passed - failed - skipped;
             var expectedRunnable = plannedCases.Count(c => c.RunState == "runnable");
             var expectedDisabled = plannedCases.Count - expectedRunnable;
-            // TRX can omit NUnit Explicit cases from its run set. Never
-            // treat their absence as execution or successful discovery.
-            // A source/target list-tests comparison is required separately.
-            if (total < expectedRunnable
-                || total > plannedCases.Count
-                || passed < expectedRunnable
-                || failed > 0
-                || skipped > expectedDisabled
-                || passed + failed + skipped != total)
+            if (plannedCases.Count == 0
+                || results.Length != total
+                || total != plannedCases.Count
+                || passed != countersPassed
+                || failed != countersFailed
+                || passed != expectedRunnable
+                || skipped != expectedDisabled
+                || failed != 0 || unknown != 0)
                 return command with { Status = "failed",
-                    Details = $"NUnit TRX rejected: total={total}, passed={passed}, failed={failed}, notExecuted={skipped}; static runnable={expectedRunnable}, disabled={expectedDisabled}.",
+                    Details = $"NUnit TRX per-case gate rejected: planned={plannedCases.Count}, runnable={expectedRunnable}, disabled={expectedDisabled}; observed total={total}, passed={passed}, failed={failed}, notExecuted={skipped}, unknown={unknown}; counters passed={countersPassed}, failed={countersFailed}.",
                     ExecutedTests = passed + failed, PassedTests = passed };
             return command with { Status = "passed",
-                Details = $"Actual NUnit TRX: total={total}, passed={passed}, failed={failed}, notExecuted={skipped}; static runnable={expectedRunnable}, disabled={expectedDisabled}. Explicit discovery and skip reasons require separate NUnit evidence.",
+                Details = $"Actual NUnit TRX UnitTestResult: {passed} passed, {failed} failed, {skipped} notExecuted of {total}; matches static runnable={expectedRunnable}, disabled={expectedDisabled}. Counters.notExecuted is not authoritative; exact source-vs-target NUnit discovery names/reasons require independent comparison.",
                 ExecutedTests = passed + failed, PassedTests = passed };
         }
         catch (Exception ex) when (ex is IOException or System.Xml.XmlException
