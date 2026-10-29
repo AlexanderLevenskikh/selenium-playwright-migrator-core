@@ -225,6 +225,15 @@ public sealed partial class MigrationEngine
                 scope.SourcePath, scope.SourceLine));
             return null;
         }
+        if (statements.Count != hook.Body!.Statements.Count)
+        {
+            problems.Add(new NestedNUnitCleanupIssue(
+                "NESTED_CLEANUP_ACTION_COUNT_MISMATCH", "error",
+                "Every original cleanup invocation needs one explicit target "
+                + "invocation in this conservative candidate.",
+                scope.SourcePath, scope.SourceLine));
+            return null;
+        }
         if (statements.Count > 32)
         {
             problems.Add(new NestedNUnitCleanupIssue(
