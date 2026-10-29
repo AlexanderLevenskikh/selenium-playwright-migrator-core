@@ -57,7 +57,7 @@ public sealed partial class MigrationEngine
         // page.Method({name}, ...). Never interpolate arbitrary expression
         // content into a selector string or C# statement without parsing.
         var parameters = System.Text.RegularExpressions.Regex.Matches(
-            sourcePattern, @"\\{(?<name>[A-Za-z_]\\w*)\\}")
+            sourcePattern, @"\{(?<name>[A-Za-z_]\w*)\}")
             .Cast<System.Text.RegularExpressions.Match>()
             .Select(match => match.Groups["name"].Value)
             .ToHashSet(StringComparer.Ordinal);
