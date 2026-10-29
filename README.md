@@ -241,3 +241,28 @@ still required. The plan never silently invents dependencies.
 Core smoke includes synthetic positive exact dependency projection plus
 negative changed version, floating version, invalid project path and
 NUnit-planning short circuit. No private/customer code is used.
+
+## Preview.21 — complete source test inventory before NUnit planning
+
+A blocked multi-project graph now retains the **lexically declared NUnit method
+count** per source project, even when target generation is correctly deferred.
+A null candidate ID means no target candidate was built; the nonzero
+\`DeclaredTests\` field represents original NUnit methods, not runtime-expanded
+parameter cases or generated tests. The solution schema is now v1alpha3.
+
+The inexpensive one-pass Roslyn preflight also detects the source behaviors
+that would otherwise become false-green or expensive late failures:
+nested \`[SetUpFixture]\` ownership,
+assembly-level NUnit \`[Parallelizable]\` / \`[NonParallelizable]\` /
+\`[LevelOfParallelism]\` scheduling attributes,
+source \`[Ignore]\` / \`[Explicit]\` execution gates,
+dynamic \`[TestCaseSource]\` data-provider semantics and xUnit source.
+All produce source-backed, actionable blockers before costly fixture plans.
+They are not silently dropped, reproduced by guesswork or counted as converted.
+
+Shared libraries are checked using the syntax trees already parsed for
+project preflight, avoiding a duplicate source parse. Public synthetic
+regressions cover the extra diagnostics, genuine declared method counts,
+source hash safety and ordinary generated NUnit assembly behavior.
+These gates preserve source/test safety; they do **not** automatically migrate
+customer hooks, data providers, browser state or test concurrency.
