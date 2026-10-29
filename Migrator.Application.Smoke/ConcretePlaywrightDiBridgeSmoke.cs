@@ -252,9 +252,13 @@ internal static class ConcretePlaywrightDiBridgeSmoke
                 + originalTests[(firstRetry + annotated.Length)..]);
             var missingRetry = Execute(target, "missing-retry",
                 expectedPass: 1, expectedFail: 1, expectedExit: 1);
-            Assert(!missingRetry.Any(x => x.StartsWith("context-open:",
-                    StringComparison.Ordinal)),
-                "without explicit method-level NUnit [Retry(N)] do not silently activate test suite");
+            Assert(!missingRetry.Contains("primary-attempt")
+                && missingRetry.Count(x => x.StartsWith("context-open:",
+                    StringComparison.Ordinal)) == 1
+                && missingRetry.Count(x => x == "browser-close") == 1,
+                "missing explicit NUnit retry must block its own fixture "
+                + "without suppressing a separately valid fixture: "
+                + string.Join("|", missingRetry));
         }
         finally
         {
