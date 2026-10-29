@@ -26,7 +26,14 @@ if (args.Length >= 5 && args[0] == "pom-plan")
             plan.SchemaVersion, plan.Status, plan.SourceTreeHash,
             plan.SourceType, plan.SourceMethod, plan.SourceMethodSha256,
             plan.SourcePath, plan.SourceLine, plan.SuggestedSourcePattern,
-            plan.Actions, plan.Blockers, plan.RuntimeVerified,
+            actions = plan.Actions.Select(action => new
+            {
+                action.Order, action.SourcePath, action.SourceLine,
+                action.SourceSha256, action.SourceSymbol,
+                action.ReceiverType, action.SourceReturnType,
+                action.Effect, action.TargetSha256, action.RequiresReview
+            }),
+            plan.Blockers, plan.RuntimeVerified,
             plan.CanAutoApply,
             targetStatements = emit && plan.Status == "requires_review"
                 ? plan.TargetStatements : Array.Empty<string>()
