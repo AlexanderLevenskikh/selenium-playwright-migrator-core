@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--real-chromium-only", StringComparer.Ordinal))
+{
+    RealChromiumBridgeSmoke.Run();
+    Console.WriteLine("REAL_CHROMIUM_BRIDGE_RUNTIME_PASSED");
+    return;
+}
 if (args.Contains("--multi-project-only", StringComparer.Ordinal))
 {
     MultiProjectSolutionSmoke.Run();
