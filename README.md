@@ -447,3 +447,53 @@ listener, logs or global resource lifetime. A privately reviewed
 required before integrating a real cleanup candidate into a target
 solution. **Never ship a guessed cleanup action merely to unblock
 generation.**
+
+## Preview.26 — reviewed Playwright fixture DI and BrowserContext/Page lifetime
+
+\`MigrationEngine.ReviewPlaywrightFixtureLifetime(root, fixtureBaseType,
+nestedCleanupType, infrastructureType, expectedSourceTreeHash, bindings)\`
+checks an exact source-hashed Roslyn inventory of an inherited NUnit fixture,
+its nested cleanup-only SetUpFixture and the **separate source DI container**.
+Each source effect must be explicitly reviewed and bound one-to-one using
+source relative path, line number, expression SHA-256 and the exact target
+role. The role whitelist covers fixture DI, BrowserContext/Page, navigation,
+localStorage page binding, failure logs/screenshots, fixture release, global
+release and retry listener replacement. Missing, extra, stale, mismatched or
+unreviewed mappings are blocked. Additionally, the source DI implementation
+must prove a class-name-based NUnit scope key and source-backed GetOrAdd /
+CreateScope, TryRemove / Dispose, and global Clear / Dispose operations.
+Changed source bytes invalidate the review.
+
+On complete explicitly reviewed **structural** bindings, Core returns a
+separate \`requires_review\` candidate
+\`Migrator.Generated.PlaywrightFixtureLifetime.cs\`, never a silently
+materialized project or a claim of behavioral equivalence. It compiles against
+real \`Microsoft.Playwright.IBrowserContext\` and \`IPage\` types and defines
+an external \`IMigratorReviewedPlaywrightLifecycleBridge\`. The caller must
+supply and verify that bridge in the target project's actual DI container.
+The generated NUnit abstract base owns a lazy fixture-context/page pair
+keyed by \`TestContext.CurrentContext.Test.ClassName\`, resolves the page on
+per-test TearDown, obtains browser logs **before** screenshot only on failed
+tests, returns fixture services on OneTimeTearDown, always closes the owned
+browser context even after a release failure, and delegates global provider/
+browser disposal to the **original nested cleanup-only SetUpFixture**.
+It does not invent URLs, selectors, credentials or a shared browser instance.
+
+A real Selenium WebDriver pool (driver recycling) is **not inherently
+equivalent** to a Playwright BrowserContext.CloseAsync. Retry-listener
+replacement, navigation/POM mapping, JavaScript storage, screenshot/log
+artifacts and the concrete shared provider lifecycle require explicit,
+source-specific implementation and runtime evidence. In particular, target
+review \`Reviewed=true\` attests a supplied source-to-role mapping, **not**
+a verified target implementation. Source NUnit, target build, NUnit runtime,
+browser E2E and behavioral equivalence stay \`not_run\` /
+\`not_verified\` in the review API.
+
+The public synthetic smoke validates complete/partial/extra/stale role
+mapping, source DI ownership changes, and uses an actual Playwright NuGet
+type-compatible target assembly with a recorded fake browser provider to
+execute NUnit success, failed test and failed fixture release. It checks
+per-fixture BrowserContext creation/closure, failure-only logs and screenshots,
+nested one-time provider disposal, and real NUnit TRX counters. This does
+**not** use an actual browser and is not customer E2E evidence. No private
+customer source, URLs, selectors or secrets enter GitHub or CI.
