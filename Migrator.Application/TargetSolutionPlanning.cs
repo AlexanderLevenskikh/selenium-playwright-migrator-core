@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string SolutionArtifactName = "Migrator.Generated.slnx";
     private const string SolutionManifestName = "migrator-solution-manifest.json";
-    private const string SolutionSchema = "migrator-target-solution/v1alpha2";
+    private const string SolutionSchema = "migrator-target-solution/v1alpha3";
     private const int SolutionProjectLimit = 20;
     private const int SolutionFileLimit = 256;
     private const long SolutionBytesLimit = 24 * 1024 * 1024;
@@ -29,7 +29,8 @@ public sealed partial class MigrationEngine
         string[] Sources,
         string[] References,
         TargetAssemblyPlan? NUnitPlan,
-        TargetSolutionPackage[] Packages);
+        TargetSolutionPackage[] Packages,
+        int DeclaredTestMethods);
 
     /// <summary>
     /// Read-only complete graph planning. Every NUnit source project gets one
@@ -184,28 +185,89 @@ public sealed partial class MigrationEngine
                     "A project without source files cannot be preserved.", relativeProject));
             var hasTests = false;
             var hasScopes = false;
+            var declaredTestMethods = 0;
+            // Keep Roslyn source trees from the single preflight parse: do
+            // not reparse all library files a second time.
+            var parsedRoots = new List<(string File, SyntaxNode Root)>();
+            var assemblyScheduling = new List<(string File, string Attribute, int Line)>();
             foreach (var file in files)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                var relativeFile = Path.GetRelativePath(root, file).Replace('\\', '/');
                 var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file),
                     path: file);
                 if (tree.GetDiagnostics().Any(d =>
                     d.Severity == DiagnosticSeverity.Error))
                     issues.Add(new("SOLUTION_SOURCE_SYNTAX_ERROR", "error",
-                        "A source C# file has syntax errors.",
-                        Path.GetRelativePath(root, file).Replace('\\', '/')));
+                        "A source C# file has syntax errors.", relativeFile));
                 var syntax = tree.GetRoot();
-                hasTests |= syntax.DescendantNodes()
-                    .OfType<MethodDeclarationSyntax>().Any(method =>
-                        method.AttributeLists.SelectMany(list => list.Attributes)
-                            .Any(attribute => AttributeMatches(attribute,
-                                "Test", "TestCase", "TestCaseSource")));
-                hasScopes |= syntax.DescendantNodes()
-                    .OfType<ClassDeclarationSyntax>().Any(type =>
-                        type.AttributeLists.SelectMany(list => list.Attributes)
-                            .Any(attribute => AttributeMatches(attribute,
-                                "SetUpFixture")));
+                parsedRoots.Add((file, syntax));
+
+                var methods = syntax.DescendantNodes()
+                    .OfType<MethodDeclarationSyntax>().ToArray();
+                bool IsNUnitTest(MethodDeclarationSyntax method) =>
+                    method.AttributeLists.SelectMany(list => list.Attributes)
+                        .Any(attr => AttributeMatches(attr,
+                            "Test", "TestCase", "TestCaseSource"));
+                var count = methods.Count(IsNUnitTest);
+                declaredTestMethods += count;
+                hasTests |= count > 0;
+
+                if (methods.Any(method => method.AttributeLists
+                    .SelectMany(list => list.Attributes).Any(attr =>
+                        AttributeMatches(attr, "Fact", "Theory"))))
+                    issues.Add(new("SOLUTION_UNSUPPORTED_XUNIT_SOURCE", "error",
+                        "xUnit methods cannot be copied into a non-xUnit shared library "
+                        + "or silently interpreted as NUnit tests.", relativeFile));
+
+                if (methods.Any(method => method.AttributeLists
+                    .SelectMany(list => list.Attributes).Any(attr =>
+                        AttributeMatches(attr, "TestCaseSource"))))
+                    issues.Add(new("SOLUTION_DYNAMIC_TEST_DATA_REQUIRES_REVIEW",
+                        "error", "NUnit TestCaseSource data generation and provider "
+                        + "lifetime have not been proven in the target.",
+                        relativeFile));
+
+                foreach (var gate in NUnitExecutionGateGuard.Find(syntax))
+                    issues.Add(new("SOLUTION_NUNIT_EXECUTION_GATE_REQUIRES_REVIEW",
+                        "error", "NUnit execution gate " + gate.GateName
+                        + " on " + gate.Scope + " at source line "
+                        + gate.SourceLine + " is not automatically preserved.",
+                        relativeFile));
+
+                foreach (var type in syntax.DescendantNodes()
+                    .OfType<ClassDeclarationSyntax>())
+                {
+                    if (!type.AttributeLists.SelectMany(list => list.Attributes)
+                        .Any(attr => AttributeMatches(attr, "SetUpFixture")))
+                        continue;
+                    hasScopes = true;
+                    if (type.Ancestors().OfType<TypeDeclarationSyntax>().Any())
+                        issues.Add(new("SOLUTION_NESTED_SETUPFIXTURE_UNSUPPORTED",
+                            "error", "A nested NUnit SetUpFixture has ambiguous/invalid "
+                            + "suite ownership; never invent an assembly-scope hook.",
+                            relativeFile));
+                }
+
+                if (syntax is CompilationUnitSyntax unit)
+                    foreach (var list in unit.AttributeLists.Where(list =>
+                        list.Target?.Identifier.ValueText == "assembly"))
+                        foreach (var attr in list.Attributes)
+                            if (AttributeMatches(attr, "Parallelizable",
+                                    "NonParallelizable", "LevelOfParallelism"))
+                                assemblyScheduling.Add((relativeFile,
+                                    attr.Name.ToString(),
+                                    attr.GetLocation().GetLineSpan()
+                                        .StartLinePosition.Line + 1));
             }
             var kind = hasTests || hasScopes ? "nunit" : "library";
+            if (kind == "nunit")
+                foreach (var setting in assemblyScheduling)
+                    issues.Add(new("SOLUTION_ASSEMBLY_SCHEDULING_REQUIRES_REVIEW",
+                        "error", "Assembly-level NUnit scheduling attribute "
+                        + setting.Attribute + " at line " + setting.Line
+                        + " is not safely carried into the target assembly.",
+                        setting.File));
             // Finish inexpensive, source-backed graph validation before any
             // expensive Roslyn/NUnit target generation. Invalid solutions
             // must fail quickly instead of repeatedly recompiling fixtures.
@@ -216,14 +278,12 @@ public sealed partial class MigrationEngine
             TargetAssemblyPlan? nunit = null;
             if (kind == "library")
             {
-                foreach (var file in files)
+                foreach (var (file, parsedRoot) in parsedRoots)
                 {
-                    var body = File.ReadAllText(file);
-                    var tree = CSharpSyntaxTree.ParseText(body);
-                    var tokens = tree.GetRoot().DescendantTokens()
+                    var tokens = parsedRoot.DescendantTokens()
                         .Where(token => token.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IdentifierToken))
                         .Select(token => token.ValueText).ToHashSet(StringComparer.Ordinal);
-                    var forbidden = tree.GetRoot().DescendantNodes()
+                    var forbidden = parsedRoot.DescendantNodes()
                         .OfType<UsingDirectiveSyntax>().Any(u =>
                             u.Name?.ToString() is "NUnit.Framework"
                                 or "OpenQA.Selenium" or "Microsoft.Playwright")
@@ -250,7 +310,8 @@ public sealed partial class MigrationEngine
                     relativeProject));
             byPath[project] = new SourceSolutionNode(project, relativeProject,
                 projectDir, relativeDir, assemblyName, kind,
-                files, references.ToArray(), nunit, packages);
+                files, references.ToArray(), nunit, packages,
+                declaredTestMethods);
         }
 
         foreach (var node in byPath.Values)
@@ -382,7 +443,8 @@ public sealed partial class MigrationEngine
                 node.RelativeProject));
             projects.Add(new TargetSolutionProject(node.RelativeProject,
                 targetFile, node.AssemblyName,
-                node.Kind, dependencies, node.NUnitPlan?.DeclaredTests ?? 0,
+                node.Kind, dependencies,
+                node.NUnitPlan?.DeclaredTests ?? node.DeclaredTestMethods,
                 node.NUnitPlan?.ScopedSetUpFixtures ?? 0,
                 node.NUnitPlan?.AnalysisId, node.NUnitPlan?.CandidateId,
                 node.Packages));
@@ -464,6 +526,7 @@ public sealed partial class MigrationEngine
                 "Each source NUnit project stays a separate target NUnit assembly; global SetUpFixtures do not cross ProjectReference boundaries.",
                 "Shared source libraries require safe C# and exact reviewed literal NuGet package IDs/versions; unsupported dependencies block before NUnit planning.",
                 "Dynamic MSBuild, custom Compile items, unreviewed/dynamic dependencies, external references, cycles and nested project ownership fail closed.",
+                "DeclaredTests counts source NUnit methods, even when target generation was deferred; it never implies target tests were generated.",
                 "Ready for build is source closure evidence, not compilation or business behavior.",
                 "dotnet build and NUnit runtime require explicit opt-in and are reported separately."
             });

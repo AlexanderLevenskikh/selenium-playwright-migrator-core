@@ -319,6 +319,69 @@ internal static class MultiProjectSolutionSmoke
             File.WriteAllText(configPath, configOriginal);
             Put("Foundation/Foundation.csproj", originalFoundation);
 
+            // A blocked source graph must still report the true number of
+            // NUnit method declarations; zero generated candidates is not
+            // evidence that the source contains zero tests.
+            Put("TestsA/ExtraAndNested.cs", """
+                using NUnit.Framework;
+                public class SuiteContainer {
+                    [SetUpFixture] public class InvalidNestedHook {
+                        [OneTimeTearDown] public void Stop() {}
+                    }
+                }
+                [TestFixture] public class ExtraFixture {
+                    [Test] public void Extra() {}
+                }
+                """);
+            var unsafeScope = engine.PlanTargetSolution(source, configPath);
+            Check(unsafeScope.Status == "blocked"
+                && unsafeScope.Issues.Any(issue =>
+                    issue.Code == "SOLUTION_NESTED_SETUPFIXTURE_UNSUPPORTED")
+                && unsafeScope.Projects.Single(project => project.SourceProject
+                    == "TestsA/TestsA.csproj").DeclaredTests == 3
+                && unsafeScope.Projects.Single(project => project.SourceProject
+                    == "TestsA/TestsA.csproj").CandidateId == null,
+                "lexical NUnit method count survives a blocked nested setup scope");
+            File.Delete(Path.Combine(source, "TestsA/ExtraAndNested.cs"));
+
+            Put("TestsA/AssemblyScheduling.cs", """
+                using NUnit.Framework;
+                [assembly: Parallelizable(ParallelScope.Fixtures)]
+                [assembly: LevelOfParallelism(3)]
+                """);
+            var parallel = engine.PlanTargetSolution(source, configPath);
+            Check(parallel.Status == "blocked"
+                && parallel.Issues.Count(issue =>
+                    issue.Code == "SOLUTION_ASSEMBLY_SCHEDULING_REQUIRES_REVIEW") == 2,
+                "source assembly parallel policy cannot disappear silently");
+            File.Delete(Path.Combine(source, "TestsA/AssemblyScheduling.cs"));
+
+            Put("TestsA/SourceCases.cs", """
+                using NUnit.Framework;
+                [TestFixture] public class DataCases {
+                    [TestCaseSource("Rows")] public void A(int value) {}
+                }
+                """);
+            ExpectProblem("SOLUTION_DYNAMIC_TEST_DATA_REQUIRES_REVIEW");
+            File.Delete(Path.Combine(source, "TestsA/SourceCases.cs"));
+
+            Put("TestsA/Disabled.cs", """
+                using NUnit.Framework;
+                [TestFixture] public class Disabled {
+                    [Test] [Ignore("paused")] public void A() {}
+                }
+                """);
+            ExpectProblem("SOLUTION_NUNIT_EXECUTION_GATE_REQUIRES_REVIEW");
+            File.Delete(Path.Combine(source, "TestsA/Disabled.cs"));
+
+            Put("TestsA/Unsupported.cs", """
+                public class Incompatible {
+                    [Fact] public void XUnitOnly() {}
+                }
+                """);
+            ExpectProblem("SOLUTION_UNSUPPORTED_XUNIT_SOURCE");
+            File.Delete(Path.Combine(source, "TestsA/Unsupported.cs"));
+
             // A package-free library carrying Selenium driver types also
             // remains blocked; no implicit Selenium runtime may be transplanted.
             Put("Foundation/DriverLeak.cs", """
