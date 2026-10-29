@@ -101,6 +101,19 @@ internal static class MultiProjectSolutionSmoke
                     }
                 }
                 """);
+            // The source NUnit assemblies own independent scheduling policies.
+            // They are declared in no-test source files and must survive
+            // conversion as separate, hash-attested assembly-level artifacts.
+            Put("TestsA/AssemblyScheduling.cs", """
+                using NUnit.Framework;
+                [assembly: Parallelizable(ParallelScope.Fixtures)]
+                [assembly: LevelOfParallelism(2)]
+                """);
+            Put("TestsB/AssemblyScheduling.cs", """
+                [assembly: NUnit.Framework.Parallelizable(NUnit.Framework.ParallelScope.Fixtures)]
+                [assembly: NUnit.Framework.LevelOfParallelism(4)]
+                """);
+
             var operations = new Dictionary<string, string[]>
             {
                 ["Recorder.StartRoot()"] = new[] {
@@ -116,10 +129,14 @@ internal static class MultiProjectSolutionSmoke
                     "NUnit.Framework.Assert.That(Shared.Foundation.Counter.ScopeCount, NUnit.Framework.Is.EqualTo(1));"
                 },
                 ["Recorder.CheckScoped()"] = new[] {
-                    "NUnit.Framework.Assert.That(Shared.Middle.Checker.Scoped(), NUnit.Framework.Is.True);"
+                    "NUnit.Framework.Assert.That(Shared.Middle.Checker.Scoped(), NUnit.Framework.Is.True);",
+                    "NUnit.Framework.Assert.That(System.Reflection.Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(NUnit.Framework.ParallelizableAttribute), false).Length, NUnit.Framework.Is.EqualTo(1));",
+                    "NUnit.Framework.Assert.That(System.Reflection.Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(NUnit.Framework.LevelOfParallelismAttribute), false).Length, NUnit.Framework.Is.EqualTo(1));"
                 },
                 ["Recorder.CheckUnscoped()"] = new[] {
-                    "NUnit.Framework.Assert.That(Shared.Middle.Checker.Unscoped(), NUnit.Framework.Is.True);"
+                    "NUnit.Framework.Assert.That(Shared.Middle.Checker.Unscoped(), NUnit.Framework.Is.True);",
+                    "NUnit.Framework.Assert.That(System.Reflection.Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(NUnit.Framework.ParallelizableAttribute), false).Length, NUnit.Framework.Is.EqualTo(1));",
+                    "NUnit.Framework.Assert.That(System.Reflection.Assembly.GetExecutingAssembly().GetCustomAttributes(typeof(NUnit.Framework.LevelOfParallelismAttribute), false).Length, NUnit.Framework.Is.EqualTo(1));"
                 }
             };
             var config = new ProjectAdapterConfig
@@ -170,6 +187,35 @@ internal static class MultiProjectSolutionSmoke
                 .Content.Contains("<ProjectReference Include=\"../Middle/Migrator.Generated.Library.csproj\" />",
                     StringComparison.Ordinal),
                 "generated NUnit project must reference the generated library, not the source .csproj");
+
+            var schedulingA = plan.Files.Single(file =>
+                file.RelativePath == "TestsA/Migrator.Generated.NUnitAssemblyScheduling.cs");
+            var schedulingB = plan.Files.Single(file =>
+                file.RelativePath == "TestsB/Migrator.Generated.NUnitAssemblyScheduling.cs");
+            Check(schedulingA.Content.Contains(
+                    "[assembly: NUnit.Framework.Parallelizable(NUnit.Framework.ParallelScope.Fixtures)]",
+                    StringComparison.Ordinal)
+                && schedulingA.Content.Contains(
+                    "[assembly: NUnit.Framework.LevelOfParallelism(2)]",
+                    StringComparison.Ordinal)
+                && schedulingB.Content.Contains(
+                    "[assembly: NUnit.Framework.LevelOfParallelism(4)]",
+                    StringComparison.Ordinal)
+                && !schedulingB.Content.Contains(
+                    "LevelOfParallelism(2)", StringComparison.Ordinal)
+                && plan.Files.Single(file =>
+                    file.RelativePath == "TestsA/Migrator.Generated.Tests.csproj")
+                    .Content.Contains(
+                        "<Compile Include=\"Migrator.Generated.NUnitAssemblyScheduling.cs\" />",
+                        StringComparison.Ordinal)
+                && plan.Files.Single(file => file.RelativePath ==
+                    "TestsA/migrator-assembly-manifest.json")
+                    .Content.Contains("assemblyScheduling", StringComparison.Ordinal)
+                && plan.Files.Single(file => file.RelativePath ==
+                    "TestsA/migrator-assembly-manifest.json")
+                    .Content.Contains("AssemblyScheduling.cs", StringComparison.Ordinal),
+                "independent NUnit assemblies require exact source-backed scheduling "
+                + "attributes, provenance and explicit compile closure");
 
             var run = engine.MaterializeTargetSolution(
                 source, target, plan.SourceTreeHash, plan.PlanId,
@@ -300,6 +346,7 @@ internal static class MultiProjectSolutionSmoke
                 File.WriteAllBytes(path, original);
             }
             NegativeFile("TestsA/RootAPlaywright.cs");
+            NegativeFile("TestsA/Migrator.Generated.NUnitAssemblyScheduling.cs");
             NegativeFile("TestsB/Migrator.Generated.Tests.csproj");
             NegativeFile(plan.SolutionFile);
             NegativeFile(plan.ManifestFile);
@@ -318,6 +365,54 @@ internal static class MultiProjectSolutionSmoke
             }
             catch (InvalidOperationException ex) when (
                 ex.Message.StartsWith("TARGET_ALREADY_EXISTS", StringComparison.Ordinal)) { }
+
+            // Unsafe expressions, duplicate declarations and fixture/test
+            // scheduling are blockers. Never replace their behavior with a
+            // convenient assembly-level default.
+            var originalScheduling = File.ReadAllText(Path.Combine(source,
+                "TestsA/AssemblyScheduling.cs"));
+            Put("TestsA/AssemblyScheduling.cs", originalScheduling.Replace(
+                "ParallelScope.Fixtures", "ParallelScope.Self | ParallelScope.Fixtures",
+                StringComparison.Ordinal));
+            ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_ARGUMENT_UNSUPPORTED");
+            Put("TestsA/AssemblyScheduling.cs", originalScheduling);
+
+            Put("TestsA/AssemblyScheduling.cs", originalScheduling.Replace(
+                "LevelOfParallelism(2)", "LevelOfParallelism(0)",
+                StringComparison.Ordinal));
+            ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_ARGUMENT_UNSUPPORTED");
+            Put("TestsA/AssemblyScheduling.cs", originalScheduling);
+
+            Put("TestsA/DuplicateScheduling.cs", """
+                using NUnit.Framework;
+                [assembly: LevelOfParallelism(3)]
+                """);
+            ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_DUPLICATE");
+            File.Delete(Path.Combine(source, "TestsA/DuplicateScheduling.cs"));
+
+            Put("TestsA/ConflictingScheduling.cs", """
+                using NUnit.Framework;
+                [assembly: NonParallelizable]
+                """);
+            ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_CONFLICT");
+            File.Delete(Path.Combine(source, "TestsA/ConflictingScheduling.cs"));
+
+            Put("TestsA/FixtureScheduling.cs", """
+                using NUnit.Framework;
+                [TestFixture, Parallelizable(ParallelScope.All)]
+                public class ScheduledFixture {
+                    [Test] public void A() {}
+                }
+                """);
+            ExpectProblem("NUNIT_FIXTURE_SCHEDULING_REQUIRES_REVIEW");
+            File.Delete(Path.Combine(source, "TestsA/FixtureScheduling.cs"));
+
+            Put("TestsA/AliasScheduling.cs", """
+                using PN = NUnit.Framework.ParallelizableAttribute;
+                [assembly: PN(NUnit.Framework.ParallelScope.Fixtures)]
+                """);
+            ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_ALIAS_UNRESOLVED");
+            File.Delete(Path.Combine(source, "TestsA/AliasScheduling.cs"));
 
             var originalMiddle = File.ReadAllText(Path.Combine(source,
                 "Middle/Middle.csproj"));
