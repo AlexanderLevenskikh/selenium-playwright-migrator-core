@@ -284,6 +284,13 @@ def main():
                       and plan["sourceMethodSha256"]
                       and plan["targetStatements"], "No source-backed projection for " + method)
                 projections[method] = plan
+            default_redacted = jrun(["dotnet", cli, "pom-plan", source_dir,
+                                      "CatalogPage", "InputAndSelect", h], repo)
+            check(default_redacted["targetStatements"] == []
+                  and "targetStatement" not in json.dumps(default_redacted)
+                  and "[data-test='option']" not in json.dumps(default_redacted)
+                  and "[id=\\\"picker\\\"]" not in json.dumps(default_redacted),
+                  "Default read-only Core CLI leaked target locator literals.")
             unsafe = run(["dotnet", cli, "pom-plan", source_dir,
                           "CatalogPage", "Unsafe", h, "--emit-target"], repo)
             check(unsafe["exit"] == 3 and
