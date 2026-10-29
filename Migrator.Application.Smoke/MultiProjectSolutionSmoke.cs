@@ -539,17 +539,9 @@ internal static class MultiProjectSolutionSmoke
                 "lexical NUnit method count survives a blocked nested setup scope");
             File.Delete(Path.Combine(source, "TestsA/ExtraAndNested.cs"));
 
-            Put("TestsA/AssemblyScheduling.cs", """
-                using NUnit.Framework;
-                [assembly: Parallelizable(ParallelScope.Fixtures)]
-                [assembly: LevelOfParallelism(3)]
-                """);
-            var parallel = engine.PlanTargetSolution(source, configPath);
-            Check(parallel.Status == "blocked"
-                && parallel.Issues.Count(issue =>
-                    issue.Code == "SOLUTION_ASSEMBLY_SCHEDULING_REQUIRES_REVIEW") == 2,
-                "source assembly parallel policy cannot disappear silently");
-            File.Delete(Path.Combine(source, "TestsA/AssemblyScheduling.cs"));
+            // Source-attested assembly scheduling is already tested above
+            // with both real NUnit assemblies. The negative cases below
+            // validate unsupported, duplicate, alias and conflicting policies.
 
             Put("TestsA/SourceCases.cs", """
                 using NUnit.Framework;
