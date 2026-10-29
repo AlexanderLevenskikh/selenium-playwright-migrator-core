@@ -173,7 +173,7 @@ public sealed partial class MigrationEngine
                         "--logger", "trx;LogFileName=migrator-target-assembly.trx" },
                     "nunit-trx", cancellationToken);
                 if (runtime.Status == "passed")
-                    runtime = ValidateNUnitTrx(targetRoot, runtime, plan.DeclaredTests);
+                    runtime = ValidateNUnitTrx(targetRoot, runtime, plan.NUnitCases);
             }
             else if (runNUnit)
                 runtime = new TargetAssemblyStage("blocked", "nunit-trx",
@@ -388,7 +388,8 @@ public sealed partial class MigrationEngine
     }
 
     private static TargetAssemblyStage ValidateNUnitTrx(
-        string targetRoot, TargetAssemblyStage command, int expectedTestMethods)
+        string targetRoot, TargetAssemblyStage command,
+        IReadOnlyList<NUnitCaseInventory> plannedCases)
     {
         try
         {
@@ -408,14 +409,23 @@ public sealed partial class MigrationEngine
             var passed = Number("passed");
             var failed = Number("failed");
             var skipped = Number("notExecuted");
-            if (total < Math.Max(1, expectedTestMethods)
-                || passed != total || failed > 0 || skipped > 0)
+            var expectedRunnable = plannedCases.Count(c => c.RunState == "runnable");
+            var expectedDisabled = plannedCases.Count - expectedRunnable;
+            // TRX can omit NUnit Explicit cases from its run set. Never
+            // treat their absence as execution or successful discovery.
+            // A source/target list-tests comparison is required separately.
+            if (total < expectedRunnable
+                || total > plannedCases.Count
+                || passed < expectedRunnable
+                || failed > 0
+                || skipped > expectedDisabled
+                || passed + failed + skipped != total)
                 return command with { Status = "failed",
-                    Details = $"NUnit TRX gate rejected total={total}, passed={passed}, failed={failed}, notExecuted={skipped}; expected at least {expectedTestMethods} tests.",
-                    ExecutedTests = total, PassedTests = passed };
+                    Details = $"NUnit TRX rejected: total={total}, passed={passed}, failed={failed}, notExecuted={skipped}; static runnable={expectedRunnable}, disabled={expectedDisabled}.",
+                    ExecutedTests = passed + failed, PassedTests = passed };
             return command with { Status = "passed",
-                Details = $"Actual NUnit TRX: {passed}/{total} tests passed, no failures or skips.",
-                ExecutedTests = total, PassedTests = passed };
+                Details = $"Actual NUnit TRX: total={total}, passed={passed}, failed={failed}, notExecuted={skipped}; static runnable={expectedRunnable}, disabled={expectedDisabled}. Explicit discovery and skip reasons require separate NUnit evidence.",
+                ExecutedTests = passed + failed, PassedTests = passed };
         }
         catch (Exception ex) when (ex is IOException or System.Xml.XmlException
             or InvalidOperationException)
