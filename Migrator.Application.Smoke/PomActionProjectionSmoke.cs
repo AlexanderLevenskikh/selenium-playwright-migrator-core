@@ -1,4 +1,8 @@
 using Migrator.Application;
+using Migrator.Core;
+using Migrator.Roslyn;
+using Migrator.SeleniumCSharp;
+using Migrator.PlaywrightDotNet;
 
 internal static class PomActionProjectionSmoke
 {
@@ -130,6 +134,65 @@ internal static class PomActionProjectionSmoke
                 "Absent", hash);
             Check(unknown.Status == "blocked" && unknown.TargetStatements.Count == 0,
                 "Unknown method must never inherit another method's target actions.");
+
+            // An opt-in reviewed template must integrate with the existing
+            // adapter pipeline rather than only succeeding in isolated POM
+            // review. Source parameter "value" must resolve to caller "input",
+            // but a source literal selector must remain untouched.
+            var comboPlan = engine.PlanPomActions(folder, "SyntheticCatalogPage",
+                "InputAndSelect", hash);
+            var candidate = comboPlan.AdapterCandidate;
+            Check(candidate is { RequiresReview: true }
+                && candidate.SourceMethodPattern == "page.InputAndSelect({value})"
+                && candidate.TargetStatementTemplates.Count == 5
+                && candidate.TargetStatementTemplates.Any(statement =>
+                    statement.Contains("PressSequentiallyAsync({value})", StringComparison.Ordinal))
+                && candidate.TargetStatementTemplates.Any(statement =>
+                    statement.Contains("[data-test='option']", StringComparison.Ordinal)),
+                "Source-derived review candidate must bind parameters, preserve literal selectors.");
+
+            var fixture = Path.Combine(folder, "MappingFixture.cs");
+            File.WriteAllText(fixture, """
+                using NUnit.Framework;
+                using Fictional.Pom;
+                [TestFixture] public class MappingFixture {
+                    private SyntheticCatalogPage page;
+                    [TestCase("alpha")]
+                    public void PicksValue(string input) {
+                        page.InputAndSelect(input);
+                    }
+                }
+                """);
+            var mappingConfig = new ProjectAdapterConfig
+            {
+                SourceProjectName = "FictionalPreview30",
+                ParameterizedMethods = new[]
+                {
+                    new ParameterizedMethodMapping
+                    {
+                        SourceMethodPattern = candidate!.SourceMethodPattern,
+                        TargetStatements = candidate.TargetStatementTemplates.ToArray(),
+                        RequiresReview = true
+                    }
+                },
+                TestHost = new TestHostConfig
+                {
+                    BaseClass = "object",
+                    ClassAttributes = new[] { "TestFixture" }
+                }
+            };
+            var migrated = new MigrationPipeline(
+                new RoslynTestFileParser(mappingConfig),
+                new PlaywrightDotNetRenderer(),
+                new DefaultProjectAdapter(mappingConfig)).ProcessFile(fixture);
+            Check(migrated.GeneratedOutput.Contains("PressSequentiallyAsync(input)",
+                    StringComparison.Ordinal)
+                && migrated.GeneratedOutput.Contains("[data-test='option']",
+                    StringComparison.Ordinal)
+                && migrated.Report.FullyConvertedTests == 0,
+                "Parameterized reviewed POM candidate must preserve target effects, "
+                + "forward source argument and remain not fully migrated.");
+            File.Delete(fixture);
 
             File.AppendAllText(source, "\n// stale");
             try
