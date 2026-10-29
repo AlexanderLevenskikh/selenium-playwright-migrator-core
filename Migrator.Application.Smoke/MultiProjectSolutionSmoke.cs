@@ -208,12 +208,17 @@ internal static class MultiProjectSolutionSmoke
                     .Content.Contains(
                         "<Compile Include=\"Migrator.Generated.NUnitAssemblyScheduling.cs\" />",
                         StringComparison.Ordinal)
+                && plan.AssemblyScheduling?.Count == 4
+                && plan.AssemblyScheduling.Count(entry =>
+                    entry.SourceProject == "TestsA/TestsA.csproj") == 2
+                && plan.AssemblyScheduling.Count(entry =>
+                    entry.SourceProject == "TestsB/TestsB.csproj") == 2
                 && plan.Files.Single(file => file.RelativePath ==
-                    "TestsA/migrator-assembly-manifest.json")
+                    plan.ManifestFile)
                     .Content.Contains("assemblyScheduling", StringComparison.Ordinal)
                 && plan.Files.Single(file => file.RelativePath ==
-                    "TestsA/migrator-assembly-manifest.json")
-                    .Content.Contains("AssemblyScheduling.cs", StringComparison.Ordinal),
+                    plan.ManifestFile)
+                    .Content.Contains("TestsA/AssemblyScheduling.cs", StringComparison.Ordinal),
                 "independent NUnit assemblies require exact source-backed scheduling "
                 + "attributes, provenance and explicit compile closure");
 
