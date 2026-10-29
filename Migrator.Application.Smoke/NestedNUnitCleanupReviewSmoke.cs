@@ -208,6 +208,36 @@ internal static class NestedNUnitCleanupReviewSmoke
                     && targetEvents.IndexOf("nested-cleanup") >
                         targetEvents.IndexOf("test-B"),
                     "nested cleanup must be called once after all namespace tests");
+
+                // Failure path: a source/target NUnit OneTimeSetUp throws,
+                // the other fixture still runs, and the *nested scope* must
+                // still perform exactly one cleanup after both.
+                foreach (var directory in new[] { original, target })
+                {
+                    var testFile = Path.Combine(directory, "Tests.cs");
+                    var prior = File.ReadAllText(testFile);
+                    File.WriteAllText(testFile, prior.Replace(
+                        "[Test] public void A()",
+                        "[OneTimeSetUp] public void Fail() { "
+                        + "Probe.Note(\"fixture-setup-failed\"); "
+                        + "throw new System.InvalidOperationException(\"synthetic failure\"); "
+                        + "} [Test] public void A()",
+                        StringComparison.Ordinal));
+                }
+                var originalFailure = RunNUnit(original,
+                    expectedPassed: 1, expectedFailed: 1);
+                var targetFailure = RunNUnit(target,
+                    expectedPassed: 1, expectedFailed: 1);
+                Check(originalFailure.OrderBy(x => x)
+                        .SequenceEqual(targetFailure.OrderBy(x => x))
+                    && originalFailure.Count(x => x == "nested-cleanup") == 1
+                    && targetFailure.Count(x => x == "nested-cleanup") == 1
+                    && originalFailure.Contains("fixture-setup-failed")
+                    && !originalFailure.Contains("test-A")
+                    && originalFailure.Last() == "nested-cleanup"
+                    && targetFailure.Last() == "nested-cleanup",
+                    "both NUnit3/4 targets must preserve nested cleanup "
+                    + "once after partial fixture initialization failure");
             }
             File.AppendAllText(Path.Combine(source, "SuiteBase.cs"),
                 "\n// Source bytes changed\n");
@@ -227,9 +257,11 @@ internal static class NestedNUnitCleanupReviewSmoke
         }
     }
 
-    private static List<string> RunNUnit(string directory)
+    private static List<string> RunNUnit(string directory,
+        int expectedPassed = 2, int expectedFailed = 0)
     {
         var trace = Path.Combine(directory, "order.txt");
+        if (File.Exists(trace)) File.Delete(trace);
         var results = Path.Combine(directory, "results");
         Directory.CreateDirectory(results);
         var project = Path.Combine(directory, "Synthetic.csproj");
@@ -261,15 +293,16 @@ internal static class NestedNUnitCleanupReviewSmoke
         }
         var standard = output.GetAwaiter().GetResult();
         var stderr = errors.GetAwaiter().GetResult();
-        Check(proc.ExitCode == 0, "synthetic NUnit runtime failed: "
+        Check((proc.ExitCode == 0) == (expectedFailed == 0),
+            "unexpected NUnit runtime exit: "
             + standard[^Math.Min(900, standard.Length)..]
             + stderr[^Math.Min(900, stderr.Length)..]);
         var trx = XDocument.Load(Path.Combine(results, "result.trx"));
         var counters = trx.Descendants().Single(element =>
             element.Name.LocalName == "Counters");
         Check(counters.Attribute("total")?.Value == "2"
-            && counters.Attribute("passed")?.Value == "2"
-            && counters.Attribute("failed")?.Value == "0",
+            && counters.Attribute("passed")?.Value == expectedPassed.ToString()
+            && counters.Attribute("failed")?.Value == expectedFailed.ToString(),
             "NUnit TRX must attest exactly two passing synthetic tests");
         return File.ReadAllLines(trace).ToList();
     }
