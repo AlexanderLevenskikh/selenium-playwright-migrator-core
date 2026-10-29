@@ -194,6 +194,9 @@ public sealed partial class MigrationEngine
                 Block("PLAYWRIGHT_LIFETIME_SOURCE_CLASS_SHAPE_UNSAFE",
                     "Only a unique public, abstract, non-generic source base "
                     + "and public nested cleanup type can be rendered.");
+            else if (!fixtureBaseType.Contains('.', StringComparison.Ordinal))
+                Block("PLAYWRIGHT_LIFETIME_NAMESPACE_REQUIRED",
+                    "A source namespace is needed to preserve the nested NUnit cleanup scope.");
             else
             {
                 var namespaceName = fixtureBaseType[
@@ -213,7 +216,7 @@ public sealed partial class MigrationEngine
                 else
                     candidate = new ReviewedPlaywrightLifetimeCandidate(
                         "Migrator.Generated.PlaywrightFixtureLifetime.cs",
-                        code, Hash(code), fixtureBaseType,
+                        code, HashLifetime(code), fixtureBaseType,
                         nestedCleanupType, infrastructureType);
             }
         }
@@ -247,7 +250,7 @@ public sealed partial class MigrationEngine
             cancellationToken.ThrowIfCancellationRequested();
             if (file.Replace('\\', '/').Split('/').Any(part =>
                 part is "bin" or "obj" or ".git")) continue;
-            var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file));
+            var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file), path: file);
             foreach (var type in tree.GetRoot().DescendantNodes()
                 .OfType<ClassDeclarationSyntax>())
             {
@@ -323,7 +326,7 @@ public sealed partial class MigrationEngine
                     method.GetLocation().GetLineSpan().StartLinePosition.Line + 1));
             methods.Add(new(name, path,
                 method.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
-                Hash(expression)));
+                HashLifetime(expression)));
         }
         var key = type.Members.OfType<PropertyDeclarationSyntax>()
             .Where(p => p.Identifier.ValueText == "ScopeKey").ToArray();
@@ -337,7 +340,7 @@ public sealed partial class MigrationEngine
         return (methods.ToArray(), issues.ToArray());
     }
 
-    private static string Hash(string content) =>
+    private static string HashLifetime(string content) =>
         Convert.ToHexString(SHA256.HashData(
             Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
 }
