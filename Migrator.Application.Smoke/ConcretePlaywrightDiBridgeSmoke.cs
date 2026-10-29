@@ -202,10 +202,17 @@ internal static class ConcretePlaywrightDiBridgeSmoke
                 "screenshot:", StringComparison.Ordinal));
             var releaseAt = failed.FindIndex(x => x.StartsWith(
                 "scope-release:", StringComparison.Ordinal));
-            Assert(logAt >= 0 && shotAt > logAt && releaseAt > shotAt
+            var logFiles = Directory.GetFiles(
+                Path.Combine(target, "artifacts-failed-test"),
+                "migrator-browser-logs-*.txt");
+            Assert(logFiles.Length > 0
+                && logFiles.Any(file => File.ReadAllText(file).Contains(
+                    "synthetic browser message", StringComparison.Ordinal))
+                && logAt >= 0 && shotAt > logAt && releaseAt > shotAt
                 && failed.Count(x => x == "browser-close") == 1
                 && failed.Last() == "root-dispose",
-                "failed test logs must precede screenshot and fixture/global disposal");
+                "failed test logs must precede screenshot and fixture/global disposal. "
+                + string.Join("|", failed));
 
             var teardownFailure = Execute(target, "scope-failure",
                 expectedPass: 2, expectedFail: 0, expectedExit: 1);
@@ -378,6 +385,13 @@ public class RecordedProxy : DispatchProxy
                 return "synthetic browser message";
             case ("page", "ScreenshotAsync"):
                 var opts = (PageScreenshotOptions)args![0]!;
+                var artifactDir = Environment.GetEnvironmentVariable(
+                    "MIGRATOR_SYNTH_ARTIFACTS")!;
+                var browserLogs = Directory.GetFiles(artifactDir,
+                    "migrator-browser-logs-*.txt");
+                if (browserLogs.Length > 0)
+                    Trace.Note("artifact-logs:" +
+                        Path.GetFileName(browserLogs[0]));
                 File.WriteAllBytes(opts.Path!, new byte[] { 137, 80, 78, 71 });
                 Trace.Note("screenshot:" + Path.GetFileName(opts.Path!));
                 return Task.FromResult(new byte[] { 137, 80, 78, 71 });
