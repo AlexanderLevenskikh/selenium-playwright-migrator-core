@@ -58,6 +58,7 @@ public sealed partial class MigrationEngine
         // content into a selector string or C# statement without parsing.
         var parameters = System.Text.RegularExpressions.Regex.Matches(
             sourcePattern, @"\\{(?<name>[A-Za-z_]\\w*)\\}")
+            .Cast<System.Text.RegularExpressions.Match>()
             .Select(match => match.Groups["name"].Value)
             .ToHashSet(StringComparer.Ordinal);
         if (parameters.Count == 0)
@@ -69,8 +70,8 @@ public sealed partial class MigrationEngine
         var references = parsed.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
             .Where(id => parameters.Contains(id.Identifier.ValueText)
-                && id.Parent is not MemberAccessExpressionSyntax
-                    { Name: var name } || false)
+                && !(id.Parent is MemberAccessExpressionSyntax member
+                     && ReferenceEquals(member.Name, id)))
             .OrderByDescending(id => id.SpanStart)
             .ToArray();
         var value = statement;
