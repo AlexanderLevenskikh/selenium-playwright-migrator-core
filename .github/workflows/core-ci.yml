@@ -36,6 +36,14 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
       - name: Build dedicated project assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: preview.29 real NUnit 3/4 discovery, TRX and explicit/failure comparison
+        run: python3 scripts/nunit_execution_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview29-synthetic-nunit-evidence-linux
+          path: artifacts/nunit-preview29/*
+          if-no-files-found: warn
       - name: Generate, dotnet build and run complete synthetic NUnit target assembly
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --project-assembly-only
       - name: Generate complete multi-project solution and verify independent NUnit assemblies
@@ -55,3 +63,25 @@ jobs:
           name: migrator-core-nuget-preview
           path: artifacts/nuget/*.nupkg
           if-no-files-found: error
+
+  windows-nunit-preview29:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Core and synthetic smoke
+        run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: Check static NUnit semantics without execution
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release
+      - name: Build migration assembly CLI
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Real NUnit 3/4 source-target discovery and TRX on Windows
+        run: python scripts/nunit_execution_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview29-synthetic-nunit-evidence-windows
+          path: artifacts/nunit-preview29/*
+          if-no-files-found: warn
