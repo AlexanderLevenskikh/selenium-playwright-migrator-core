@@ -58,13 +58,27 @@ internal static class NUnitAssemblySchedulingInspector
                 or "LevelOfParallelismAttribute")
             .ToHashSet(StringComparer.Ordinal);
 
+        // Global aliases can be declared in a different .cs file. They must
+        // not make NUnit scheduling disappear merely because the attribute
+        // use-site lacks a local alias declaration.
+        var globalAliases = sources
+            .SelectMany(source => source.Root is CompilationUnitSyntax unit
+                ? unit.Usings.Where(usingDirective =>
+                    usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)
+                    && usingDirective.Alias != null
+                    && usingDirective.Name?.ToString().Contains(
+                        "NUnit.Framework.", StringComparison.Ordinal) == true)
+                : Enumerable.Empty<UsingDirectiveSyntax>())
+            .ToArray();
+
         foreach (var (sourcePath, node) in sources)
         {
             if (node is not CompilationUnitSyntax root) continue;
             var hasNUnitUsing = root.Usings.Any(usingDirective =>
                 usingDirective.Alias == null &&
                 usingDirective.Name?.ToString() == "NUnit.Framework");
-            var aliases = root.Usings.Where(usingDirective =>
+            var aliases = root.Usings.Concat(globalAliases)
+                .Where(usingDirective =>
                     usingDirective.Alias != null &&
                     usingDirective.Name?.ToString()
                         .Contains("NUnit.Framework.", StringComparison.Ordinal) == true)
@@ -181,13 +195,21 @@ internal static class NUnitAssemblySchedulingInspector
                 }
             }
 
+            bool IsSchedulingAttribute(AttributeSyntax attr)
+            {
+                var raw = attr.Name.ToString();
+                return SchedulingNames.Contains(SimpleName(raw))
+                    || aliases.TryGetValue(raw, out var aliased)
+                        && SchedulingNames.Contains(SimpleName(aliased));
+            }
+
             // Fixture/method scheduling is not an assembly policy: dropping
             // it could change test concurrency despite a valid target build.
             foreach (var type in root.DescendantNodes()
                 .OfType<TypeDeclarationSyntax>())
                 foreach (var attr in type.AttributeLists.SelectMany(
                     list => list.Attributes))
-                    if (SchedulingNames.Contains(SimpleName(attr.Name.ToString())))
+                    if (IsSchedulingAttribute(attr))
                         Report("NUNIT_FIXTURE_SCHEDULING_REQUIRES_REVIEW",
                             "Fixture-level NUnit scheduling cannot be silently lost.",
                             SourceLine(attr));
@@ -195,7 +217,7 @@ internal static class NUnitAssemblySchedulingInspector
                 .OfType<MethodDeclarationSyntax>())
                 foreach (var attr in method.AttributeLists.SelectMany(
                     list => list.Attributes))
-                    if (SchedulingNames.Contains(SimpleName(attr.Name.ToString())))
+                    if (IsSchedulingAttribute(attr))
                         Report("NUNIT_TEST_SCHEDULING_REQUIRES_REVIEW",
                             "Test-level NUnit scheduling cannot be silently lost.",
                             SourceLine(attr));
