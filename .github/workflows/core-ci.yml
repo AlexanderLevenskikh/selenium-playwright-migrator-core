@@ -103,3 +103,19 @@ jobs:
           name: migrator-preview29-synthetic-nunit-evidence-windows
           path: artifacts/nunit-preview29/*
           if-no-files-found: warn
+
+  p2-pom-ast-fast:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build P2 AST/Core smoke
+        run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: Roslyn semantic source-backed POM action regression
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
