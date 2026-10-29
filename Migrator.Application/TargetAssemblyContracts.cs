@@ -39,7 +39,12 @@ public sealed record TargetAssemblyPlan(
     IReadOnlyList<TargetAssemblyFile> Files,
     IReadOnlyList<TargetAssemblyIssue> Issues,
     IReadOnlyList<string> Limitations,
-    IReadOnlyList<TargetAssemblySchedulingSource>? AssemblyScheduling = null);
+    IReadOnlyList<TargetAssemblySchedulingSource>? AssemblyScheduling = null)
+{
+    /// <summary>Static estimate only; neither NUnit discovery nor runtime.</summary>
+    public IReadOnlyList<NUnitCaseInventory> NUnitCases { get; init; }
+        = Array.Empty<NUnitCaseInventory>();
+}
 
 /// <summary>
 /// Stage-specific evidence. An NUnit run is reported only after dotnet test
