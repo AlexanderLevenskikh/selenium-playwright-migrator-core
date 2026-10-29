@@ -181,6 +181,28 @@ internal static class NUnitExecutionGateSmoke
                     && preview.Files.Count == 0,
                     "Unsafe source emitted a runnable target.");
             }
+            // Source-backed inherited gates in separate files must still
+            // block emission; method-level status alone is insufficient.
+            var parent = Path.Combine(root, "FictionalBase.cs");
+            File.WriteAllText(parent, """
+                using NUnit.Framework;
+                [Ignore("inherited fixture maintenance")]
+                public abstract class FictionalBase { }
+                """);
+            File.WriteAllText(file, """
+                using NUnit.Framework;
+                [TestFixture] public class FictionalFixture : FictionalBase {
+                    [Test] public void Example() {}
+                }
+                """);
+            var inherited = engine.Analyze(root);
+            Check(inherited.Findings.Any(issue =>
+                issue.Code == "NUNIT_INHERITED_GATE_REQUIRES_REVIEW"
+                && issue.SourcePath.EndsWith("FictionalFixture.cs", StringComparison.Ordinal)),
+                "Cross-file inherited execution gate was not detected.");
+            Check(engine.Preview(root, expectedAnalysisId: inherited.AnalysisId)
+                    .Files.Count == 0,
+                "Cross-file inherited NUnit ignore must not become a runnable fixture.");
         }
         finally { Directory.Delete(root, recursive: true); }
     }
