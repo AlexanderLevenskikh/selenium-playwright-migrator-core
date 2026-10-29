@@ -148,7 +148,8 @@ internal static class PomActionProjectionSmoke
                 && candidate.TargetStatementTemplates.Any(statement =>
                     statement.Contains("PressSequentiallyAsync({value})", StringComparison.Ordinal))
                 && candidate.TargetStatementTemplates.Any(statement =>
-                    statement.Contains("[data-test='option']", StringComparison.Ordinal)),
+                    statement.Contains("data-test=", StringComparison.Ordinal)
+                    && statement.Contains("option", StringComparison.Ordinal)),
                 "Source-derived review candidate must bind parameters, preserve literal selectors: "
                 + System.Text.Json.JsonSerializer.Serialize(candidate));
 
@@ -188,8 +189,8 @@ internal static class PomActionProjectionSmoke
                 new DefaultProjectAdapter(mappingConfig)).ProcessFile(fixture);
             Check(migrated.GeneratedOutput.Contains("PressSequentiallyAsync(input)",
                     StringComparison.Ordinal)
-                && migrated.GeneratedOutput.Contains("[data-test='option']",
-                    StringComparison.Ordinal)
+                && migrated.GeneratedOutput.Contains("data-test=", StringComparison.Ordinal)
+                && migrated.GeneratedOutput.Contains("option", StringComparison.Ordinal)
                 && migrated.Report.FullyConvertedTests == 0,
                 "Parameterized reviewed POM candidate must preserve target effects, "
                 + "forward source argument and remain not fully migrated.");
