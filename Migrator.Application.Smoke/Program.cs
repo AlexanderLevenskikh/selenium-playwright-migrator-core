@@ -9,6 +9,7 @@ if (args.Contains("--project-assembly-only", StringComparer.Ordinal))
 {
     ProjectTargetAssemblySmoke.Run();
     NestedNUnitCleanupReviewSmoke.Run();
+    ReviewedPlaywrightLifetimeSmoke.Run();
     Console.WriteLine("Generated NUnit target assembly build and runtime smoke passed.");
     return;
 }
