@@ -221,6 +221,23 @@ internal static class ConcretePlaywrightDiBridgeSmoke
                 && teardownFailure.Count(x => x == "browser-close") == 1,
                 "DI dispose exception must not skip Context.CloseAsync and shared browser cleanup");
 
+            var pageFailure = Execute(target, "page-failure",
+                expectedPass: 1, expectedFail: 1, expectedExit: 1);
+            Assert(pageFailure.Contains("page-create-failed")
+                && pageFailure.Count(x => x.StartsWith("scope-create:",
+                    StringComparison.Ordinal)) ==
+                    pageFailure.Count(x => x.StartsWith("scope-release:",
+                        StringComparison.Ordinal))
+                && pageFailure.Count(x => x.StartsWith("context-open:",
+                    StringComparison.Ordinal)) ==
+                    pageFailure.Count(x => x.StartsWith("context-close:",
+                        StringComparison.Ordinal))
+                && pageFailure.Count(x => x == "browser-close") == 1
+                && pageFailure.Last() == "root-dispose",
+                "failed NewPageAsync must not leak scope or context before "
+                + "nested global cleanup. Events: "
+                + string.Join("|", pageFailure));
+
             // Remove only the first fixture's [Retry(4)] attribute to
             // prove the bridge fails the suite closed rather than silently
             // changing the original listener's retry policy.
@@ -356,6 +373,14 @@ public class RecordedProxy : DispatchProxy
                 _page -= (EventHandler<IPage>)args![0]!;
                 return null;
             case ("context", "NewPageAsync"):
+                if (Trace.Scenario == "page-failure"
+                    && TestContext.CurrentContext.Test.ClassName?.Contains(
+                        "PrimaryFixture", StringComparison.Ordinal) == true)
+                {
+                    Trace.Note("page-create-failed");
+                    throw new InvalidOperationException(
+                        "synthetic failure after context creation");
+                }
                 var page = New<IPage>("page");
                 ((RecordedProxy)(object)page).ContextObject = ContextObject;
                 _page?.Invoke(null, page);
