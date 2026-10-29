@@ -642,7 +642,6 @@ The trusted CLI `--build --test` path validates actual target TRX.
 **NUnit3TestAdapter may report `notExecuted=0` in TRX Counters even when
 five `UnitTestResult` entries have outcome `NotExecuted`**; the assembly
 verifier reads individual outcomes and rejects missing, activated, unknown
-or failing cases. Passing synthetic tests does **not** mean a private
-ArBilling build, NUnit runtime, browser E2E or semantic equivalence ran.
+or failing cases. Passing synthetic tests does **not** mean a private customer-application build, NUnit runtime, browser E2E or semantic equivalence ran.
 Only explicitly executed and recorded test commands may establish runtime
 evidence.
