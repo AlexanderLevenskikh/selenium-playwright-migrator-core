@@ -47,6 +47,9 @@ public sealed class MigratorPlaywrightBridgeOptions
     public int Height { get; init; } = 1440;
     public bool Headless { get; init; } = true;
     public bool FullPageScreenshots { get; init; } = true;
+    // Optional opt-in lifecycle event hook for real browser/resource audits.
+    // Emits semantic event names only, never selectors/URLs/credentials.
+    public Action<string>? LifecycleObserver { get; init; }
 
     public void Validate()
     {
@@ -87,6 +90,8 @@ public sealed class MigratorPlaywrightDiBridge :
 
     public IBrowser Browser => _browser;
     public int LiveFixtureScopes => _fixtures.Count;
+    private void Observe(string eventName) =>
+        _options.LifecycleObserver?.Invoke(eventName);
 
     public MigratorPlaywrightDiBridge(IServiceProvider rootProvider,
         IBrowser sharedBrowser, MigratorPlaywrightBridgeOptions options,
@@ -149,6 +154,7 @@ public sealed class MigratorPlaywrightDiBridge :
                 "PLAYWRIGHT_BRIDGE_FIXTURE_ALREADY_ACQUIRED");
 
         var services = _rootProvider.CreateScope();
+        Observe("fixture-scope-created");
         IBrowserContext? context = null;
         try
         {
@@ -160,6 +166,8 @@ public sealed class MigratorPlaywrightDiBridge :
                         Width = _options.Width, Height = _options.Height
                     }
                 });
+            Observe("context-opened");
+            context.Close += (_, _) => Observe("context-closed");
             var messages = new ConcurrentQueue<string>();
             context.Page += (_, page) =>
             {
@@ -179,7 +187,14 @@ public sealed class MigratorPlaywrightDiBridge :
         {
             if (context != null)
                 await context.CloseAsync();
-            services.Dispose();
+            try
+            {
+                services.Dispose();
+            }
+            finally
+            {
+                Observe("fixture-scope-disposed");
+            }
             throw;
         }
     }
@@ -234,6 +249,7 @@ public sealed class MigratorPlaywrightDiBridge :
         await File.WriteAllLinesAsync(path,
             entry.ConsoleMessages.ToArray());
         TestContext.AddTestAttachment(path, "Playwright browser console logs");
+        Observe("failed-logs-saved");
     }
 
     public async Task SaveFailedScreenshotAsync(
@@ -247,6 +263,7 @@ public sealed class MigratorPlaywrightDiBridge :
             Path = path, FullPage = _options.FullPageScreenshots
         });
         TestContext.AddTestAttachment(path, "Playwright failure screenshot");
+        Observe("failed-screenshot-saved");
     }
 
     // The generated base closes IBrowserContext itself in finally, including
@@ -257,7 +274,14 @@ public sealed class MigratorPlaywrightDiBridge :
         if (!_fixtures.TryRemove(fixtureClassName, out var lease))
             throw new InvalidOperationException(
                 "PLAYWRIGHT_BRIDGE_FIXTURE_SCOPE_MISSING");
-        lease.ServiceScope.Dispose();
+        try
+        {
+            lease.ServiceScope.Dispose();
+        }
+        finally
+        {
+            Observe("fixture-scope-disposed");
+        }
         return Task.CompletedTask;
     }
 
@@ -272,11 +296,18 @@ public sealed class MigratorPlaywrightDiBridge :
                 throw new InvalidOperationException(
                     "PLAYWRIGHT_BRIDGE_LIVE_FIXTURE_SCOPES");
             if (_ownsBrowser)
+            {
                 await _browser.CloseAsync();
+                Observe("browser-closed");
+            }
             _playwright?.Dispose();
             if (_ownsProvider && _rootProvider is IDisposable disposable)
+            {
                 disposable.Dispose();
+                Observe("provider-disposed");
+            }
             Volatile.Write(ref _disposed, 1);
+            Observe("full-dispose-complete");
         }
         finally
         {
