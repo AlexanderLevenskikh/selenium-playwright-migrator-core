@@ -17,13 +17,28 @@ public sealed record MigrationFinding(
     string Message,
     string EvidenceKind);
 
+/// <summary>Static source-backed evidence, never an NUnit discovery or execution claim.</summary>
+public sealed record NUnitAttributeEvidence(
+    string SourcePath, int Line, string Kind, string SourceSha256,
+    string TargetExpression, bool RequiresReview, string? Reason);
+
+public sealed record NUnitCaseInventory(
+    string SourcePath, int Line, string Method, string TargetExpression,
+    string RunState, string? Reason);
+
 public sealed record FileSurvey(
     string RelativePath,
     string Disposition,
     int DeclaredTests,
     int ParsedTests,
     IReadOnlyList<string> TestNames,
-    IReadOnlyList<MigrationFinding> Findings);
+    IReadOnlyList<MigrationFinding> Findings)
+{
+    public IReadOnlyList<NUnitAttributeEvidence> NUnitAttributes { get; init; }
+        = Array.Empty<NUnitAttributeEvidence>();
+    public IReadOnlyList<NUnitCaseInventory> NUnitCases { get; init; }
+        = Array.Empty<NUnitCaseInventory>();
+}
 
 public sealed record MigrationAnalysis(
     string SchemaVersion,
@@ -36,7 +51,12 @@ public sealed record MigrationAnalysis(
     int ParsedTests,
     IReadOnlyList<FileSurvey> Files,
     IReadOnlyList<MigrationFinding> Findings,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations)
+{
+    public int StaticallyResolvedNUnitCases => Files.Sum(file => file.NUnitCases.Count);
+    public int BlockedNUnitSources => Files.Sum(file =>
+        file.NUnitAttributes.Count(attribute => attribute.RequiresReview));
+}
 
 public sealed record GeneratedFile(
     string SourcePath,
@@ -54,7 +74,13 @@ public sealed record MigrationPreview(
     string TargetTreeHash,
     string TransformationStatus,
     IReadOnlyList<GeneratedFile> Files,
-    IReadOnlyList<MigrationFinding> Findings);
+    IReadOnlyList<MigrationFinding> Findings)
+{
+    public IReadOnlyList<NUnitAttributeEvidence> NUnitAttributes { get; init; }
+        = Array.Empty<NUnitAttributeEvidence>();
+    public IReadOnlyList<NUnitCaseInventory> NUnitCases { get; init; }
+        = Array.Empty<NUnitCaseInventory>();
+}
 
 public sealed record SourceExcerptLine(int Line, string Text);
 
