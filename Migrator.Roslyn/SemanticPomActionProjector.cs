@@ -128,7 +128,7 @@ public static class SemanticPomActionProjector
             if (expression == null
                 || expression is not InvocationExpressionSyntax invocation)
             {
-                Block("POM_UNSUPPORTED_STATEMENT", expression ?? method,
+                Block("POM_UNSUPPORTED_STATEMENT", (SyntaxNode?)expression ?? method,
                     "Control flow, local mutations, returns, branching and non-invocation statements require explicit side-effect review.");
                 continue;
             }
