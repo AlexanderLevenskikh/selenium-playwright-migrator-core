@@ -8,6 +8,7 @@ if (args.Contains("--multi-project-only", StringComparer.Ordinal))
 if (args.Contains("--project-assembly-only", StringComparer.Ordinal))
 {
     ProjectTargetAssemblySmoke.Run();
+    NestedNUnitCleanupReviewSmoke.Run();
     Console.WriteLine("Generated NUnit target assembly build and runtime smoke passed.");
     return;
 }
