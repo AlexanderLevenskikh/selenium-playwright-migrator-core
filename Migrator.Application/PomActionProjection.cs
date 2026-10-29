@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Migrator.Core;
 using Migrator.Roslyn;
 
@@ -32,11 +34,52 @@ public sealed record PomActionPlan(
     public bool RuntimeVerified => false;
     public bool CanAutoApply => false;
     public int ProvenSourceActions => Actions.Count;
+    public PomReviewedAdapterCandidate? AdapterCandidate { get; init; }
 }
+
+/// <summary>
+/// An opt-in adapter candidate, never an automatically installed mapping.
+/// Roslyn source parameters become explicit {placeholder} references only at
+/// identifier tokens in translated target syntax, never inside URL/selector
+/// string literal content.
+/// </summary>
+public sealed record PomReviewedAdapterCandidate(
+    string SourceMethodPattern, IReadOnlyList<string> TargetStatementTemplates,
+    bool RequiresReview, string SourceMethodSha256);
 
 /// <summary>Project-scoped AST projection over stable, exactly captured UTF-8 bytes.</summary>
 public sealed partial class MigrationEngine
 {
+    private static string ToAdapterTemplate(
+        string statement, string sourcePattern)
+    {
+        // Source method pattern was emitted solely from source parameters:
+        // page.Method({name}, ...). Never interpolate arbitrary expression
+        // content into a selector string or C# statement without parsing.
+        var parameters = System.Text.RegularExpressions.Regex.Matches(
+            sourcePattern, @"\\{(?<name>[A-Za-z_]\\w*)\\}")
+            .Select(match => match.Groups["name"].Value)
+            .ToHashSet(StringComparer.Ordinal);
+        if (parameters.Count == 0)
+            return statement;
+        var parsed = SyntaxFactory.ParseStatement(statement);
+        if (parsed.ContainsDiagnostics)
+            throw new InvalidOperationException(
+                "POM_ADAPTER_TEMPLATE_PARSE_FAILED: target statement must parse before parameter binding.");
+        var references = parsed.DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Where(id => parameters.Contains(id.Identifier.ValueText)
+                && id.Parent is not MemberAccessExpressionSyntax
+                    { Name: var name } || false)
+            .OrderByDescending(id => id.SpanStart)
+            .ToArray();
+        var value = statement;
+        foreach (var id in references)
+            value = value[..id.SpanStart] + "{" + id.Identifier.ValueText + "}"
+                + value[id.Span.End..];
+        return value;
+    }
+
     public PomActionPlan PlanPomActions(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine = 0,
@@ -99,11 +142,21 @@ public sealed partial class MigrationEngine
         var blockers = projected.Blockers.Select(x => new PomActionBlocker(
             x.Code, x.SourcePath, x.SourceLine, x.SourceSha256,
             x.Explanation)).ToArray();
+        var candidate = projected.Status == "requires_review"
+            ? new PomReviewedAdapterCandidate(
+                projected.SuggestedSourcePattern,
+                projected.TargetStatements.Select(statement => ToAdapterTemplate(
+                    statement, projected.SuggestedSourcePattern)).ToArray(),
+                true, projected.SourceMethodSha256)
+            : null;
         return new PomActionPlan(projected.SchemaVersion, expectedSourceTreeHash,
             projected.Status, projected.SourceType, projected.SourceMethod,
             projected.SourceMethodSymbol, projected.SourceMethodSha256,
             projected.SourcePath, projected.SourceLine,
             projected.SuggestedSourcePattern, steps, blockers,
-            projected.TargetStatements, projected.Limitations);
+            projected.TargetStatements, projected.Limitations)
+        {
+            AdapterCandidate = candidate
+        };
     }
 }
