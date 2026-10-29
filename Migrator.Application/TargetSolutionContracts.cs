@@ -28,6 +28,13 @@ public sealed record TargetSolutionSourceScope(
     IReadOnlyList<string> IncludedProjects,
     IReadOnlyList<string> ExcludedProjects);
 
+public sealed record TargetSolutionSchedulingSource(
+    string SourceProject,
+    string SourcePath,
+    int SourceLine,
+    string SourceExpression,
+    string TargetExpression);
+
 public sealed record TargetSolutionPlan(
     string SchemaVersion,
     string SourceRoot,
@@ -42,7 +49,8 @@ public sealed record TargetSolutionPlan(
     IReadOnlyList<TargetSolutionFile> Files,
     IReadOnlyList<TargetAssemblyIssue> Issues,
     IReadOnlyList<string> Limitations,
-    TargetSolutionSourceScope? Scope = null);
+    TargetSolutionSourceScope? Scope = null,
+    IReadOnlyList<TargetSolutionSchedulingSource>? AssemblyScheduling = null);
 
 public sealed record TargetSolutionProjectExecution(
     string ProjectFile,
