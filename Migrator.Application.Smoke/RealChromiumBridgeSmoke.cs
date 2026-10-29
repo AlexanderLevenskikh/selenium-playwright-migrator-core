@@ -175,7 +175,7 @@ internal static class RealChromiumBridgeSmoke
                         "--logger", "trx;LogFileName=result.trx",
                         "--results-directory", trxDir,
                         "--verbosity", "quiet"], target,
-                    TimeSpan.FromMinutes(4),
+                    TimeSpan.FromMinutes(2),
                     new Dictionary<string, string>
                     {
                         ["MIGRATOR_REAL_TRACE"] = trace,
@@ -319,10 +319,17 @@ internal static class RealChromiumBridgeSmoke
             var partialStderr = error.IsCompletedSuccessfully
                 ? error.GetAwaiter().GetResult() : "";
             var partial = partialStdout + "\n" + partialStderr;
+            var tracePath = environment != null &&
+                environment.TryGetValue("MIGRATOR_REAL_TRACE", out var path)
+                ? path : null;
+            var lifecycleTrace = tracePath != null && File.Exists(tracePath)
+                ? File.ReadAllText(tracePath) : "";
             throw new InvalidOperationException(
                 "REAL_CHROMIUM_PROCESS_TIMEOUT: " + program + " "
                 + string.Join(" ", args)
-                + " output=" + partial[^Math.Min(1800, partial.Length)..]);
+                + " output=" + partial[^Math.Min(1800, partial.Length)..]
+                + " lifecycle=" + lifecycleTrace[^Math.Min(2200,
+                    lifecycleTrace.Length)..]);
         }
         var body = output.GetAwaiter().GetResult() + "\n"
             + error.GetAwaiter().GetResult();
@@ -418,6 +425,67 @@ internal sealed class LocalApplication : IDisposable
     }
 }
 
+// .NET module initializers run under CLR loader synchronization. Never
+// synchronously block the loader thread on Playwright's asynchronous driver
+// startup. NUnit OneTimeSetUp awaits this lazy bridge instead.
+public sealed class AsyncChromiumBridge :
+    IMigratorReviewedPlaywrightLifecycleBridge
+{
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private MigratorPlaywrightDiBridge? _concrete;
+
+    private async Task<MigratorPlaywrightDiBridge> RealAsync()
+    {
+        if (_concrete != null) return _concrete;
+        await _gate.WaitAsync();
+        try
+        {
+            if (_concrete == null)
+            {
+                Audit.Record("browser-launch-enter");
+                var provider = new ServiceCollection().BuildServiceProvider();
+                var options = new MigratorPlaywrightBridgeOptions
+                {
+                    ArtifactDirectory = Environment.GetEnvironmentVariable(
+                        "MIGRATOR_REAL_ARTIFACTS")!,
+                    RequiredRetryAttempts = 3,
+                    Width = 1280, Height = 720,
+                    LifecycleObserver = Audit.Record
+                };
+                _concrete = await MigratorPlaywrightDiBridge.LaunchChromiumAsync(
+                    provider, options, ownsProvider: true);
+                Audit.Record("browser-version:" + _concrete.Browser.Version);
+                _concrete.Browser.Disconnected += (_, _) =>
+                    Audit.Record("browser-disconnected");
+                Audit.Record("browser-launch-complete");
+            }
+            return _concrete;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task InstallRetryPolicyAsync(string fixtureClassName) =>
+        await (await RealAsync()).InstallRetryPolicyAsync(fixtureClassName);
+
+    public async Task<IBrowserContext> OpenFixtureContextAsync(string fixtureClassName) =>
+        await (await RealAsync()).OpenFixtureContextAsync(fixtureClassName);
+
+    public async Task WriteFailedBrowserLogsAsync(IPage page, string fixtureClassName) =>
+        await (await RealAsync()).WriteFailedBrowserLogsAsync(page, fixtureClassName);
+
+    public async Task SaveFailedScreenshotAsync(IPage page, string fixtureClassName) =>
+        await (await RealAsync()).SaveFailedScreenshotAsync(page, fixtureClassName);
+
+    public async Task ReleaseFixtureServicesAsync(string fixtureClassName) =>
+        await (await RealAsync()).ReleaseFixtureServicesAsync(fixtureClassName);
+
+    public async Task FullDisposeAsync() =>
+        await (await RealAsync()).FullDisposeAsync();
+}
+
 public static class RuntimeBootstrap
 {
     private static LocalApplication? App;
@@ -426,22 +494,11 @@ public static class RuntimeBootstrap
     [ModuleInitializer]
     public static void Configure()
     {
+        Audit.Record("module-initializer-enter");
         App = new LocalApplication();
-        var provider = new ServiceCollection().BuildServiceProvider();
-        var options = new MigratorPlaywrightBridgeOptions
-        {
-            ArtifactDirectory = Environment.GetEnvironmentVariable(
-                "MIGRATOR_REAL_ARTIFACTS")!,
-            RequiredRetryAttempts = 3,
-            Width = 1280, Height = 720,
-            LifecycleObserver = Audit.Record
-        };
-        var bridge = MigratorPlaywrightDiBridge.LaunchChromiumAsync(
-            provider, options, ownsProvider: true).GetAwaiter().GetResult();
-        Audit.Record("browser-version:" + bridge.Browser.Version);
-        bridge.Browser.Disconnected += (_, _) =>
-            Audit.Record("browser-disconnected");
-        FixtureBase.Bridge = bridge;
+        Audit.Record("loopback-http-listening");
+        FixtureBase.Bridge = new AsyncChromiumBridge();
+        Audit.Record("module-initializer-complete");
     }
 }
 
