@@ -38,7 +38,7 @@ internal static class ReviewedPlaywrightLifetimeSmoke
                         TestContext.CurrentContext.WriteBrowserLogs(Driver);
                         Screenshoter.CreateAndSaveScreenshot();
                     }
-                    [OneTimeTearDown] public void AfterFixture() {
+                    [OneTimeTearDown] public void End() {
                         DiContainer.DisposeScope();
                     }
                     private void ConfigureRetry() {
@@ -46,7 +46,7 @@ internal static class ReviewedPlaywrightLifetimeSmoke
                         TestExecutionContext.CurrentContext.GetType().GetProperties();
                     }
                     [SetUpFixture] public class NestedCleanup {
-                        [OneTimeTearDown] public void FinalCleanup() {
+                        [OneTimeTearDown] public void End() {
                             DiContainer.FullDispose();
                         }
                     }
@@ -178,6 +178,8 @@ internal static class ReviewedPlaywrightLifetimeSmoke
             })
                 Check(generated.Contains(required, StringComparison.Ordinal),
                     "typed target lifecycle missing " + required);
+            Check(generated.Split("public async Task End()", StringSplitOptions.None).Length - 1 == 2,
+                "same named source cleanup methods in outer and nested NUnit classes remain distinct");
             Check(!generated.Contains("IWebDriver", StringComparison.Ordinal)
                 && !generated.Contains("IPooledWebDriver", StringComparison.Ordinal)
                 && !generated.Contains("Selenium", StringComparison.Ordinal),
