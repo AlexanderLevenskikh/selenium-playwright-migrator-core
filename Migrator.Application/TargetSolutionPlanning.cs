@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string SolutionArtifactName = "Migrator.Generated.slnx";
     private const string SolutionManifestName = "migrator-solution-manifest.json";
-    private const string SolutionSchema = "migrator-target-solution/v1alpha3";
+    private const string SolutionSchema = "migrator-target-solution/v1alpha4";
     private const int SolutionProjectLimit = 20;
     private const int SolutionFileLimit = 256;
     private const long SolutionBytesLimit = 24 * 1024 * 1024;
@@ -48,15 +48,30 @@ public sealed partial class MigrationEngine
         if (!Directory.Exists(root))
             throw new DirectoryNotFoundException("TARGET_SOLUTION_ROOT_MISSING");
         var issues = new List<TargetAssemblyIssue>();
-        var projectPaths = Directory.GetFiles(root, "*.csproj",
+        var discoveredProjects = Directory.GetFiles(root, "*.csproj",
                 SearchOption.AllDirectories)
             .Where(path => !SolutionExcluded(path, root))
             .Select(Path.GetFullPath)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
-        if (projectPaths.Length < 2 || projectPaths.Length > SolutionProjectLimit)
+        // Explicit entries restrict *only* unrelated project roots; every
+        // reachable ProjectReference is mandatory and re-included. Omitted
+        // projects are shown in the public plan ledger, never silently
+        // counted as migrated NUnit tests.
+        var selection = TargetSolutionEntryScope.Resolve(root,
+            discoveredProjects, configPath, issues, cancellationToken);
+        var projectPaths = selection.Included;
+        var sourceScope = new TargetSolutionSourceScope(
+            selection.Explicit, selection.Entries,
+            projectPaths.Select(path => Path.GetRelativePath(root, path)
+                .Replace('\\', '/')).ToArray(), selection.Excluded);
+        var minimumProjects = selection.Explicit ? 1 : 2;
+        if (projectPaths.Length < minimumProjects
+            || projectPaths.Length > SolutionProjectLimit)
             issues.Add(new("SOLUTION_PROJECT_COUNT_INVALID", "error",
-                "Project-level solution migration supports 2..20 source SDK projects."));
+                selection.Explicit
+                    ? "Selected project/dependency closure must contain 1..20 SDK projects."
+                    : "Full solution migration supports 2..20 source SDK projects."));
 
         var rootFiles = Directory.GetFiles(root, "*", SearchOption.AllDirectories)
             .Where(path => !SolutionExcluded(path, root))
@@ -98,15 +113,18 @@ public sealed partial class MigrationEngine
                 .Replace('\\', '/');
             var relativeDir = Path.GetRelativePath(root, projectDir)
                 .Replace('\\', '/');
-            if (!byDirectory.Add(projectDir))
+            if (!byDirectory.Add(projectDir)
+                || discoveredProjects.Count(other => string.Equals(
+                    Path.GetDirectoryName(other), projectDir,
+                    StringComparison.OrdinalIgnoreCase)) > 1)
                 issues.Add(new("SOLUTION_PROJECT_DIRECTORY_AMBIGUOUS", "error",
-                    "Two .csproj files in one directory cannot own distinct default C# source files.",
+                    "Multiple source .csproj files in one directory make C# ownership ambiguous even if some are excluded.",
                     relativeProject));
-            if (projectPaths.Any(other => !string.Equals(other, project,
+            if (discoveredProjects.Any(other => !string.Equals(other, project,
                     StringComparison.OrdinalIgnoreCase)
                 && PathInside(projectDir, Path.GetDirectoryName(other)!)))
                 issues.Add(new("SOLUTION_NESTED_PROJECT_UNSUPPORTED", "error",
-                    "Nested SDK projects would make Compile and source ownership ambiguous.",
+                    "A nested SDK project can enter default Compile globs even when outside the selected scope.",
                     relativeProject));
 
             XDocument? doc = null;
@@ -354,6 +372,17 @@ public sealed partial class MigrationEngine
             issues.Add(new("SOLUTION_ASSEMBLY_NAME_COLLISION", "error",
                 "Two source projects have the same assembly name: " + group.Key));
 
+        foreach (var entry in selection.Entries)
+        {
+            var matched = byPath.Values.SingleOrDefault(node =>
+                string.Equals(node.RelativeProject, entry,
+                    StringComparison.Ordinal));
+            if (matched != null && matched.Kind != "nunit")
+                issues.Add(new("SOLUTION_SCOPE_ENTRY_NOT_TEST_PROJECT",
+                    "error", "Explicit entry projects must contain NUnit tests "
+                    + "or a valid assembly/namespace SetUpFixture.", entry));
+        }
+
         if (!byPath.Values.Any(node => node.Kind == "nunit"))
             issues.Add(new("SOLUTION_NUNIT_PROJECT_MISSING", "error",
                 "No source NUnit test project was found."));
@@ -478,6 +507,7 @@ public sealed partial class MigrationEngine
             schemaVersion = SolutionSchema,
             sourceTreeHash = sourceTree,
             configHash,
+            scope = sourceScope,
             solutionFile = SolutionArtifactName,
             projects = projects.OrderBy(p => p.ProjectFile, StringComparer.Ordinal),
             files = plannedFiles.OrderBy(file => file.RelativePath,
@@ -523,13 +553,14 @@ public sealed partial class MigrationEngine
             projects, all, issues,
             new[]
             {
-                "Each source NUnit project stays a separate target NUnit assembly; global SetUpFixtures do not cross ProjectReference boundaries.",
+                "Explicit project entries include their full transitive ProjectReference closure; excluded projects and their tests are listed as out of scope.",
+                "Each included NUnit project stays a separate target NUnit assembly; global SetUpFixtures do not cross ProjectReference boundaries.",
                 "Shared source libraries require safe C# and exact reviewed literal NuGet package IDs/versions; unsupported dependencies block before NUnit planning.",
                 "Dynamic MSBuild, custom Compile items, unreviewed/dynamic dependencies, external references, cycles and nested project ownership fail closed.",
                 "DeclaredTests counts source NUnit methods, even when target generation was deferred; it never implies target tests were generated.",
                 "Ready for build is source closure evidence, not compilation or business behavior.",
                 "dotnet build and NUnit runtime require explicit opt-in and are reported separately."
-            });
+            }, sourceScope);
     }
 
     private static bool AttributeMatches(AttributeSyntax attribute,
