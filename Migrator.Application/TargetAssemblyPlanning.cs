@@ -14,7 +14,7 @@ public sealed partial class MigrationEngine
 {
     private const string TargetAssemblyProjectName = "Migrator.Generated.Tests.csproj";
     private const string TargetAssemblyManifestName = "migrator-assembly-manifest.json";
-    private const string TargetAssemblySchema = "migrator-target-assembly/v1alpha2";
+    private const string TargetAssemblySchema = "migrator-target-assembly/v1alpha3";
     private const int MaximumAssemblyFiles = 128;
 
     /// <summary>
@@ -277,7 +277,10 @@ public sealed partial class MigrationEngine
             }, scheduling.Attributes.Select(attribute =>
                 new TargetAssemblySchedulingSource(attribute.SourcePath,
                     attribute.SourceLine, attribute.SourceExpression,
-                    attribute.TargetExpression)).ToArray());
+                    attribute.TargetExpression)).ToArray())
+        {
+            NUnitCases = analysis.Files.SelectMany(file => file.NUnitCases).ToArray()
+        };
     }
 
     private static bool ValidTargetAssemblyPath(string path)
