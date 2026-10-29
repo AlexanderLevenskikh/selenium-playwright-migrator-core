@@ -561,3 +561,52 @@ on failures; and conservative review-only statuses. This is
 session or private application E2E. The real Chromium launch path
 and its environmental dependencies require a separate browser
 smoke before production usage.
+
+
+## Preview.28 — actual Chromium / localhost Playwright browser smoke
+
+Core CI now builds both **source-attested generated** fixture artifacts
+and runs them against a real Playwright-installed Chromium binary, rather
+than only a recorded fake \`IBrowser\`. A synthetic in-process HTTP
+server listens on a random \`127.0.0.1\` port; it serves a small HTML
+page with an interactive button and JavaScript console message.
+
+The new \`--real-chromium-only\` smoke compiles a generated
+\`MigratorPlaywrightDiBridge\` and NUnit fixture, installs the exact
+Playwright 1.63.0 Chromium revision with the .NET CLI, and performs
+three independent \`dotnet test\` / TRX runs:
+
+1. Passing two-fixture scenario: real DOM click, two separate
+   BrowserContexts/Pages, isolated \`localStorage\`, browser console,
+   two fixture service scopes and context closure before one nested
+   shared browser/provider dispose. No failure artifacts are emitted.
+2. Successful \`[Retry(3)]\` after one failed attempt: actual two
+   invocations with real browser and fixture lifetime; intermediate
+   failure screenshot/log behavior is recorded, not assumed identical
+   to Selenium's custom retry listener.
+3. Final failure after three attempts: real console log file with
+   JavaScript message, genuine PNG screenshot checked by PNG signature,
+   NUnit TRX with one passed and one failed case, and the same
+   closure/disposal counts. Logs must be saved before the screenshot.
+
+\`MigratorPlaywrightBridgeOptions.LifecycleObserver\` is an opt-in
+diagnostic callback emitting semantic event names only (context open/
+close, fixture DI scope create/dispose, failure attachments and
+shared browser/provider dispose). It does not log source C#, URLs,
+selectors, credentials or customer service data. Browser startup is
+triggered asynchronously from NUnit setup via a synthetic lazy bridge,
+never synchronously from a CLR module initializer.
+
+CI publishes versioned
+\`migrator-real-chromium-smoke/v1\` JSON evidence, a **synthetic** PNG
+and browser console log artifact. The separate MCP CI reads and
+validates this evidence after independently running pinned Core's
+real-browser acceptance; Windows MCP CI still runs its original
+standalone protocol and NUnit checks.
+
+This is real browser automation **on an invented loopback web app**,
+not ArBilling E2E. Customer infrastructure, authentication,
+Original Selenium browser pooling/retry and Playwright target behavior
+are still \`not_run\` / \`not_verified\`. The source-bound review
+contract remains \`requires_review\`: genuine synthetic Chromium
+success never automatically unblocks a private NUnit solution.
