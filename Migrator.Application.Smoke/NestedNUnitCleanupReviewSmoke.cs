@@ -136,6 +136,10 @@ internal static class NestedNUnitCleanupReviewSmoke
                 "unknown overlapping namespace cleanup order must fail closed");
             File.Delete(sibling);
 
+            // A stale hash must refer to genuinely different bytes. Removing
+            // a temporary fixture restores the exact original tree hash.
+            File.AppendAllText(Path.Combine(source, "SuiteBase.cs"),
+                "\n// deliberate stale-source revision\n");
             try
             {
                 engine.ReviewNestedNUnitCleanup(source, type, ledger.SourceTreeHash,
@@ -146,6 +150,7 @@ internal static class NestedNUnitCleanupReviewSmoke
                 exception.Message.StartsWith("STALE_NESTED_CLEANUP_SOURCE",
                     StringComparison.Ordinal)) { }
 
+            File.WriteAllText(Path.Combine(source, "SuiteBase.cs"), fixture);
             var fresh = engine.InspectNUnitLifecycle(source);
             for (var version = 0; version < 2; version++)
             {
