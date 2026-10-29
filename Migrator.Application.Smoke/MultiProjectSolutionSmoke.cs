@@ -419,6 +419,27 @@ internal static class MultiProjectSolutionSmoke
             ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_ALIAS_UNRESOLVED");
             File.Delete(Path.Combine(source, "TestsA/AliasScheduling.cs"));
 
+            Put("TestsA/GlobalAliasDefinition.cs", """
+                global using SchedAlias = NUnit.Framework.ParallelizableAttribute;
+                """);
+            Put("TestsA/GlobalAliasUse.cs", """
+                [assembly: SchedAlias(NUnit.Framework.ParallelScope.Fixtures)]
+                """);
+            ExpectProblem("NUNIT_ASSEMBLY_SCHEDULING_ALIAS_UNRESOLVED");
+            File.Delete(Path.Combine(source, "TestsA/GlobalAliasUse.cs"));
+            File.Delete(Path.Combine(source, "TestsA/GlobalAliasDefinition.cs"));
+
+            Put("TestsA/FixtureAliasScheduling.cs", """
+                using NUnit.Framework;
+                using FixturePolicy = NUnit.Framework.ParallelizableAttribute;
+                [TestFixture, FixturePolicy(ParallelScope.Children)]
+                public class AliasedFixture {
+                    [Test] public void Test() {}
+                }
+                """);
+            ExpectProblem("NUNIT_FIXTURE_SCHEDULING_REQUIRES_REVIEW");
+            File.Delete(Path.Combine(source, "TestsA/FixtureAliasScheduling.cs"));
+
             var originalMiddle = File.ReadAllText(Path.Combine(source,
                 "Middle/Middle.csproj"));
             Put("Middle/Middle.csproj", originalMiddle.Replace("</ItemGroup>",
