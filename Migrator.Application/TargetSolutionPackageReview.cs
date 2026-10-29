@@ -37,7 +37,7 @@ internal static class TargetSolutionPackageReview
                     || packages.ValueKind != JsonValueKind.Array)
                     throw new FormatException("Each entry needs SourceProject, Reviewed=true and Packages.");
                 var name = project.GetString()!;
-                if (name.Length == 0 || name.StartsWith('/', StringComparison.Ordinal)
+                if (name.Length == 0 || name.StartsWith("/", StringComparison.Ordinal)
                     || name.Contains('\\') || name.Split('/').Any(part =>
                         part.Length == 0 || part == "." || part == "..")
                     || !name.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
