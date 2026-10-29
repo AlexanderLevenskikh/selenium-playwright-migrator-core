@@ -26,7 +26,8 @@ public static class NUnitExecutionSemanticsInspector
         public bool Safe => Issues.Count == 0;
     }
 
-    public static Review Inspect(SyntaxNode root)
+    public static Review Inspect(SyntaxNode root,
+        IEnumerable<SyntaxNode>? scopeRoots = null)
     {
         var issues = new List<Issue>();
         var evidence = new List<Evidence>();
@@ -34,8 +35,11 @@ public static class NUnitExecutionSemanticsInspector
         var expanded = new Dictionary<int, IReadOnlyList<string>>();
         var hasNUnitUsing = root.DescendantNodes().OfType<UsingDirectiveSyntax>()
             .Any(u => u.Alias == null && u.Name?.ToString() == "NUnit.Framework");
-        var localNames = root.DescendantNodes().OfType<ClassDeclarationSyntax>()
-            .Select(t => t.Identifier.ValueText).ToHashSet(StringComparer.Ordinal);
+        var allClasses = (scopeRoots ?? new[] { root })
+            .SelectMany(tree => tree.DescendantNodes().OfType<ClassDeclarationSyntax>())
+            .ToArray();
+        var localNames = allClasses.Select(t => t.Identifier.ValueText)
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var type in root.DescendantNodes().OfType<ClassDeclarationSyntax>())
         {
             var tests = type.Members.OfType<MethodDeclarationSyntax>()
@@ -53,7 +57,7 @@ public static class NUnitExecutionSemanticsInspector
             {
                 var baseTypes = type.BaseList.Types.Select(t => t.Type.ToString()).ToArray();
                 if (baseTypes.Any(b => localNames.Contains(b.Split('.').Last())
-                    && root.DescendantNodes().OfType<ClassDeclarationSyntax>()
+                    && allClasses
                         .Any(other => other.Identifier.ValueText == b.Split('.').Last()
                             && Attributes(other.AttributeLists).Any(a =>
                                 Name(a) is "Ignore" or "Explicit"))))
