@@ -383,7 +383,7 @@ def main():
                   "POM source navigation lost before conditional browser setup.")
             retry_statements = projections["RetryReady"]["targetStatements"]
             check(len(retry_statements) == 1
-                  and "catch (Microsoft.Playwright.TimeoutException)" in retry_statements[0]
+                  and "catch (System.TimeoutException)" in retry_statements[0]
                   and "if (attempt == 1) throw;" in retry_statements[0],
                   "Source-backed retry attempt/catch failure shape was lost.")
             target_body = TARGET_TEMPLATE.replace(
