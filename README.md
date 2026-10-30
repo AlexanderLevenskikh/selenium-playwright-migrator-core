@@ -731,3 +731,48 @@ and browser/context cleanup on Linux and Windows. Source-side NUnit
 controls are HttpClient-based, **not Selenium WebDriver execution**;
 matching NUnit cases/exit codes do not prove Selenium-to-Playwright
 business equivalence. No customer source/evidence is uploaded to CI.
+
+## preview.32 P2 — typed nested POM helpers and source-bounded Loader retries
+
+`MigrationEngine.PlanPomActions` adds a closed, **review-required** AST
+subset for exact same-class nonvirtual private POM helper calls with
+zero or one typed `string` argument. Roslyn must resolve that argument
+to a source parameter or literal; generated C# identifier-token
+substitution forwards it through nested helpers without rewriting
+selector/URL literal bytes. Every reached helper statement is inspected.
+The whole POM method remains `blocked` on unknown calls, arbitrary
+side effects, recursion, dynamic helper arguments or nested flow beyond
+the bounded source scope. Every effect has source path/line/SHA,
+Roslyn symbol and `ControlFlowPath`.
+
+The only newly reviewed retry shape is a **literal 2–4 attempt**
+Selenium `for` loop containing precisely one `WebDriverWait.Until`
+with source-derived finite timeout, a `break` on success, and an
+unfiltered `catch (WebDriverTimeoutException)` whose last iteration
+`if (attempt == N-1) throw;` is preserved. The candidate catch uses
+the documented .NET `System.TimeoutException` path; actual
+Selenium-to-Playwright exception/polling equivalence is **not**
+established by Roslyn and requires Chromium/runtime review. Changed
+catch filters, failure conditions, extra calls, unbounded loops,
+unknown URLs/selectors and implicit retries are **blocked**.
+
+A POM method whose name looks like a wait (e.g. `page.WaitReadyRetry()`)
+can be recognized by the legacy frontend as `WaitForAction`.
+Attach the **exact source-call** reviewed `MethodMapping` for such
+zero-argument waits; otherwise the conservative fallback intentionally
+renders `WAIT_REQUIRES_STATE_ASSERTION`. String-argument POM methods
+use reviewed `ParameterizedMethodMapping`. Do not treat an omitted
+wait as migrated. The isolated Core smoke tests both mapping paths
+through Roslyn parser → adapter → Playwright renderer and requires
+`FullyConvertedTests == 0` until behavioral review.
+
+`scripts/p2_typed_retry_source_target_chromium_runtime.py` runs
+actual installed Playwright Chromium on a fictional localhost-only
+application for both ComboBox branches, a typed nested helper,
+successful finite retry, selected timeout failure, browser console,
+real PNG screenshot, and context/browser cleanup. Synthetic NUnit
+source control and target discovery/TRX are compared case-by-case
+on Linux and Windows (6 cases: 2 passed / 4 not executed by default;
+selected Explicit success and both deliberate/timeout failure paths).
+Source control uses NUnit/HttpClient, **not Selenium WebDriver**,
+so it is not private product behavioral equivalence evidence.
