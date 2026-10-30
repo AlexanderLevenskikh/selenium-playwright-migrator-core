@@ -124,7 +124,12 @@ internal static class PomStructuredActionsSmoke
                 && loader.TargetStatements[0].Contains("timeoutMs > 3000",
                     StringComparison.Ordinal)
                 && loader.TargetStatements[1].Contains("Timeout = (float)timeoutMs",
-                    StringComparison.Ordinal),
+                    StringComparison.Ordinal)
+                && loader.AdapterCandidate is { RequiresReview: true }
+                && loader.AdapterCandidate.TargetStatementTemplates[0].Contains(
+                    "ArgumentOutOfRangeException(\"timeoutMs\")", StringComparison.Ordinal)
+                && loader.AdapterCandidate.TargetStatementTemplates[1].Contains(
+                    "Timeout = (float){timeoutMs}", StringComparison.Ordinal),
                 "Loader must preserve exact source-bound timeout guard and original ms parameter.");
 
             var row = engine.PlanPomActions(root, "SyntheticPage",
