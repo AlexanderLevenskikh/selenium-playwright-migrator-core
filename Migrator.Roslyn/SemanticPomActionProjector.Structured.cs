@@ -132,6 +132,12 @@ public static partial class SemanticPomActionProjector
                 return null;
             }
 
+            return RenderInvocation(call, model, owner, depth);
+        }
+
+        string? RenderInvocation(InvocationExpressionSyntax call,
+            SemanticModel model, IMethodSymbol? owner, int depth)
+        {
             if (TryTranslate(call, model, owner, out var effect, out var target,
                 out var receiverType, out var returnType,
                 out var callSymbol, out var diagnostic, boundedTimeouts))
@@ -205,8 +211,7 @@ public static partial class SemanticPomActionProjector
                     owner, depth, isRoot);
             if (method.ExpressionBody?.Expression is InvocationExpressionSyntax invocation)
             {
-                var single = RenderStatement(SyntaxFactory.ExpressionStatement(invocation),
-                    model, owner, depth, false);
+                var single = RenderInvocation(invocation, model, owner, depth);
                 if (single != null && isRoot) topLevel.Add(single);
                 return single;
             }
