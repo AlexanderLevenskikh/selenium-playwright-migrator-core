@@ -358,8 +358,8 @@ public static partial class SemanticPomActionProjector
             + minimum.ToString(CultureInfo.InvariantCulture) + " || "
             + symbol.Name + " > "
             + maximum.ToString(CultureInfo.InvariantCulture)
-            + ") throw new System.ArgumentOutOfRangeException(nameof("
-            + symbol.Name + "));";
+            + ") throw new System.ArgumentOutOfRangeException("
+            + JsonSerializer.Serialize(symbol.Name) + ");";
         return true;
     }
 }
