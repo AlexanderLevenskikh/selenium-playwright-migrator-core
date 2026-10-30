@@ -174,7 +174,7 @@ public static partial class SemanticPomActionProjector
                 controlFlow.Pop();
                 return header + "\n{\n"
                     + "try\n{\n" + waited + "\nbreak;\n}\n"
-                    + "catch (Microsoft.Playwright.TimeoutException)\n{\n"
+                    + "catch (System.TimeoutException)\n{\n"
                     + rethrow + "\n}\n}";
             }
 
