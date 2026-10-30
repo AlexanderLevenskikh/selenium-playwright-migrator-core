@@ -119,7 +119,7 @@ public static partial class SemanticPomActionProjector
             method, semantic, symbol, compilation, details, problems,
             cancellationToken);
 
-        return new Projection("migrator-pom-action/v1alpha1",
+        return new Projection("migrator-pom-action/v1alpha2",
             problems.Count == 0 && emittedStatements.Count > 0
                 ? "requires_review" : "blocked",
             sourceType, sourceMethod, methodSymbol, methodSha, origin, Line(method),
