@@ -26,7 +26,10 @@ public static partial class SemanticPomActionProjector
     public sealed record Step(int Order, string SourcePath, int SourceLine,
         string SourceSha256, string SourceSymbol, string ReceiverType,
         string SourceReturnType, string Effect, string TargetStatement,
-        bool RequiresReview);
+        bool RequiresReview)
+    {
+        public string ControlFlowPath { get; init; } = "root";
+    }
     public sealed record Projection(string SchemaVersion, string Status,
         string SourceType, string SourceMethod, string SourceMethodSymbol,
         string SourceMethodSha256, string SourcePath, int SourceLine,
