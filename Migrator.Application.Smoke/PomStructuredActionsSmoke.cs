@@ -105,7 +105,8 @@ internal static class PomStructuredActionsSmoke
                 && combo.Actions.Any(a => a.Effect == "conditional_guard")
                 && combo.TargetStatements.Last().Contains("else", StringComparison.Ordinal)
                 && combo.TargetStatements.Last().Contains("CountAsync()", StringComparison.Ordinal),
-                "Complex ComboBox must preserve private OpenPicker + all condition branches.");
+                "Complex ComboBox must preserve private OpenPicker + all condition branches: "
+                + System.Text.Json.JsonSerializer.Serialize(combo));
             Check(combo.AdapterCandidate is { RequiresReview: true }
                 && combo.AdapterCandidate.TargetStatementTemplates.Any(t =>
                     t.Contains("PressSequentiallyAsync({value})", StringComparison.Ordinal))
