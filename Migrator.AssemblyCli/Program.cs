@@ -1,6 +1,57 @@
 using System.Text.Json;
 using Migrator.Application;
 
+// P2 read-only POM source plan. This CLI never edits source or target.
+// --emit-target is explicit because templates can contain private selectors.
+if (args.Length >= 2 && args[0] == "pom-inspect")
+{
+    var pomInspection = new PomSourceInspector().Inspect(args[1]);
+    Console.WriteLine(JsonSerializer.Serialize(new
+    {
+        pomInspection.SchemaVersion, pomInspection.SourceTreeHash,
+        pomInspection.InspectedFiles, pomInspection.TotalLocatorMembers,
+        runtime = "not_run"
+    }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+    return 0;
+}
+if (args.Length >= 5 && args[0] == "pom-plan")
+{
+    try
+    {
+        var emit = args.Skip(5).Contains("--emit-target", StringComparer.Ordinal);
+        var plan = new MigrationEngine().PlanPomActions(
+            args[1], args[2], args[3], args[4]);
+        var result = new
+        {
+            plan.SchemaVersion, plan.Status, plan.SourceTreeHash,
+            plan.SourceType, plan.SourceMethod, plan.SourceMethodSha256,
+            plan.SourcePath, plan.SourceLine, plan.SuggestedSourcePattern,
+            actions = plan.Actions.Select(action => new
+            {
+                action.Order, action.SourcePath, action.SourceLine,
+                action.SourceSha256, action.SourceSymbol,
+                action.ReceiverType, action.SourceReturnType,
+                action.Effect, action.TargetSha256, action.RequiresReview
+            }),
+            plan.Blockers, plan.RuntimeVerified,
+            plan.CanAutoApply,
+            adapterCandidate = emit && plan.Status == "requires_review"
+                ? plan.AdapterCandidate : null,
+            targetStatements = emit && plan.Status == "requires_review"
+                ? plan.TargetStatements : Array.Empty<string>()
+        };
+        Console.WriteLine(JsonSerializer.Serialize(result,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        return plan.Status == "requires_review" ? 0 : 3;
+    }
+    catch (Exception ex) when (ex is ArgumentException
+        or InvalidOperationException or IOException)
+    {
+        Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message);
+        return 5;
+    }
+}
+
 const string Usage = """
     Usage:
       dotnet run --project Migrator.AssemblyCli -- plan <single-project-root> [--config path]

@@ -48,6 +48,15 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --project-assembly-only
       - name: Generate complete multi-project solution and verify independent NUnit assemblies
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release -- --multi-project-only
+      - name: preview.30 real POM source/target NUnit and Chromium localhost E2E
+        timeout-minutes: 18
+        run: python3 scripts/p2_source_target_chromium_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview30-p2-pom-evidence-linux
+          path: artifacts/pom-preview30/*
+          if-no-files-found: warn
       - name: Pack version-matched Core NuGet packages
         run: |
           mkdir -p artifacts/nuget
@@ -79,9 +88,34 @@ jobs:
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: Real NUnit 3/4 source-target discovery and TRX on Windows
         run: python scripts/nunit_execution_runtime.py
+      - name: Real POM preview.30 synthetic Chromium and source/target NUnit TRX on Windows
+        timeout-minutes: 18
+        run: python scripts/p2_source_target_chromium_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview30-p2-pom-evidence-windows
+          path: artifacts/pom-preview30/*
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: migrator-preview29-synthetic-nunit-evidence-windows
           path: artifacts/nunit-preview29/*
           if-no-files-found: warn
+
+  p2-pom-ast-fast:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build P2 AST/Core smoke
+        run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: Roslyn semantic source-backed POM action regression
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only

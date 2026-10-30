@@ -645,3 +645,46 @@ verifier reads individual outcomes and rejects missing, activated, unknown
 or failing cases. Passing synthetic tests does **not** mean a private customer-application build, NUnit runtime, browser E2E or semantic equivalence ran.
 Only explicitly executed and recorded test commands may establish runtime
 evidence.
+
+## preview.30 P2 — source-backed Page Object actions (bounded)
+
+`MigrationEngine.PlanPomActions(sourceDirectory, sourceType, sourceMethod,
+expectedSourceTreeHash, sourceLine?, receiver?)` uses a bounded Roslyn AST
+and semantic compilation. It returns source-relative path, line, SHA-256,
+typed source method/callee identities, return/receiver types and ordered
+target Playwright statement candidates for a selected source method.
+A nonempty result is always `requires_review`; the engine **does not
+automatically apply its proposals**. One unknown call, branch, loop,
+dynamic selector, unsupported signature or environmental URL blocks the
+entire target sequence, never a partially runnable migration.
+
+The closed translation subset covers literal Selenium `By.Id`,
+`By.Name`, `By.CssSelector`, `By.XPath` on typed
+`IWebDriver.FindElement/FindElements`, click, clear, SendKeys,
+`Navigate().GoToUrl`, a bounded `WebDriverWait.Until` visible-lambda
+with explicit TimeSpan, NUnit `Assert.That` text/count equality and
+constant-index table row clicks. ComboBox and Loader methods are not
+special-cased by name: **every** source effect must be accounted for.
+Unknown or dynamic POM code remains blocked. Compile-only Selenium
+type anchors assist Roslyn resolution but do not attest installed
+customer Selenium assemblies. Review Playwright's actionability,
+wait/polling behavior, locator scoping and input semantics in Chromium.
+
+The trusted Core CLI additionally exposes read-only
+`pom-inspect <directory>` and
+`pom-plan <directory> <type> <method> <exact-source-hash> [--emit-target]`.
+By default POM target expression text is redacted; explicit
+`--emit-target` shows review-required statements locally without
+editing the source or target. MCP's `inspect_pom_action_plan` always
+returns only source line/hash, typed effect kinds and target SHA-256
+(no private source bodies, selectors or URLs).
+
+Public Linux and Windows CI runs genuine NUnit 4 discovery/TRX on
+fictional source and target suites and a separately installed
+Playwright Chromium against a loopback HTTP app. The source-side
+suite is an NUnit + HttpClient **control**, not Selenium WebDriver
+browser execution. The generated target executes the actual
+source-attested POM statements under Chromium; default cases, selected
+Explicit success/failure, PNG screenshot, console events and nested
+browser/context close evidence are verified. This is **not** proof
+of private product Selenium/Playwright behavioral equivalence.

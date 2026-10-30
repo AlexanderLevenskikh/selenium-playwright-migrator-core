@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--p2-action-only", StringComparer.Ordinal))
+{
+    PomActionProjectionSmoke.Run();
+    Console.WriteLine("POM_ACTION_PREVIEW30_AST_PASSED");
+    return;
+}
 if (args.Contains("--real-chromium-only", StringComparer.Ordinal))
 {
     RealChromiumBridgeSmoke.Run();
@@ -88,6 +94,7 @@ try
     TableRowActionSmoke.Run();
     PomMethodLineageSmoke.Run();
     PomMappingReviewerSmoke.Run();
+    PomActionProjectionSmoke.Run();
     PomLoaderControlFlowSmoke.Run();
     PomSourceBoundRetrySmoke.Run();
     MappingLiteralRoundTripSmoke.Run();
