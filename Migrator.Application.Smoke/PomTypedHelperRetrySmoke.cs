@@ -147,7 +147,7 @@ internal static class PomTypedHelperRetrySmoke
             var literal = engine.PlanPomActions(root, "SyntheticPage", "ChooseLiteral", hash);
             Check(literal.Status == "requires_review"
                 && literal.TargetStatements.Single().Contains(
-                    "PressSequentiallyAsync(\\\"literal-choice\\\")", StringComparison.Ordinal),
+                    "PressSequentiallyAsync(\"literal-choice\")", StringComparison.Ordinal),
                 "Literal helper argument must be bound as a C# quoted literal.");
 
             var retry = engine.PlanPomActions(root, "SyntheticPage", "WaitReadyRetry", hash);
