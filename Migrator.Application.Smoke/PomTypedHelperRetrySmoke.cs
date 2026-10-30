@@ -159,7 +159,7 @@ internal static class PomTypedHelperRetrySmoke
                 && retry.Actions.Any(x => x.Effect == "retry_failure_rethrow"
                     && x.ControlFlowPath.Contains("retry:catch@", StringComparison.Ordinal))
                 && retry.TargetStatements[0].Contains(
-                    "catch (Microsoft.Playwright.TimeoutException)", StringComparison.Ordinal)
+                    "catch (System.TimeoutException)", StringComparison.Ordinal)
                 && retry.TargetStatements[0].Contains("if (attempt == 1) throw;",
                     StringComparison.Ordinal)
                 && retry.TargetStatements[0].Contains("Timeout = 120f",
