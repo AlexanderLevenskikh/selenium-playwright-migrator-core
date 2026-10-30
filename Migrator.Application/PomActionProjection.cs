@@ -66,7 +66,11 @@ public sealed partial class MigrationEngine
             .ToHashSet(StringComparer.Ordinal);
         if (parameters.Count == 0)
             return statement;
-        var parsed = SyntaxFactory.ParseStatement(statement);
+        // A fully inlined source helper may legitimately produce several
+        // statements. Parse the complete block; parsing only the first
+        // statement could reject a valid method or miss later identifiers.
+        const string prefix = "{\n";
+        var parsed = SyntaxFactory.ParseStatement(prefix + statement + "\n}");
         if (parsed.ContainsDiagnostics)
             throw new InvalidOperationException(
                 "POM_ADAPTER_TEMPLATE_PARSE_FAILED: target statement must parse before parameter binding.");
@@ -79,8 +83,15 @@ public sealed partial class MigrationEngine
             .ToArray();
         var value = statement;
         foreach (var id in references)
-            value = value[..id.SpanStart] + "{" + id.Identifier.ValueText + "}"
-                + value[id.Span.End..];
+        {
+            var start = id.SpanStart - prefix.Length;
+            var end = id.Span.End - prefix.Length;
+            if (start < 0 || end > value.Length || start > end)
+                throw new InvalidOperationException(
+                    "POM_ADAPTER_TEMPLATE_SPAN_INVALID: target expression exceeds parsed block.");
+            value = value[..start] + "{" + id.Identifier.ValueText + "}"
+                + value[end..];
+        }
         return value;
     }
 
