@@ -119,7 +119,7 @@ internal static class PomActionProjectionSmoke
             {
                 ("UnknownNavigation", "POM_ACTION_UNRESOLVED"),
                 ("BranchingInput", "POM_CONDITIONAL_GUARD_UNRESOLVED"),
-                ("UnknownCombo", "POM_ACTION_UNRESOLVED")
+                ("UnknownCombo", "POM_PRIVATE_HELPER_UNRESOLVED")
             })
             {
                 var plan = engine.PlanPomActions(folder, "SyntheticCatalogPage",
