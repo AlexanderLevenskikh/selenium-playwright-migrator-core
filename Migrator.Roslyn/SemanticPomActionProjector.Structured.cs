@@ -22,6 +22,7 @@ public static partial class SemanticPomActionProjector
         if (methodSymbol != null)
             activeHelpers.Add(methodSymbol);
         var boundedTimeouts = new HashSet<string>(StringComparer.Ordinal);
+        var topLevel = new List<string>();
 
         void Block(string code, SyntaxNode node, string explanation)
         {
@@ -59,7 +60,10 @@ public static partial class SemanticPomActionProjector
                 var value = RenderStatement(statement, model, owner, depth,
                     rootBody && index == 0);
                 if (value != null)
+                {
                     rendered.Add(value);
+                    if (rootBody) topLevel.Add(value);
+                }
                 index++;
                 if (index > MaxSteps)
                 {
@@ -200,8 +204,12 @@ public static partial class SemanticPomActionProjector
                 return RenderStatements(method.Body.Statements, model,
                     owner, depth, isRoot);
             if (method.ExpressionBody?.Expression is InvocationExpressionSyntax invocation)
-                return RenderStatement(SyntaxFactory.ExpressionStatement(invocation),
+            {
+                var single = RenderStatement(SyntaxFactory.ExpressionStatement(invocation),
                     model, owner, depth, false);
+                if (single != null && isRoot) topLevel.Add(single);
+                return single;
+            }
             Block("POM_METHOD_BODY_UNRESOLVED", method,
                 "Only expression-body invocations and explicit source blocks are supported.");
             return null;
@@ -210,17 +218,8 @@ public static partial class SemanticPomActionProjector
         var text = RenderMethod(root, semantic, methodSymbol, 0, true);
         return text == null || blockers.Count > 0
             ? Array.Empty<string>()
-            : SplitTopLevel(root, text);
+            : topLevel.ToArray();
     }
-
-    // Statements are already structurally translated. Retaining the complete
-    // source method body as ONE well-formed target block prevents splitting an
-    // if/else into invalid adapter snippets and preserves short-circuit order.
-    private static IReadOnlyList<string> SplitTopLevel(
-        MethodDeclarationSyntax method, string body) =>
-        method.Body?.Statements.Count > 1
-            ? new[] { "{\n" + body + "\n}" }
-            : new[] { body };
 
     private static bool TryCondition(ExpressionSyntax expression,
         SemanticModel model, IMethodSymbol? owner,
@@ -232,8 +231,8 @@ public static partial class SemanticPomActionProjector
             return TryCondition(parenthesized.Expression, model, owner,
                 out target, out sourceSymbol);
         if (expression is BinaryExpressionSyntax logical
-            && logical.IsKind(SyntaxKind.LogicalAndExpression,
-                SyntaxKind.LogicalOrExpression))
+            && (logical.IsKind(SyntaxKind.LogicalAndExpression)
+                || logical.IsKind(SyntaxKind.LogicalOrExpression)))
         {
             if (!TryCondition(logical.Left, model, owner,
                     out var lhs, out var leftSymbol)
