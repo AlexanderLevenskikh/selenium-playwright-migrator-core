@@ -688,3 +688,46 @@ source-attested POM statements under Chromium; default cases, selected
 Explicit success/failure, PNG screenshot, console events and nested
 browser/context close evidence are verified. This is **not** proof
 of private product Selenium/Playwright behavioral equivalence.
+
+## preview.31 P2 — structured, source-bound Page Object migration
+
+The read-only Roslyn `MigrationEngine.PlanPomActions` supports a **bounded
+source subset**, not general interpretation of customer C#. It now retains
+both branches of typed Selenium `FindElements(By.literal).Count` predicates
+and literal string parameter `==` / `!=` guards (including source
+short-circuit `&&` and `||`). Every action reports a relative source path,
+line, AST SHA-256, Roslyn source type/symbol and `ControlFlowPath` such as
+`if:true@line`, `if:false@line` or `helper:OpenPicker@line`.
+
+Non-virtual, same-class, zero-argument private POM methods may be inlined to
+a depth of four, but **every** statement of every reached method must be
+supported. A recursive helper, unknown method, complex condition, script
+side effect, local mutation, loop, arbitrary exception path or missing
+branch blocks the **entire** target sequence. It never executes customer C#
+or guesses selector/URL/behavior.
+
+A dynamic `WebDriverWait` timeout is eligible only when a source-matched
+`int timeoutMs` has an explicit first-statement guard of the exact form
+`if (timeoutMs < 1 || timeoutMs > 3000) throw new
+ArgumentOutOfRangeException(nameof(timeoutMs));` (the finite bound and
+variable are taken from source). The resulting Playwright timeout uses
+`(float)timeoutMs` and remains **review-required**, not behaviorally
+verified. Literal and compiler-constant `TimeSpan.FromMilliseconds/Seconds`
+waits remain supported; unbounded dynamic waits block.
+
+NUnit `Is.EqualTo` text/table assertions and strict `Is.GreaterThan` /
+`Is.LessThan` table counts are retained without changing comparison
+polarity. Runtime polling/actionability differences, locator matching,
+error paths, fixture lifetime and side effects still need review.
+The POM adapter candidate is opt-in; no TODO or review candidate is
+counted as a fully migrated test.
+
+The CI `scripts/p2_structured_source_target_chromium_runtime.py` drives
+a **real installed Playwright Chromium** on a fictional loopback app,
+covering both arms of a conditional ComboBox, a finite guarded Loader
+wait, table assertions, default NUnit discovery/TRX, selected Explicit
+success, intentionally failing Explicit test, screenshots, console events
+and browser/context cleanup on Linux and Windows. Source-side NUnit
+controls are HttpClient-based, **not Selenium WebDriver execution**;
+matching NUnit cases/exit codes do not prove Selenium-to-Playwright
+business equivalence. No customer source/evidence is uploaded to CI.
