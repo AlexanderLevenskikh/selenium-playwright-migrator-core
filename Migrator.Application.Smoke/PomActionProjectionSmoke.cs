@@ -94,7 +94,7 @@ internal static class PomActionProjectionSmoke
             {
                 var plan = engine.PlanPomActions(folder, "Fictional.Pom.SyntheticCatalogPage",
                     method, hash);
-                Check(plan.SchemaVersion == "migrator-pom-action/v1alpha1"
+                Check(plan.SchemaVersion == "migrator-pom-action/v1alpha2"
                     && plan.Status == "requires_review" && !plan.CanAutoApply
                     && !plan.RuntimeVerified, method + " must never be auto-approved.");
                 Check(plan.Actions.Count == count && plan.TargetStatements.Count == count
