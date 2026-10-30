@@ -31,7 +31,8 @@ if (args.Length >= 5 && args[0] == "pom-plan")
                 action.Order, action.SourcePath, action.SourceLine,
                 action.SourceSha256, action.SourceSymbol,
                 action.ReceiverType, action.SourceReturnType,
-                action.Effect, action.TargetSha256, action.RequiresReview
+                action.Effect, action.TargetSha256, action.RequiresReview,
+                action.ControlFlowPath
             }),
             plan.Blockers, plan.RuntimeVerified,
             plan.CanAutoApply,

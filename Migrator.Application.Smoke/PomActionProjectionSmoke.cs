@@ -94,7 +94,7 @@ internal static class PomActionProjectionSmoke
             {
                 var plan = engine.PlanPomActions(folder, "Fictional.Pom.SyntheticCatalogPage",
                     method, hash);
-                Check(plan.SchemaVersion == "migrator-pom-action/v1alpha1"
+                Check(plan.SchemaVersion == "migrator-pom-action/v1alpha2"
                     && plan.Status == "requires_review" && !plan.CanAutoApply
                     && !plan.RuntimeVerified, method + " must never be auto-approved.");
                 Check(plan.Actions.Count == count && plan.TargetStatements.Count == count
@@ -118,7 +118,7 @@ internal static class PomActionProjectionSmoke
             foreach (var (method, expected) in new[]
             {
                 ("UnknownNavigation", "POM_ACTION_UNRESOLVED"),
-                ("BranchingInput", "POM_UNSUPPORTED_STATEMENT"),
+                ("BranchingInput", "POM_CONDITIONAL_GUARD_UNRESOLVED"),
                 ("UnknownCombo", "POM_ACTION_UNRESOLVED")
             })
             {

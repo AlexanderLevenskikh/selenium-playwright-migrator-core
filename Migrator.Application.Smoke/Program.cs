@@ -95,6 +95,7 @@ try
     PomMethodLineageSmoke.Run();
     PomMappingReviewerSmoke.Run();
     PomActionProjectionSmoke.Run();
+    PomStructuredActionsSmoke.Run();
     PomLoaderControlFlowSmoke.Run();
     PomSourceBoundRetrySmoke.Run();
     MappingLiteralRoundTripSmoke.Run();

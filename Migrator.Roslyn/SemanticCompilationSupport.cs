@@ -259,6 +259,8 @@ internal static class SemanticCompilationSupport
                 public static class Is
                 {
                     public static object EqualTo<T>(T expected) => new();
+                    public static object GreaterThan<T>(T expected) => new();
+                    public static object LessThan<T>(T expected) => new();
                     public static object Not => new();
                     public static object True => new();
                     public static object False => new();

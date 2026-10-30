@@ -15,7 +15,10 @@ namespace Migrator.Application;
 public sealed record PomProjectedAction(
     int Order, string SourcePath, int SourceLine, string SourceSha256,
     string SourceSymbol, string ReceiverType, string SourceReturnType,
-    string Effect, string TargetStatement, string TargetSha256, bool RequiresReview);
+    string Effect, string TargetStatement, string TargetSha256, bool RequiresReview)
+{
+    public string ControlFlowPath { get; init; } = "root";
+}
 
 public sealed record PomActionBlocker(
     string Code, string SourcePath, int SourceLine, string SourceSha256,
@@ -139,7 +142,10 @@ public sealed partial class MigrationEngine
             x.Order, x.SourcePath, x.SourceLine, x.SourceSha256,
             x.SourceSymbol, x.ReceiverType, x.SourceReturnType,
             x.Effect, x.TargetStatement, Sha(x.TargetStatement),
-            x.RequiresReview)).ToArray();
+            x.RequiresReview)
+        {
+            ControlFlowPath = x.ControlFlowPath
+        }).ToArray();
         var blockers = projected.Blockers.Select(x => new PomActionBlocker(
             x.Code, x.SourcePath, x.SourceLine, x.SourceSha256,
             x.Explanation)).ToArray();
