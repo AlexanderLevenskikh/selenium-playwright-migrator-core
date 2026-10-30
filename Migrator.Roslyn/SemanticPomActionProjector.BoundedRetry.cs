@@ -60,9 +60,9 @@ public static partial class SemanticPomActionProjector
         if (source.Declaration is not { Variables.Count: 1 } declaration
             || source.Initializers.Count != 0
             || source.Incrementors.Count != 1
-            || declaration.Variables[0] is not { Initializer.Value: var initialization } local
+            || declaration.Variables[0].Initializer?.Value is not ExpressionSyntax initialization
             || !LiteralInt(initialization, out var initialValue) || initialValue != 0
-            || model.GetDeclaredSymbol(local) is not ILocalSymbol symbol
+            || model.GetDeclaredSymbol(declaration.Variables[0]) is not ILocalSymbol symbol
             || symbol.Type.SpecialType != SpecialType.System_Int32
             || source.Condition is not BinaryExpressionSyntax condition
             || !condition.IsKind(SyntaxKind.LessThanExpression)
