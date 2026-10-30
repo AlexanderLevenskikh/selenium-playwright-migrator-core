@@ -1,4 +1,8 @@
 using Migrator.Application;
+using Migrator.Core;
+using Migrator.Roslyn;
+using Migrator.PlaywrightDotNet;
+using Migrator.SeleniumCSharp;
 
 internal static class PomTypedHelperRetrySmoke
 {
@@ -185,6 +189,61 @@ internal static class PomTypedHelperRetrySmoke
                     method + " must fail closed, with source hash and no partial runnable target: "
                         + System.Text.Json.JsonSerializer.Serialize(blocked));
             }
+            // Exercise the real parser -> adapter -> Playwright renderer path.
+            // Fully source-backed templates still explicitly require review;
+            // they must NOT become reported fully migrated NUnit tests.
+            var fixture = Path.Combine(root, "Fixture.cs");
+            File.WriteAllText(fixture, """
+                using NUnit.Framework;
+                using Fictional.P32;
+                [TestFixture] public class SyntheticFixture {
+                    private SyntheticPage page;
+                    [TestCase("alpha")]
+                    public void Picks(string input) { page.Choose(input); }
+                    [Test]
+                    public void ChecksRetry() { page.WaitReadyRetry(); }
+                }
+                """);
+            var adapter = new ProjectAdapterConfig
+            {
+                SourceProjectName = "FictionalPreview32",
+                ParameterizedMethods = new[]
+                {
+                    new ParameterizedMethodMapping
+                    {
+                        SourceMethodPattern = combo.AdapterCandidate!.SourceMethodPattern,
+                        TargetStatements = combo.AdapterCandidate.TargetStatementTemplates.ToArray(),
+                        RequiresReview = true
+                    },
+                    new ParameterizedMethodMapping
+                    {
+                        SourceMethodPattern = retry.AdapterCandidate!.SourceMethodPattern,
+                        TargetStatements = retry.AdapterCandidate.TargetStatementTemplates.ToArray(),
+                        RequiresReview = true
+                    }
+                },
+                TestHost = new TestHostConfig
+                {
+                    BaseClass = "object",
+                    ClassAttributes = new[] { "TestFixture" }
+                }
+            };
+            var result = new MigrationPipeline(
+                new RoslynTestFileParser(adapter),
+                new PlaywrightDotNetRenderer(),
+                new DefaultProjectAdapter(adapter)).ProcessFile(fixture);
+            Check(result.GeneratedOutput.Contains("PressSequentiallyAsync(input)",
+                    StringComparison.Ordinal)
+                && result.GeneratedOutput.Contains("if (",
+                    StringComparison.Ordinal)
+                && result.GeneratedOutput.Contains(
+                    "catch (System.TimeoutException)", StringComparison.Ordinal)
+                && result.GeneratedOutput.Contains(
+                    "if (attempt == 1) throw;", StringComparison.Ordinal)
+                && result.Report.FullyConvertedTests == 0,
+                "End-to-end reviewed adapter must retain typed argument flow, both if branches and exact bounded retry while reporting zero fully migrated tests.");
+            File.Delete(fixture);
+
             File.AppendAllText(file, "\n// stale");
             try
             {
