@@ -214,10 +214,17 @@ internal static class PomTypedHelperRetrySmoke
                         SourceMethodPattern = combo.AdapterCandidate!.SourceMethodPattern,
                         TargetStatements = combo.AdapterCandidate.TargetStatementTemplates.ToArray(),
                         RequiresReview = true
-                    },
-                    new ParameterizedMethodMapping
+                    }
+                },
+                // Wait-prefixed no-arg Page Object methods are represented as
+                // WaitForAction by the frontend. They must be explicitly
+                // configured via exact Methods, not ParameterizedMethods;
+                // unknown waits remain blocked/TODO.
+                Methods = new[]
+                {
+                    new MethodMapping
                     {
-                        SourceMethodPattern = retry.AdapterCandidate!.SourceMethodPattern,
+                        SourceMethod = retry.AdapterCandidate!.SourceMethodPattern,
                         TargetStatements = retry.AdapterCandidate.TargetStatementTemplates.ToArray(),
                         RequiresReview = true
                     }
