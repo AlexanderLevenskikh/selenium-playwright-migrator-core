@@ -23,6 +23,7 @@ public static partial class SemanticPomActionProjector
             activeHelpers.Add(methodSymbol);
         var boundedTimeouts = new HashSet<string>(StringComparer.Ordinal);
         var topLevel = new List<string>();
+        var controlFlow = new Stack<string>();
 
         void Block(string code, SyntaxNode node, string explanation)
         {
@@ -30,7 +31,7 @@ public static partial class SemanticPomActionProjector
                 Line(node), Hash(node), explanation));
         }
 
-        void Evidence(SyntaxNode node, IMethodSymbol? called, string effect,
+        void Evidence(SyntaxNode node, ISymbol? called, string effect,
             string rendered)
         {
             if (effects.Count >= MaxSteps)
@@ -41,11 +42,21 @@ public static partial class SemanticPomActionProjector
             effects.Add(new Step(effects.Count + 1,
                 node.SyntaxTree.FilePath, Line(node), Hash(node),
                 called == null ? "syntax:" + effect
-                    : called.ContainingType.ToDisplayString(
+                    : called.ContainingSymbol?.ToDisplayString(
                         SymbolDisplayFormat.FullyQualifiedFormat) + "." + called.Name,
-                called?.ContainingType.ToDisplayString() ?? "",
-                called?.ReturnType.ToDisplayString() ?? "void",
-                effect, rendered, true));
+                called?.ContainingType?.ToDisplayString() ?? "",
+                called switch
+                {
+                    IMethodSymbol m => m.ReturnType.ToDisplayString(),
+                    IPropertySymbol p => p.Type.ToDisplayString(),
+                    IParameterSymbol p => p.Type.ToDisplayString(),
+                    _ => effect == "conditional_guard" ? "bool" : "void"
+                },
+                effect, rendered, true)
+            {
+                ControlFlowPath = controlFlow.Count == 0 ? "root"
+                    : string.Join("/", controlFlow.Reverse())
+            });
         }
 
         string? RenderStatements(
@@ -106,11 +117,18 @@ public static partial class SemanticPomActionProjector
                 }
                 Evidence(condition.Condition, guardSymbol,
                     "conditional_guard", targetGuard);
+                controlFlow.Push("if:true@" + Line(condition));
                 var trueBody = RenderBody(condition.Statement, model,
                     owner, depth + 1);
-                var falseBody = condition.Else == null ? null
-                    : RenderBody(condition.Else.Statement, model,
+                controlFlow.Pop();
+                string? falseBody = null;
+                if (condition.Else != null)
+                {
+                    controlFlow.Push("if:false@" + Line(condition));
+                    falseBody = RenderBody(condition.Else.Statement, model,
                         owner, depth + 1);
+                    controlFlow.Pop();
+                }
                 if (trueBody == null || (condition.Else != null && falseBody == null))
                 {
                     Block("POM_CONDITIONAL_BRANCH_UNRESOLVED", condition,
@@ -170,8 +188,10 @@ public static partial class SemanticPomActionProjector
                     return null;
                 }
                 var sourceModel = compilation.GetSemanticModel(helperSyntax.SyntaxTree, true);
+                controlFlow.Push("helper:" + helper.Name + "@" + Line(call));
                 var expanded = RenderMethod(helperSyntax, sourceModel,
                     helper, depth + 1, false);
+                controlFlow.Pop();
                 activeHelpers.Remove(helper);
                 if (expanded == null)
                 {
@@ -228,7 +248,7 @@ public static partial class SemanticPomActionProjector
 
     private static bool TryCondition(ExpressionSyntax expression,
         SemanticModel model, IMethodSymbol? owner,
-        out string target, out IMethodSymbol? sourceSymbol)
+        out string target, out ISymbol? sourceSymbol)
     {
         target = "";
         sourceSymbol = null;
@@ -275,6 +295,7 @@ public static partial class SemanticPomActionProjector
         {
             target = parameter.Name + " " + op + " "
                 + JsonSerializer.Serialize(literal.Token.ValueText);
+            sourceSymbol = parameter;
             return true;
         }
 
@@ -288,6 +309,7 @@ public static partial class SemanticPomActionProjector
         {
             target = "(await " + locator + ".CountAsync()) " + op
                 + " " + value.ToString(CultureInfo.InvariantCulture);
+            sourceSymbol = count;
             return true;
         }
         return false;
