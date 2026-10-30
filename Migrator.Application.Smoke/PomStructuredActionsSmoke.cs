@@ -153,7 +153,7 @@ internal static class PomStructuredActionsSmoke
                 ("UnsafeLoop", "POM_UNSUPPORTED_STATEMENT"),
                 ("UnsafePrivateRecursion", "POM_HELPER_RECURSION"),
                 ("UnsafeSideEffect", "POM_ACTION_UNRESOLVED"),
-                ("UnsafeMissingTimeoutGuard", "POM_UNSUPPORTED_STATEMENT")
+                ("UnsafeMissingTimeoutGuard", "POM_DYNAMIC_WAIT_UNBOUNDED")
             })
             {
                 var blocked = engine.PlanPomActions(root, "SyntheticPage", method, hash);
