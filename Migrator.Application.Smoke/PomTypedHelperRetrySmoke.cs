@@ -241,7 +241,15 @@ internal static class PomTypedHelperRetrySmoke
                 && result.GeneratedOutput.Contains(
                     "if (attempt == 1) throw;", StringComparison.Ordinal)
                 && result.Report.FullyConvertedTests == 0,
-                "End-to-end reviewed adapter must retain typed argument flow, both if branches and exact bounded retry while reporting zero fully migrated tests.");
+                "End-to-end reviewed adapter must retain typed argument flow, both if branches and exact bounded retry while reporting zero fully migrated tests: "
+                + System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    fullyConverted = result.Report.FullyConvertedTests,
+                    hasArgument = result.GeneratedOutput.Contains("PressSequentiallyAsync(input)", StringComparison.Ordinal),
+                    hasCatch = result.GeneratedOutput.Contains("catch (System.TimeoutException)", StringComparison.Ordinal),
+                    hasThrow = result.GeneratedOutput.Contains("if (attempt == 1) throw;", StringComparison.Ordinal),
+                    generated = result.GeneratedOutput[..Math.Min(4500, result.GeneratedOutput.Length)]
+                }));
             File.Delete(fixture);
 
             File.AppendAllText(file, "\n// stale");
