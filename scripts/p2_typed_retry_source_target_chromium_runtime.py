@@ -238,7 +238,13 @@ __PROJECTION_STATEMENTS__
         string url = Environment.GetEnvironmentVariable("POM32_URL")!;
         await Page.GotoAsync(url);
         await Page.Locator("#ready").EvaluateAsync("el => el.style.display='none'");
+        try {
 __RETRY_FAILURE_STATEMENTS__
+            Assert.Fail("bounded source retry unexpectedly succeeded");
+        } catch (System.TimeoutException) {
+            Record("retry-terminal-timeout-type-confirmed");
+            throw;
+        }
     }
 }
 """
@@ -451,7 +457,8 @@ def main():
                   and events.count("browser-open") == 4
                   and events.count("browser-close") == 4
                   and events.count("playwright-dispose") == 4
-                  and events.count("screenshot-on-failure") == 2,
+                  and events.count("screenshot-on-failure") == 2
+                  and events.count("retry-terminal-timeout-type-confirmed") == 1,
                   "Browser context/fixture cleanup or failure screenshot count differs: " + str(events))
             for trx_file in (folder / "trx").glob("*.trx"):
                 (evidence / trx_file.name).write_bytes(trx_file.read_bytes())
@@ -471,6 +478,7 @@ def main():
                 "bounded_retry_wait_ms": 120,
                 "typed_helper_nested_parameter_binding": True,
                 "selected_retry_failure": "failed_expected",
+                "real_chromium_timeout_exception_type": "System.TimeoutException_confirmed",
                 "conditional_combo_success_branch": "alpha",
                 "conditional_combo_else_branch": "beta",
                 "guarded_dynamic_wait_ms": 1200,
