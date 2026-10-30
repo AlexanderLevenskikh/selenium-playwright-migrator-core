@@ -119,3 +119,5 @@ jobs:
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
       - name: Roslyn semantic source-backed POM action regression
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
+      - name: preview.31 source-backed structured POM AST success/failure
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-structured-only
