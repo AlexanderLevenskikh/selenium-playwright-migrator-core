@@ -118,7 +118,7 @@ internal static class PomActionProjectionSmoke
             foreach (var (method, expected) in new[]
             {
                 ("UnknownNavigation", "POM_ACTION_UNRESOLVED"),
-                ("BranchingInput", "POM_UNSUPPORTED_STATEMENT"),
+                ("BranchingInput", "POM_CONDITIONAL_GUARD_UNRESOLVED"),
                 ("UnknownCombo", "POM_ACTION_UNRESOLVED")
             })
             {
