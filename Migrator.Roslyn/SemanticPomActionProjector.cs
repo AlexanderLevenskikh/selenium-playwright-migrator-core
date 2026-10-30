@@ -15,7 +15,7 @@ namespace Migrator.Roslyn;
 /// as an active adapter mapping. One unsupported statement blocks the entire
 /// method, so a partial browser action sequence cannot masquerade as complete.
 /// </summary>
-public static class SemanticPomActionProjector
+public static partial class SemanticPomActionProjector
 {
     private const int MaxFiles = 1200;
     private const int MaxSteps = 64;
@@ -77,7 +77,7 @@ public static class SemanticPomActionProjector
         var noMethod = matching.Length != 1;
         if (noMethod)
         {
-            return new Projection("migrator-pom-action/v1alpha1", "blocked",
+            return new Projection("migrator-pom-action/v1alpha2", "blocked",
                 sourceType, sourceMethod, "", "", "", 0, "", empty,
                 new[] { new Problem(matching.Length == 0
                     ? "POM_METHOD_NOT_RESOLVED" : "POM_METHOD_AMBIGUOUS",
@@ -115,44 +115,16 @@ public static class SemanticPomActionProjector
             Block("POM_SIGNATURE_REQUIRES_REVIEW", method,
                 "Only synchronous, non-generic void methods with simple string/int inputs have projected browser statements.");
 
-        var expressions = method.Body != null
-            ? method.Body.Statements.Select(s => s is ExpressionStatementSyntax expression
-                ? expression.Expression : null).ToArray()
-            : method.ExpressionBody != null
-                ? new ExpressionSyntax?[] { method.ExpressionBody.Expression }
-                : Array.Empty<ExpressionSyntax?>();
-        if (expressions.Length is 0 or > MaxSteps)
-            Block("POM_BODY_REQUIRES_REVIEW", method,
-                "An empty or oversized POM method is not safely portable.");
-
-        for (var i = 0; i < expressions.Length; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var expression = expressions[i];
-            if (expression == null
-                || expression is not InvocationExpressionSyntax invocation)
-            {
-                Block("POM_UNSUPPORTED_STATEMENT", (SyntaxNode?)expression ?? method,
-                    "Control flow, local mutations, returns, branching and non-invocation statements require explicit side-effect review.");
-                continue;
-            }
-            if (!TryTranslate(invocation, semantic, symbol, out var effect,
-                out var target, out var receiverType, out var returnType,
-                out var callSymbol, out var explanation))
-            {
-                Block("POM_ACTION_UNRESOLVED", invocation, explanation);
-                continue;
-            }
-            details.Add(new Step(i + 1, origin, Line(invocation), Hash(invocation),
-                callSymbol, receiverType, returnType, effect, target, true));
-        }
+        var emittedStatements = ProjectStructuredStatements(
+            method, semantic, symbol, compilation, details, problems,
+            cancellationToken);
 
         return new Projection("migrator-pom-action/v1alpha1",
-            problems.Count == 0 && details.Count == expressions.Length
+            problems.Count == 0 && emittedStatements.Count > 0
                 ? "requires_review" : "blocked",
             sourceType, sourceMethod, methodSymbol, methodSha, origin, Line(method),
             pattern, details, problems,
-            problems.Count == 0 ? details.Select(x => x.TargetStatement).ToArray()
+            problems.Count == 0 ? emittedStatements
                 : Array.Empty<string>(),
             new[]
             {
@@ -167,7 +139,8 @@ public static class SemanticPomActionProjector
     private static bool TryTranslate(InvocationExpressionSyntax invocation,
         SemanticModel model, IMethodSymbol? enclosingMethod,
         out string effect, out string target, out string receiverType,
-        out string returnType, out string callSymbol, out string explanation)
+        out string returnType, out string callSymbol, out string explanation,
+        IReadOnlySet<string>? boundedTimeoutParameters = null)
     {
         effect = target = receiverType = returnType = callSymbol = string.Empty;
         explanation = "The method call or its Selenium/NUnit identity is unresolved; do not infer a locator, state or side effect.";
@@ -232,7 +205,8 @@ public static class SemanticPomActionProjector
                 || receiverType.StartsWith("OpenQA.Selenium.Support.UI.DefaultWait<", StringComparison.Ordinal)))
         {
             if (member.Expression is not ObjectCreationExpressionSyntax creation
-                || !IsWaitConstructor(creation, model, out var timeout)
+                || !IsWaitConstructor(creation, model, enclosingMethod,
+                    boundedTimeoutParameters, out var timeout)
                 || invocation.ArgumentList.Arguments.Count != 1
                 || invocation.ArgumentList.Arguments[0].Expression
                     is not SimpleLambdaExpressionSyntax lambda
@@ -258,7 +232,9 @@ public static class SemanticPomActionProjector
             if (invocation.ArgumentList.Arguments.Count != 2
                 || invocation.ArgumentList.Arguments[1].Expression
                     is not InvocationExpressionSyntax equals
-                || !IsSeleniumCall(equals, model, "EqualTo", "NUnit.Framework.Is")
+                || model.GetSymbolInfo(equals).Symbol is not IMethodSymbol constraint
+                || constraint.ContainingType.ToDisplayString() != "NUnit.Framework.Is"
+                || constraint.Name is not ("EqualTo" or "GreaterThan" or "LessThan")
                 || equals.ArgumentList.Arguments.Count != 1)
             {
                 explanation = "Assertion must be NUnit Assert.That(actual, Is.EqualTo(expected)); other constraints require review.";
@@ -273,6 +249,7 @@ public static class SemanticPomActionProjector
                 && (model.GetSymbolInfo(read).Symbol as IPropertySymbol)?
                     .ContainingType.ToDisplayString() == "OpenQA.Selenium.IWebElement"
                 && TryElementLocator(read.Expression, model, out var textLocator)
+                && constraint.Name == "EqualTo"
                 && SafeString(expected, model, enclosingMethod, out var textValue))
             {
                 effect = "text_assertion";
@@ -285,10 +262,22 @@ public static class SemanticPomActionProjector
                 && TryFindBy(findMany, model, out var countLocator, expectMany: true)
                 && LiteralInt(expected, out var count) && count >= 0)
             {
-                effect = "table_count_assertion";
-                target = "await Microsoft.Playwright.Assertions.Expect(" + countLocator
-                    + ").ToHaveCountAsync(" + count.ToString(CultureInfo.InvariantCulture) + ");";
-                return true;
+                effect = constraint.Name == "EqualTo"
+                    ? "table_count_assertion" : "table_count_comparison";
+                var countLiteral = count.ToString(CultureInfo.InvariantCulture);
+                target = constraint.Name switch
+                {
+                    "EqualTo" => "await Microsoft.Playwright.Assertions.Expect("
+                        + countLocator + ").ToHaveCountAsync(" + countLiteral + ");",
+                    "GreaterThan" => "NUnit.Framework.Assert.That(await "
+                        + countLocator + ".CountAsync(), NUnit.Framework.Is.GreaterThan("
+                        + countLiteral + "));",
+                    "LessThan" => "NUnit.Framework.Assert.That(await "
+                        + countLocator + ".CountAsync(), NUnit.Framework.Is.LessThan("
+                        + countLiteral + "));",
+                    _ => ""
+                };
+                return target.Length > 0;
             }
             explanation = "Only typed IWebElement.Text equality and typed FindElements(...).Count literal equality are projected.";
             return false;
@@ -356,7 +345,8 @@ public static class SemanticPomActionProjector
         && symbol.Name == method && symbol.ContainingType.ToDisplayString() == owner;
 
     private static bool IsWaitConstructor(ObjectCreationExpressionSyntax creation,
-        SemanticModel model, out string timeout)
+        SemanticModel model, IMethodSymbol? enclosingMethod,
+        IReadOnlySet<string>? boundedTimeoutParameters, out string timeout)
     {
         timeout = "";
         if (model.GetSymbolInfo(creation).Symbol is not IMethodSymbol ctor
@@ -372,12 +362,23 @@ public static class SemanticPomActionProjector
                 .ContainingType.ToDisplayString() != "System.TimeSpan"
             || duration.ArgumentList.Arguments.Count != 1)
             return false;
-        if (duration.ArgumentList.Arguments[0].Expression
-            is not LiteralExpressionSyntax number
-            || !number.IsKind(SyntaxKind.NumericLiteralExpression)
-            || !double.TryParse(number.Token.ValueText,
-                NumberStyles.Float, CultureInfo.InvariantCulture, out var n))
+        var numericArg = duration.ArgumentList.Arguments[0].Expression;
+        if (numericArg is IdentifierNameSyntax identifier
+            && model.GetSymbolInfo(identifier).Symbol is IParameterSymbol parameter
+            && enclosingMethod != null
+            && SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, enclosingMethod)
+            && parameter.Type.SpecialType == SpecialType.System_Int32
+            && boundedTimeoutParameters?.Contains(parameter.Name) == true
+            && span.Name.Identifier.ValueText == "FromMilliseconds")
+        {
+            timeout = "(float)" + parameter.Name;
+            return true;
+        }
+        var constant = model.GetConstantValue(numericArg);
+        if (!constant.HasValue || constant.Value is not
+            (int or long or float or double or decimal))
             return false;
+        var n = Convert.ToDouble(constant.Value, CultureInfo.InvariantCulture);
         var factor = span.Name.Identifier.ValueText switch
         {
             "FromMilliseconds" => 1.0,
