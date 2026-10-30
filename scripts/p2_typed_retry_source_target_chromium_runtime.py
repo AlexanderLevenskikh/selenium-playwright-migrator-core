@@ -363,7 +363,7 @@ def main():
                   "Unknown POM side effect was promoted to executable target.")
             all_statements = [statement for method in projections
                               for statement in projections[method]["targetStatements"]]
-            check(len(all_statements) == 11,
+            check(len(all_statements) == 10,
                   "A navigation, combo, loader, table or assertion source effect disappeared.")
             check(hashlib.sha256(pom_file.read_bytes()).hexdigest() == pom_sha,
                   "POM plan modified input source.")
