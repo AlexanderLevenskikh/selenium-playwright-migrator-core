@@ -12,17 +12,28 @@ public static partial class SemanticPomActionProjector
     /// Caller argument was independently symbol-verified as an enclosing
     /// string parameter or literal by SafeString.
     /// </summary>
-    private static string? BindHelperStringArgument(
-        string targetStatements, string formalName, string sourceArgument)
+    private static string? BindHelperArguments(
+        string targetStatements, IReadOnlyDictionary<string, string> bindings)
     {
         const string prefix = "{\n";
-        var syntax = SyntaxFactory.ParseStatement(prefix + targetStatements + "\n}");
+        var suffix = "\n}";
+        var syntax = SyntaxFactory.ParseStatement(prefix + targetStatements + suffix);
         if (syntax.ContainsDiagnostics)
-            return null;
+        {
+            // Evidence for an if-guard is an expression ("a == b"),
+            // not a standalone C# statement. Parse it with a synthetic
+            // semicolon AFTER the original span, preserving all offsets.
+            suffix = ";\n}";
+            syntax = SyntaxFactory.ParseStatement(prefix + targetStatements + suffix);
+            if (syntax.ContainsDiagnostics)
+                return null;
+        }
 
+        // Coordinates refer to the original syntax. Rewrite from right to
+        // left so swaps and overlapping identifiers cannot cascade.
         var references = syntax.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
-            .Where(node => node.Identifier.ValueText == formalName
+            .Where(node => bindings.ContainsKey(node.Identifier.ValueText)
                 && !(node.Parent is MemberAccessExpressionSyntax access
                      && ReferenceEquals(access.Name, node)))
             .OrderByDescending(node => node.SpanStart)
@@ -34,9 +45,10 @@ public static partial class SemanticPomActionProjector
             var end = node.Span.End - prefix.Length;
             if (start < 0 || end > text.Length || start > end)
                 return null;
-            text = text[..start] + sourceArgument + text[end..];
+            text = text[..start] + bindings[node.Identifier.ValueText] + text[end..];
         }
-        return text;
+        return SyntaxFactory.ParseStatement(prefix + text + suffix)
+            .ContainsDiagnostics ? null : text;
     }
 
     private sealed record BoundedRetrySource(

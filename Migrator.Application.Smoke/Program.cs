@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--p2-preview33-only", StringComparer.Ordinal))
+{
+    PomPreview33SourceBoundSmoke.Run();
+    Console.WriteLine("POM_PREVIEW33_SOURCE_BOUND_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-typed-retry-only", StringComparer.Ordinal))
 {
     PomTypedHelperRetrySmoke.Run();
@@ -109,6 +115,7 @@ try
     PomActionProjectionSmoke.Run();
     PomStructuredActionsSmoke.Run();
     PomTypedHelperRetrySmoke.Run();
+    PomPreview33SourceBoundSmoke.Run();
     PomLoaderControlFlowSmoke.Run();
     PomSourceBoundRetrySmoke.Run();
     MappingLiteralRoundTripSmoke.Run();

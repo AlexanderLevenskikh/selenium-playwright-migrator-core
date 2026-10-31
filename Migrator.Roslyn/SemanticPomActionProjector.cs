@@ -213,20 +213,16 @@ public static partial class SemanticPomActionProjector
                 || invocation.ArgumentList.Arguments.Count != 1
                 || invocation.ArgumentList.Arguments[0].Expression
                     is not SimpleLambdaExpressionSyntax lambda
-                || lambda.Body is not MemberAccessExpressionSyntax displayed
-                || displayed.Name.Identifier.ValueText != "Displayed"
-                || (model.GetSymbolInfo(displayed).Symbol as IPropertySymbol)?
-                    .ContainingType.ToDisplayString() != "OpenQA.Selenium.IWebElement"
-                || displayed.Expression is not InvocationExpressionSyntax find
-                || !TryFindBy(find, model, out var locator, expectMany: false))
+                || !TrySourceWaitPredicate(lambda, model, out var locator,
+                    out var state))
             {
-                explanation = "Wait must have an explicit finite TimeSpan and simple Until(d => d.FindElement(By.literal).Displayed) lambda.";
+                explanation = "Wait requires a finite source TimeSpan and a symbol-bound lambda over its own IWebDriver parameter: FindElement(...).Displayed or FindElements(...).Count == 0. Hidden-but-present is not equivalent to absent.";
                 return false;
             }
-            effect = "visible_wait";
+            effect = state == "Visible" ? "visible_wait" : "detached_wait";
             target = "await " + locator
-                + ".WaitForAsync(new() { State = Microsoft.Playwright.WaitForSelectorState.Visible, Timeout = "
-                + timeout + " });";
+                + ".WaitForAsync(new() { State = Microsoft.Playwright.WaitForSelectorState."
+                + state + ", Timeout = " + timeout + " });";
             return true;
         }
 
