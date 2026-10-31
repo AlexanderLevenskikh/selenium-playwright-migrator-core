@@ -159,3 +159,5 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-structured-only
       - name: preview.32 typed POM helpers and bounded retry source AST
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-typed-retry-only
+      - name: preview.33 cross-file POM helpers, conditions and negative AST
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview33-only
