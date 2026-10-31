@@ -86,7 +86,7 @@ internal static class PomActionProjectionSmoke
                 ("Open", "navigation", "Page.GotoAsync(url)", 1),
                 ("InputAndSelect", "input_sendkeys", "PressSequentiallyAsync(value)", 5),
                 ("ValidateLoading", "visible_wait", "Timeout = 1200f", 1),
-                ("AssertTableCount", "table_count_assertion", ".ToHaveCountAsync(2)", 1),
+                ("AssertTableCount", "table_count_assertion", ".CountAsync(), NUnit.Framework.Is.EqualTo(2)", 1),
                 ("AssertTableText", "text_assertion", ".Nth(0)", 1),
                 ("ClickFirstRow", "click", ".Nth(0).ClickAsync()", 1)
             };
