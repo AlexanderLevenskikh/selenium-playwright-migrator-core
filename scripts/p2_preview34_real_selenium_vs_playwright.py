@@ -305,9 +305,12 @@ def main():
         threading.Thread(target=server.serve_forever,daemon=True).start()
         with tempfile.TemporaryDirectory(prefix="fictional-p34-") as d:
             root=Path(d);pom=root/"pom";pom.mkdir()
-            (pom/"Page.cs").write_text(PAGE,encoding="utf-8")
-            (pom/"Helpers.cs").write_text(HELPERS,encoding="utf-8")
+            (pom/"Page.cs").write_bytes(PAGE.encode("utf-8"))
+            (pom/"Helpers.cs").write_bytes(HELPERS.encode("utf-8"))
             inputs={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in pom.glob("*.cs")}
+            check(inputs["Page.cs"]==hashlib.sha256(PAGE.encode("utf-8")).hexdigest()
+                  and inputs["Helpers.cs"]==hashlib.sha256(HELPERS.encode("utf-8")).hexdigest(),
+                  "Source bytes changed by host newline translation")
             hash0=json_cli(["dotnet",cli,"pom-inspect",pom],repo)["sourceTreeHash"]
             plans={}
             for method in ("Choose","WaitGone","RetryReady","AssertOptionCount"):
@@ -335,14 +338,14 @@ def main():
                 ("Synthetic.Tests.csproj",CSPROJ),("SourcePage.cs",PAGE),
                 ("Helpers.cs",HELPERS),("ParityTestsBase.cs",BASE_TESTS),
                 ("SeleniumParityTests.cs",SELENIUM_TESTS)):
-                (project/name).write_text(content,encoding="utf-8")
+                (project/name).write_bytes(content.encode("utf-8"))
             generated=PLAYWRIGHT_TESTS
             for token,method in (("__CHOOSE__","Choose"),("__WAIT__","WaitGone"),
                                  ("__RETRY__","RetryReady"),("__ASSERT__","AssertOptionCount")):
                 generated=generated.replace(token,"        "+plans[method]["targetStatements"][0])
             check("__CHOOSE__" not in generated and "__ASSERT__" not in generated,
                   "Unresolved target template")
-            (project/"PlaywrightParityTests.cs").write_text(generated,encoding="utf-8")
+            (project/"PlaywrightParityTests.cs").write_bytes(generated.encode("utf-8"))
             build=run(["dotnet","build","-c","Release","--nologo"],project,timeout=360)
             check(build["code"]==0,"Selenium+Playwright compiled assembly failed: "+str(build))
             os.environ["POM34_URL"]="http://127.0.0.1:"+str(server.server_port)+"/"
