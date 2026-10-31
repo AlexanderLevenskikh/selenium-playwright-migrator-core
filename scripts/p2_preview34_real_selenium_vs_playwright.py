@@ -358,10 +358,12 @@ def main():
             orig=results["selenium_default"]["cases"]
             target=results["playwright_default"]["cases"]
             check(orig==target,"Real Selenium vs Playwright default TRX differs: "+str(orig)+" / "+str(target))
-            check(set(orig)=={"ComboFound","ComboMissing","LoaderGone","RetryRecovery","RetryExhausted","AssertionRaceNegative"}
-                  and sum(x=="Passed" for x in orig.values())==4
-                  and sum(x=="NotExecuted" for x in orig.values())==2,
-                  "Unexpected default NUnit discovery/outcomes: "+str(orig))
+            # NUnit4 does not necessarily write unselected Explicit
+            # cases into the default TRX. Independently selected TRX runs
+            # below prove those declarations were discovered and executed.
+            check(set(orig)=={"ComboFound","ComboMissing","LoaderGone","RetryRecovery"}
+                  and all(x=="Passed" for x in orig.values()),
+                  "Unexpected default real NUnit cases: "+str(orig))
             for engine in ("selenium","playwright"):
                 check(results[engine+"_retry"]["cases"]=={"RetryExhausted":"Failed"},
                       "Terminal timeout failed to produce selected NUnit failure "+engine)
