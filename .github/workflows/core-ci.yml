@@ -183,7 +183,7 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview35-only
 
   p2-preview34-real-selenium-vs-playwright:
-    name: Preview.34 real Selenium + Playwright (${{ matrix.os }})
+    name: Preview.35 immediate Count Selenium + Playwright (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -210,11 +210,11 @@ jobs:
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
-        run: python scripts/p2_preview34_real_selenium_vs_playwright.py
+        run: python scripts/p2_preview35_immediate_count_real_chromium.py
       - name: Retain real browser TRX, DOM and failure screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: migrator-preview34-real-browser-${{ matrix.os }}
-          path: artifacts/pom-preview34/*
+          name: migrator-preview35-count-browser-${{ matrix.os }}
+          path: artifacts/pom-preview35/*
           if-no-files-found: warn
