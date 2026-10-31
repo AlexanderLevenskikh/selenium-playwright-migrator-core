@@ -354,7 +354,7 @@ namespace Fictional.P37;
     protected override Task AssertBreakSpacesText(){new SourcePage(driver!).AssertBreakSpacesText();return Task.CompletedTask;}
     protected override Task AssertPreMultilineText(){new SourcePage(driver!).AssertPreMultilineText();return Task.CompletedTask;}
     protected override Task AssertCssTransformText(){new SourcePage(driver!).AssertCssTransformText();return Task.CompletedTask;}
-    protected override Task AssertNarrowNbspText(){new SourcePage(driver!).AssertNarrowNbspText();return Task.CompletedTask;
+    protected override Task AssertNarrowNbspText(){new SourcePage(driver!).AssertNarrowNbspText();return Task.CompletedTask;}
     protected override Task StartRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginRace()");return Task.CompletedTask;}
     protected override Task StartTextRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginTextRace()");return Task.CompletedTask;}
     protected override Task StartInsertionRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginInsertionRace()");return Task.CompletedTask;}
