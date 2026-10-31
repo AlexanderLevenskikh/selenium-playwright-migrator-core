@@ -251,9 +251,19 @@ public static partial class SemanticPomActionProjector
                 && constraint.Name == "EqualTo"
                 && SafeString(expected, model, enclosingMethod, out var textValue))
             {
+                // Selenium's IWebElement.Text is observed immediately after
+                // FindElement(s), and NUnit EqualTo is not an auto-retrying
+                // assertion. Playwright ToHaveTextAsync (and InnerTextAsync)
+                // can wait for an element or changing text. EvaluateAllAsync
+                // executes one DOM query without waiting for a match; when
+                // absent, fail instead of comparing null/empty as if it
+                // came from an existing Selenium IWebElement. The exact
+                // Selenium rendered-text algorithm, hidden elements and
+                // exception type remain review-required runtime boundaries.
                 effect = "text_assertion";
-                target = "await Microsoft.Playwright.Assertions.Expect(" + textLocator
-                    + ").ToHaveTextAsync(" + textValue + ");";
+                target = "NUnit.Framework.Assert.That(await " + textLocator
+                    + ".EvaluateAllAsync<string>(\\"els => { if (els.length == 0) throw new Error('POM_SOURCE_ELEMENT_ABSENT'); return els[0].innerText; }\\"), NUnit.Framework.Is.EqualTo("
+                    + textValue + "));";
                 return true;
             }
             if (read.Name.Identifier.ValueText == "Count"
@@ -264,21 +274,16 @@ public static partial class SemanticPomActionProjector
                 effect = constraint.Name == "EqualTo"
                     ? "table_count_assertion" : "table_count_comparison";
                 var countLiteral = count.ToString(CultureInfo.InvariantCulture);
-                target = constraint.Name switch
-                {
-                    "EqualTo" => "await Microsoft.Playwright.Assertions.Expect("
-                        + countLocator + ").ToHaveCountAsync(" + countLiteral + ");",
-                    "GreaterThan" => "NUnit.Framework.Assert.That(await "
-                        + countLocator + ".CountAsync(), NUnit.Framework.Is.GreaterThan("
-                        + countLiteral + "));",
-                    "LessThan" => "NUnit.Framework.Assert.That(await "
-                        + countLocator + ".CountAsync(), NUnit.Framework.Is.LessThan("
-                        + countLiteral + "));",
-                    _ => ""
-                };
+                // All three NUnit count constraints read a snapshot once.
+                // Playwright Expect(locator).ToHaveCountAsync retries until
+                // DOM mutation satisfies the assertion and MUST NOT replace
+                // Selenium FindElements(...).Count under Assert.That.
+                target = "NUnit.Framework.Assert.That(await " + countLocator
+                    + ".CountAsync(), NUnit.Framework.Is." + constraint.Name
+                    + "(" + countLiteral + "));";
                 return target.Length > 0;
             }
-            explanation = "Only typed IWebElement.Text equality and typed FindElements(...).Count literal equality are projected.";
+            explanation = "Only immediate typed IWebElement.Text equality and immediate typed FindElements(...).Count literal constraints are projected; DOM/text behavior requires runtime review.";
             return false;
         }
         return false;
