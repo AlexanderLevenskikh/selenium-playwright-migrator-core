@@ -159,6 +159,19 @@ internal static class SemanticCompilationSupport
                 """);
         }
 
+        if (compilation.GetTypeByMetadataName("OpenQA.Selenium.NoSuchElementException") == null)
+        {
+            // A compile-only identity for source Roslyn symbol resolution.
+            // This does NOT add a Selenium dependency to generated target C#.
+            declarations.Add(
+                """
+                public sealed class NoSuchElementException : System.Exception
+                {
+                    public NoSuchElementException() {}
+                }
+                """);
+        }
+
         if (compilation.GetTypeByMetadataName("OpenQA.Selenium.Keys") == null)
         {
             declarations.Add(

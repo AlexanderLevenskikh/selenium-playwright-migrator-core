@@ -1,7 +1,14 @@
 using Migrator.Application;
+if (args.Contains("--p2-preview38-only", StringComparer.Ordinal))
+{
+    PomPreview38SourceExceptionSmoke.Run();
+    Console.WriteLine("POM_PREVIEW38_SOURCE_EXCEPTION_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-preview37-only", StringComparer.Ordinal))
 {
     PomPreview37UnicodeWhitespaceSmoke.Run();
+    PomPreview38SourceExceptionSmoke.Run();
     Console.WriteLine("POM_PREVIEW37_UNICODE_WHITESPACE_AST_PASSED");
     return;
 }

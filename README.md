@@ -917,3 +917,40 @@ Only explicitly compared bounded synthetic cases count as passed.
 Private ArBilling remains \`not_run\`. The migration plan stays
 \`requires_review\`, \`CanAutoApply=false\`, \`RuntimeVerified=false\`
 regardless of fixture outcome.
+
+
+## Preview.38 — exact source-backed NoSuchElement/Timeout catches (review only)
+
+Before preview.38 the only accepted catch was an exact WebDriverTimeoutException
+inside a bounded retry, while standalone C# try/catch was entirely blocked.
+
+A new strict source-only Roslyn subset recognizes exactly one NUnit
+\`Assert.That(driver.FindElement(By.literal).Text, Is.EqualTo(...))\`
+under \`try\` caught by typed
+\`OpenQA.Selenium.NoSuchElementException\`, or one finite symbol-bound
+\`WebDriverWait.Until\` caught by
+\`OpenQA.Selenium.WebDriverTimeoutException\`. The catch body may contain
+one source-backed immediate \`FindElements.Count\` NUnit assertion or
+bare \`throw;\`. The emitted draft remains **requires_review** and
+\`CanAutoApply=false\`; no customer test source is executed by Core.
+
+For a missing-text assertion only, the draft PlaywrightException catch has
+a guarded \`when\` on the emitted \`POM_SOURCE_ELEMENT_ABSENT\` JavaScript
+marker. It must not catch other Playwright errors (e.g., click auto-wait
+timeout). For a source finite WebDriverWait, the mapped catch is
+\`System.TimeoutException\`, as measured in Playwright .NET runtime.
+A bare \`throw;\` rethrows the target exception object, **not** a Selenium
+exception CLR type. External source callers that catch
+NoSuchElementException/WebDriverTimeoutException still require review.
+No hidden Selenium package dependency enters emitted target C#.
+
+Catch filters, broad catches, catch-variable reads, finally, arbitrary
+catch side effects, explicit \`throw new\`, multi-catch, Click and
+unproven/dynamic selectors or wait predicates remain blocked, with
+zero active partial output. The public same-Chrome Linux/Windows CI
+executes real Selenium WebDriver/ChromeDriver versus Playwright .NET:
+positive recoveries, negative rethrow types, unrelated assertion failures,
+NUnit TRX, DOM/browser events, failure PNGs and cleanup. Source/method
+SHA256 and binary fingerprints are retained in public synthetic evidence.
+Private ArBilling is not run; general exception identity equivalence is
+not proven or claimed.
