@@ -236,7 +236,14 @@ namespace Fictional.P35;
     protected override Task WaitGone(){new SourcePage(driver!).WaitGone();return Task.CompletedTask;}
     protected override Task RetryReady(){new SourcePage(driver!).RetryReady();return Task.CompletedTask;}
     protected override Task AssertOptionCount(){new SourcePage(driver!).AssertOptionCount();return Task.CompletedTask;}
+    protected override Task AssertSelectedText(string expected){new SourcePage(driver!).AssertSelectedText(expected);return Task.CompletedTask;}
+    protected override Task AssertStaticText(){new SourcePage(driver!).AssertStaticText();return Task.CompletedTask;}
+    protected override Task AssertChangingText(){new SourcePage(driver!).AssertChangingText();return Task.CompletedTask;}
+    protected override Task AssertDelayedText(){new SourcePage(driver!).AssertDelayedText();return Task.CompletedTask;}
+    protected override Task AssertHiddenText(){new SourcePage(driver!).AssertHiddenText();return Task.CompletedTask;}
     protected override Task StartRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginRace()");return Task.CompletedTask;}
+    protected override Task StartTextRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginTextRace()");return Task.CompletedTask;}
+    protected override Task StartInsertionRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginInsertionRace()");return Task.CompletedTask;
     protected override Task<string> Snapshot()=>Task.FromResult((string)((IJavaScriptExecutor)driver!).ExecuteScript("return JSON.stringify(window.snapshot())")!);
     protected override Task Screenshot(string path){((ITakesScreenshot)driver!).GetScreenshot().SaveAsFile(path);return Task.CompletedTask;}
     protected override Task Close(){try{driver?.Quit();}finally{driver?.Dispose();driver=null;}return Task.CompletedTask;}
@@ -277,7 +284,24 @@ __RETRY__
     protected override async Task AssertOptionCount() {
 __ASSERT__
     }
+    protected override async Task AssertSelectedText(string expected) {
+__TEXT_SELECTED__
+    }
+    protected override async Task AssertStaticText() {
+__TEXT_STATIC__
+    }
+    protected override async Task AssertChangingText() {
+__TEXT_CHANGE__
+    }
+    protected override async Task AssertDelayedText() {
+__TEXT_DELAYED__
+    }
+    protected override async Task AssertHiddenText() {
+__TEXT_HIDDEN__
+    }
     protected override Task StartRace()=>Page.EvaluateAsync("() => window.beginRace()");
+    protected override Task StartTextRace()=>Page.EvaluateAsync("() => window.beginTextRace()");
+    protected override Task StartInsertionRace()=>Page.EvaluateAsync("() => window.beginInsertionRace()");
     protected override Task<string> Snapshot()=>Page.EvaluateAsync<string>("() => JSON.stringify(window.snapshot())");
     protected override async Task Screenshot(string path){await Page.ScreenshotAsync(new PageScreenshotOptions{Path=path});}
     protected override async Task Close(){
@@ -349,7 +373,9 @@ def main():
                   "Source bytes changed by host newline translation")
             hash0=json_cli(["dotnet",cli,"pom-inspect",pom],repo)["sourceTreeHash"]
             plans={}
-            for method in ("Choose","WaitGone","RetryReady","AssertOptionCount"):
+            for method in ("Choose","WaitGone","RetryReady","AssertOptionCount",
+                           "AssertSelectedText","AssertStaticText",
+                           "AssertChangingText","AssertDelayedText","AssertHiddenText"):
                 p=json_cli(["dotnet",cli,"pom-plan",pom,"Fictional.P35.SourcePage",method,hash0,"--emit-target"],repo)
                 check(p["status"]=="requires_review" and not p["runtimeVerified"]
                       and not p["canAutoApply"] and p["adapterCandidate"]["requiresReview"]
@@ -365,7 +391,12 @@ def main():
                   "Default Core CLI exposed target code")
             check("WaitForSelectorState.Detached" in plans["RetryReady"]["targetStatements"][0]
                   and "catch (System.TimeoutException)" in plans["RetryReady"]["targetStatements"][0]
-                  and "CountAsync(), NUnit.Framework.Is.EqualTo(1)" in plans["AssertOptionCount"]["targetStatements"][0] and "ToHaveCountAsync" not in plans["AssertOptionCount"]["targetStatements"][0],
+                  and "CountAsync(), NUnit.Framework.Is.EqualTo(1)" in plans["AssertOptionCount"]["targetStatements"][0]
+                  and all("ToHaveCountAsync" not in t and "ToHaveTextAsync" not in t
+                          for p in plans.values() for t in p["targetStatements"])
+                  and all("EvaluateAllAsync<string>" in plans[k]["targetStatements"][0]
+                          for k in ("AssertSelectedText","AssertStaticText",
+                                    "AssertChangingText","AssertDelayedText","AssertHiddenText")),
                   "Source-backed waits, retries or NUnit constraint semantics changed")
             check({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in pom.glob("*.cs")}==inputs,
                   "Source files mutated during projection")
@@ -377,7 +408,12 @@ def main():
                 (project/name).write_bytes(content.encode("utf-8"))
             generated=PLAYWRIGHT_TESTS
             for token,method in (("__CHOOSE__","Choose"),("__WAIT__","WaitGone"),
-                                 ("__RETRY__","RetryReady"),("__ASSERT__","AssertOptionCount")):
+                                 ("__RETRY__","RetryReady"),("__ASSERT__","AssertOptionCount"),
+                                 ("__TEXT_SELECTED__","AssertSelectedText"),
+                                 ("__TEXT_STATIC__","AssertStaticText"),
+                                 ("__TEXT_CHANGE__","AssertChangingText"),
+                                 ("__TEXT_DELAYED__","AssertDelayedText"),
+                                 ("__TEXT_HIDDEN__","AssertHiddenText")):
                 generated=generated.replace(token,"        "+plans[method]["targetStatements"][0])
             check("__CHOOSE__" not in generated and "__ASSERT__" not in generated,
                   "Unresolved target template")
