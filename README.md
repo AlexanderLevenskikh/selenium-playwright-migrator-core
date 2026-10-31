@@ -776,3 +776,26 @@ on Linux and Windows (6 cases: 2 passed / 4 not executed by default;
 selected Explicit success and both deliberate/timeout failure paths).
 Source control uses NUnit/HttpClient, **not Selenium WebDriver**,
 so it is not private product behavioral equivalence evidence.
+
+
+## Preview.34 — actual Selenium WebDriver vs Playwright .NET, same Chromium-family executable
+
+The public real-browser parity job is separate from older HttpClient NUnit
+controls. It installs an explicit Chrome for Testing binary and matching
+ChromeDriver on Linux and Windows. Actual C# Selenium tests execute source
+Page Object methods, while an independent Playwright .NET fixture executes
+their review-only Roslyn-projected statements on the same localhost application
+and exact same Chrome executable. The CI job compares TRX discovery/outcomes,
+ordered browser application events, DOM values, Loader detachment, conditional
+ComboBox branches, terminal timeout type, failure PNG and cleanup.
+
+**Important negative control:** a source NUnit Count assertion is immediate,
+but the candidate Playwright ToHaveCountAsync auto-retries. The synthetic DOM
+race therefore intentionally yields Selenium Failed vs Playwright Passed.
+This is a source/target behavioral **non-equivalence**, and the proposed
+assertion remains review-only; never auto-apply it based on superficial
+selector matching. Retry attempt bounds are source AST evidence; individual
+attempts are not independently counted by this runtime test. Other timing,
+exception, browser and product differences remain possible. No private
+ArBilling code/credentials are used, and passing synthetic parity is not
+proof of general automated migration correctness.
