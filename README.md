@@ -877,3 +877,43 @@ rendered-text algorithm.
 \`CanAutoApply=false\`.** This code does not read or execute private
 ArBilling; unsupported CSS and exception semantics must never be
 treated as automatically migrated.
+
+
+## preview.37 — narrow pre/pre-wrap and Unicode rendered-text candidate
+
+Real WebDriver Get Element Text reports **rendered** text; it is
+not interchangeable with DOM \`innerText\`, a universal JavaScript
+regex, or Playwright's auto-retrying expectations. The review-only
+Roslyn text candidate continues to inspect the exactly source-backed
+locator **once** without auto-wait and preserves original literals,
+parameters, source path/line and SHA.
+
+The candidate now includes narrowly bounded, **runtime-tested**
+single-line, leaf-node \`white-space: pre\` and \`pre-wrap\` cases.
+It normalizes the simple tested Unicode \`U+00A0\` non-breaking
+space to ordinary space, removes zero-width \`U+200B\` and bidi
+markers \`U+200E/U+200F\`, and leaves combining codepoints unchanged.
+
+The following fail closed with explicit review markers rather
+than guessing behavior: \`break-spaces\`; preformatted multiline
+and nested child elements; CSS text-transform; unknown computed
+whitespace modes; unverified Unicode spacing such as narrow no-break
+space (\`U+202F\`). An absent element fails immediately, but the
+specific \`OpenQA.Selenium.NoSuchElementException\` vs
+\`Microsoft.Playwright.PlaywrightException\` identity is **not
+preserved** and must remain a manual catch/exception compatibility
+review. No Selenium runtime dependency is introduced into the
+production target candidate.
+
+The public preview.37 GitHub Actions jobs execute real Selenium
+WebDriver/ChromeDriver and source-projected Playwright .NET against
+the **same Chrome for Testing executable** and localhost app on both
+Linux and Windows. NUnit TRX includes positive pre/pre-wrap and
+Unicode cases, negative source-observed CSS cases, and selected
+count/text race, missing-element and timeout controls. It records
+SHA-256 for the source tree, each source method, actual browser
+binaries, screenshots, browser DOM events and resource cleanup.
+Only explicitly compared bounded synthetic cases count as passed.
+Private ArBilling remains \`not_run\`. The migration plan stays
+\`requires_review\`, \`CanAutoApply=false\`, \`RuntimeVerified=false\`
+regardless of fixture outcome.
