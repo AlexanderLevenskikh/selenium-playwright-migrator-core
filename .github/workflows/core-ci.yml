@@ -181,6 +181,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview33-only
       - name: preview.35 immediate Count/Text NUnit assertion source AST
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview35-only
+      - name: preview.36 source-backed rendered-text CSS/whitespace AST positives and blockers
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview36-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.35 immediate Count and Text Selenium + Playwright (${{ matrix.os }})
