@@ -183,6 +183,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview35-only
       - name: preview.36 source-backed rendered-text CSS/whitespace AST positives and blockers
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview36-only
+      - name: preview.37 Unicode pre/pre-wrap rendered Text AST with fail-closed negatives
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview37-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.36 rendered Text Selenium + Playwright (${{ matrix.os }})
