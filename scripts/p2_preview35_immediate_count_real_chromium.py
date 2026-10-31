@@ -243,7 +243,7 @@ namespace Fictional.P35;
     protected override Task AssertHiddenText(){new SourcePage(driver!).AssertHiddenText();return Task.CompletedTask;}
     protected override Task StartRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginRace()");return Task.CompletedTask;}
     protected override Task StartTextRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginTextRace()");return Task.CompletedTask;}
-    protected override Task StartInsertionRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginInsertionRace()");return Task.CompletedTask;
+    protected override Task StartInsertionRace(){((IJavaScriptExecutor)driver!).ExecuteScript("window.beginInsertionRace()");return Task.CompletedTask;}
     protected override Task<string> Snapshot()=>Task.FromResult((string)((IJavaScriptExecutor)driver!).ExecuteScript("return JSON.stringify(window.snapshot())")!);
     protected override Task Screenshot(string path){((ITakesScreenshot)driver!).GetScreenshot().SaveAsFile(path);return Task.CompletedTask;}
     protected override Task Close(){try{driver?.Quit();}finally{driver?.Dispose();driver=null;}return Task.CompletedTask;}
