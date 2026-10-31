@@ -142,6 +142,61 @@ public static partial class SemanticPomActionProjector
                 return statementText;
             }
 
+            if (statement is TryStatementSyntax sourceTry)
+            {
+                if (!TryRecognizeSourceCatch(sourceTry, model, out var sourceCatch)
+                    || sourceCatch == null)
+                {
+                    Block("POM_EXCEPTION_CATCH_UNSUPPORTED", sourceTry,
+                        "Only a single source-bound immediate FindElement.Text NUnit assertion caught by NoSuchElementException, or a finite source WebDriverWait.Until caught by WebDriverTimeoutException, can be proposed. No catch filters, finally, variable reads, broad catches or side effects.");
+                    return null;
+                }
+
+                controlFlow.Push("exception:try@" + Line(sourceTry));
+                var protectedTarget = RenderInvocation(sourceCatch.ProtectedCall,
+                    model, owner, depth + 1);
+                controlFlow.Pop();
+                if (protectedTarget == null)
+                {
+                    Block("POM_EXCEPTION_PROTECTED_OPERATION_UNRESOLVED",
+                        sourceCatch.ProtectedCall,
+                        "The protected operation must be a complete typed immediate Text assertion or finite WebDriverWait.Until source fact.");
+                    return null;
+                }
+
+                // Rethrow preserves the target *instance*, not Selenium
+                // exception CLR identity. External source catch sites and
+                // exception-sensitive consumers still require review.
+                string? handler;
+                controlFlow.Push("exception:catch@" + Line(sourceCatch.Clause));
+                if (sourceCatch.TerminalRethrow != null)
+                {
+                    handler = "throw;";
+                    Evidence(sourceCatch.TerminalRethrow, null,
+                        "exception_rethrow", handler);
+                }
+                else if (sourceCatch.RecoveryAssertion != null)
+                {
+                    handler = RenderInvocation(sourceCatch.RecoveryAssertion,
+                        model, owner, depth + 1);
+                }
+                else
+                    handler = null;
+                controlFlow.Pop();
+                if (handler == null)
+                {
+                    Block("POM_EXCEPTION_HANDLER_UNRESOLVED", sourceCatch.Clause,
+                        "Only immediate source-backed NUnit FindElements.Count recovery or a bare throw; rethrow is admitted.");
+                    return null;
+                }
+
+                var catchHeader = RenderSourceCatchHeader(sourceCatch.Kind);
+                Evidence(sourceCatch.Clause, null, "source_exception_catch",
+                    catchHeader);
+                return "try\n{\n" + protectedTarget + "\n}\n"
+                    + catchHeader + "\n{\n" + handler + "\n}";
+            }
+
             if (statement is ForStatementSyntax loop)
             {
                 if (!TryRecognizeBoundedRetry(loop, model, out var retry)
