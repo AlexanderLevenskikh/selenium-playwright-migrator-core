@@ -18,7 +18,7 @@ using System;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Support.UI;
 using NUnit.Framework;
-namespace Fictional.P34;
+namespace Fictional.P35;
 public sealed partial class SourcePage {
     private readonly IWebDriver driver;
     public SourcePage(IWebDriver driver) { this.driver=driver; }
@@ -41,6 +41,21 @@ public sealed partial class SourcePage {
     public void AssertOptionCount() {
         Assert.That(driver.FindElements(By.Id("option")).Count,Is.EqualTo(1));
     }
+    public void AssertSelectedText(string expected) {
+        Assert.That(driver.FindElement(By.Id("selected")).Text, Is.EqualTo(expected));
+    }
+    public void AssertStaticText() {
+        Assert.That(driver.FindElement(By.Id("message")).Text, Is.EqualTo("waiting"));
+    }
+    public void AssertChangingText() {
+        Assert.That(driver.FindElement(By.Id("message")).Text, Is.EqualTo("ready"));
+    }
+    public void AssertDelayedText() {
+        Assert.That(driver.FindElement(By.Id("delayed-text")).Text, Is.EqualTo("ready"));
+    }
+    public void AssertHiddenText() {
+        Assert.That(driver.FindElement(By.Id("hidden-message")).Text, Is.EqualTo(""));
+    }
     public void UnsafeCapturedReceiver() {
         new WebDriverWait(driver,TimeSpan.FromMilliseconds(750))
             .Until(d => driver.FindElements(By.Id("loader")).Count == 0);
@@ -54,7 +69,7 @@ public sealed partial class SourcePage {
 HELPERS = """
 using OpenQA.Selenium;
 using NUnit.Framework;
-namespace Fictional.P34;
+namespace Fictional.P35;
 public sealed partial class SourcePage {
     private void SearchThenChoose(string value,string confirm) {
         driver.FindElement(By.Id("picker")).Click();
@@ -74,16 +89,18 @@ HTML = """<!doctype html><html><meta charset="utf-8"><body>
 <input id="search" style="display:none" oninput="onInput(this.value)"/>
 <button id="option" style="display:none" onclick="choose()">Select</button>
 <button id="accept" style="display:none" onclick="confirmSelection()">Confirm</button>
-<span id="selected"></span><div id="loader">Loading</div>
+<span id="selected"></span><span id="message">waiting</span><span id="hidden-message" style="display:none">SECRET</span><div id="loader">Loading</div>
 <script>
 window.appEvents=[];window.appConsole=[];let lastInput="";
-function emit(x){window.appEvents.push(x);window.appConsole.push("p34:"+x);console.log("p34:"+x);}
+function emit(x){window.appEvents.push(x);window.appConsole.push("p35:"+x);console.log("p35:"+x);}
 function openPicker(){emit("open");document.querySelector("#search").style.display="inline";if(document.querySelector("#option"))document.querySelector("#option").style.display="inline";document.querySelector("#accept").style.display="inline";}
 function onInput(x){if(x && lastInput!==x){lastInput=x;emit("type:"+x);}}
 function choose(){emit("select:"+document.querySelector("#search").value);}
 function confirmSelection(){const s=document.querySelector("#search").value;document.querySelector("#selected").textContent=s;emit("confirm:"+s);}
 window.removeLoader=()=>{const l=document.querySelector("#loader");if(l){l.remove();emit("loader:detached");}};
 window.beginRace=()=>{const o=document.querySelector("#option");if(o)o.remove();emit("race:started");setTimeout(()=>{const n=document.createElement("button");n.id="option";n.textContent="Option";document.body.appendChild(n);emit("race:inserted");},450);};
+window.beginTextRace=()=>{const e=document.querySelector("#message");e.textContent="pending";emit("text:start");setTimeout(()=>{e.textContent="ready";emit("text:end");},1800);};
+window.beginInsertionRace=()=>{emit("insertion:start");setTimeout(()=>{const e=document.createElement("span");e.id="delayed-text";e.textContent="ready";document.body.appendChild(e);emit("insertion:end");},1800);};
 window.snapshot=()=>({events:window.appEvents.slice(),applicationConsole:window.appConsole.slice(),selected:document.querySelector("#selected").textContent,search:document.querySelector("#search").value,optionCount:document.querySelectorAll("#option").length,loaderCount:document.querySelectorAll("#loader").length,userAgent:navigator.userAgent});
 const scenario=new URLSearchParams(location.search).get("scenario");
 if(scenario==="missing")document.querySelector("#option").remove();
@@ -107,7 +124,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
-namespace Fictional.P34;
+namespace Fictional.P35;
 [NonParallelizable] public abstract class ParityTestsBase {
     private string testName="";
     private string? caughtException;
@@ -117,6 +134,13 @@ namespace Fictional.P34;
     protected abstract Task WaitGone();
     protected abstract Task RetryReady();
     protected abstract Task AssertOptionCount();
+    protected abstract Task AssertSelectedText(string expected);
+    protected abstract Task AssertStaticText();
+    protected abstract Task AssertChangingText();
+    protected abstract Task AssertDelayedText();
+    protected abstract Task AssertHiddenText();
+    protected abstract Task StartTextRace();
+    protected abstract Task StartInsertionRace();
     protected abstract Task StartRace();
     protected abstract Task<string> Snapshot();
     protected abstract Task Screenshot(string path);
@@ -129,7 +153,9 @@ namespace Fictional.P34;
             "ComboFound"=>"present","ComboMissing"=>"missing",
             "LoaderGone"=>"loader_gone","RetryRecovery"=>"retry_recover",
             "RetryExhausted"=>"retry_exhausted",
-            "AssertionRaceNegative"=>"assertion_race",_=>throw new Exception("Unexpected test")
+            "AssertionRaceNegative"=>"assertion_race","TextStatic"=>"text_static",
+            "TextRaceNegative"=>"text_race","TextInsertionNegative"=>"text_insertion",
+            "TextHiddenMismatch"=>"text_hidden",_=>throw new Exception("Unexpected test")
         };
         var url=Environment.GetEnvironmentVariable("POM35_URL")!;
         await Open(url+"?scenario="+scenario);
@@ -155,8 +181,9 @@ namespace Fictional.P34;
         try {await action();} catch(Exception e){caughtException=e.GetType().FullName;throw;}
     }
     [Test] public Task ComboFound()=>Measured(async ()=>{
-        await Choose("alpha","yes");await AssertOptionCount();
+        await Choose("alpha","yes");await AssertOptionCount();await AssertSelectedText("alpha");
     });
+    [Test] public Task TextStatic()=>Measured(AssertStaticText);
     [Test] public Task ComboMissing()=>Measured(()=>Choose("beta","no"));
     [Test] public Task LoaderGone()=>Measured(WaitGone);
     [Test] public Task RetryRecovery()=>Measured(RetryReady);
@@ -167,6 +194,16 @@ namespace Fictional.P34;
     public Task AssertionRaceNegative()=>Measured(async ()=>{
         await StartRace();await AssertOptionCount();
     });
+    [Test,Explicit("changing text assertion must fail immediately")]
+    public Task TextRaceNegative()=>Measured(async ()=>{
+        await StartTextRace();await AssertChangingText();
+    });
+    [Test,Explicit("absent text element must not be auto-waited")]
+    public Task TextInsertionNegative()=>Measured(async ()=>{
+        await StartInsertionRace();await AssertDelayedText();
+    });
+    [Test,Explicit("known hidden Selenium Text / DOM innerText difference")]
+    public Task TextHiddenMismatch()=>Measured(AssertHiddenText);
 }
 """
 SELENIUM_TESTS = r"""
@@ -176,7 +213,7 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-namespace Fictional.P34;
+namespace Fictional.P35;
 [TestFixture] public sealed class SeleniumParityTests:ParityTestsBase {
     private ChromeDriver? driver;
     protected override string Engine=>"selenium";
@@ -211,7 +248,7 @@ using System.IO;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using Microsoft.Playwright;
-namespace Fictional.P34;
+namespace Fictional.P35;
 [TestFixture] public sealed class PlaywrightParityTests:ParityTestsBase {
     private IPlaywright? pw;private IBrowser? browser;
     private IBrowserContext? context;private IPage? current;
@@ -313,7 +350,7 @@ def main():
             hash0=json_cli(["dotnet",cli,"pom-inspect",pom],repo)["sourceTreeHash"]
             plans={}
             for method in ("Choose","WaitGone","RetryReady","AssertOptionCount"):
-                p=json_cli(["dotnet",cli,"pom-plan",pom,"Fictional.P34.SourcePage",method,hash0,"--emit-target"],repo)
+                p=json_cli(["dotnet",cli,"pom-plan",pom,"Fictional.P35.SourcePage",method,hash0,"--emit-target"],repo)
                 check(p["status"]=="requires_review" and not p["runtimeVerified"]
                       and not p["canAutoApply"] and p["adapterCandidate"]["requiresReview"]
                       and len(p["targetStatements"])==1,
