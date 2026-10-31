@@ -132,7 +132,7 @@ internal static class PomPreview33SourceBoundSmoke
                     && a.ControlFlowPath.Contains("helper:SearchThenConfirm@"))
                 && main.Actions.All(a => a.SourceLine > 0
                     && a.SourceSha256.Length == 64 && a.TargetSha256.Length == 64),
-                "Cross-file helper forwarding, actions, review boundary or SHA evidence lost.");
+                "Cross-file helper forwarding, actions, review boundary or SHA evidence lost: " + System.Text.Json.JsonSerializer.Serialize(main));
 
             Check(Plan("LookupSwap").TargetStatements.Single()
                 .Contains("PressSequentiallyAsync(b)")
