@@ -799,3 +799,43 @@ attempts are not independently counted by this runtime test. Other timing,
 exception, browser and product differences remain possible. No private
 ArBilling code/credentials are used, and passing synthetic parity is not
 proof of general automated migration correctness.
+
+
+## Preview.35 — preserve immediate NUnit Count/Text assertion timing
+
+Previous preview.34 real Selenium WebDriver versus Playwright .NET on one
+Chrome binary established that the source
+\`Assert.That(driver.FindElements(By.Id(...)).Count, Is.EqualTo(N))\`
+fails immediately before a delayed insertion, whereas the candidate
+\`Expect(locator).ToHaveCountAsync(N)\` retries and passes. The
+source-backed review-only Roslyn candidate now emits a **single**
+\`Assert.That(await locator.CountAsync(), Is.EqualTo(N))\` snapshot
+for EqualTo, GreaterThan and LessThan. It does not claim that all
+Selenium/Playwright locator behavior is equivalent.
+
+Similarly, a source \`IWebElement.Text\` equality must not silently
+become an auto-retrying \`ToHaveTextAsync\`. A new review-only candidate
+takes a single non-waiting DOM query using
+\`locator.EvaluateAllAsync<string>(...innerText...)\`, throws if the
+element is absent, and then uses immediate NUnit EqualTo. The source
+selector and literal row index are preserved, with no guessed
+URL/side effects. **Important**: Selenium's rendered-text algorithm is
+not universally equivalent to DOM \`innerText\` (notably hidden nodes
+and whitespace). An absent element also throws a different exception
+type. Both are explicitly measured and remain review-required, not
+automatically accepted migrations.
+
+The Linux/Windows preview.35 real Selenium WebDriver/ChromeDriver and
+Playwright .NET job uses the same installed Chrome for Testing and
+localhost synthetic app, compares normal Count/Text success and
+positive DOM observables, and exercises selected negative controls:
+delayed Count insertion (both fail), changing visible text (both fail),
+missing text element (both fail with distinct exceptions), and hidden
+text (observed residual non-equivalence). Runtime NUnit TRX, actual
+browser snapshots, screenshots, browser binary/source method SHA-256 and
+immutable artifacts are published. The old preview.34 fixture remains
+in the repository as historical evidence; preview.35 CI uses the
+newest assertion-corrected script.
+
+No automatic conversion approval is implied. Private ArBilling is
+\`not_run\`; independent retry-attempt counting remains unverified.
