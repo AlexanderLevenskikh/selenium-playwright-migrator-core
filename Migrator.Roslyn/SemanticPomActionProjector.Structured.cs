@@ -142,6 +142,42 @@ public static partial class SemanticPomActionProjector
                 return statementText;
             }
 
+            if (statement is ForStatementSyntax loop)
+            {
+                if (!TryRecognizeBoundedRetry(loop, model, out var retry)
+                    || retry == null)
+                {
+                    Block("POM_RETRY_UNSUPPORTED", loop,
+                        "Only a source-literal 2..4 attempt for-loop with one Selenium WebDriverWait.Until, break on success, and a last-attempt rethrow of WebDriverTimeoutException is accepted.");
+                    return null;
+                }
+                var header = "for (var " + retry.LocalName + " = 0; "
+                    + retry.LocalName + " < " + retry.Attempts + "; "
+                    + retry.LocalName + "++)";
+                Evidence(loop, null, "bounded_retry", header);
+                controlFlow.Push("retry:" + retry.Attempts + "@" + Line(loop));
+                controlFlow.Push("retry:try@" + Line(retry.Until));
+                var waited = RenderInvocation(retry.Until, model, owner, depth + 1);
+                controlFlow.Pop();
+                if (waited == null)
+                {
+                    controlFlow.Pop();
+                    Block("POM_RETRY_WAIT_UNRESOLVED", retry.Until,
+                        "The retry loop wait must be a supported typed Selenium WebDriverWait.Until expression.");
+                    return null;
+                }
+                var rethrow = "if (" + retry.LocalName + " == "
+                    + (retry.Attempts - 1) + ") throw;";
+                controlFlow.Push("retry:catch@" + Line(retry.Catch));
+                Evidence(retry.Rethrow, null, "retry_failure_rethrow", rethrow);
+                controlFlow.Pop();
+                controlFlow.Pop();
+                return header + "\n{\n"
+                    + "try\n{\n" + waited + "\nbreak;\n}\n"
+                    + "catch (System.TimeoutException)\n{\n"
+                    + rethrow + "\n}\n}";
+            }
+
             if (statement is not ExpressionStatementSyntax expressionStatement
                 || expressionStatement.Expression is not InvocationExpressionSyntax call)
             {
@@ -170,7 +206,8 @@ public static partial class SemanticPomActionProjector
                 && SymbolEqualityComparer.Default.Equals(
                     helper.ContainingType, owner.ContainingType)
                 && helper.DeclaredAccessibility == Accessibility.Private
-                && helper.Parameters.Length == 0 && call.ArgumentList.Arguments.Count == 0
+                && (helper.Parameters.Length is 0 or 1)
+                && helper.Parameters.Length == call.ArgumentList.Arguments.Count
                 && helper.ReturnsVoid && !helper.IsStatic && !helper.IsVirtual
                 && !helper.IsOverride && !helper.IsAsync && !helper.IsGenericMethod
                 && (call.Expression is IdentifierNameSyntax
@@ -181,6 +218,20 @@ public static partial class SemanticPomActionProjector
                     is MethodDeclarationSyntax helperSyntax
                 && compilation.SyntaxTrees.Contains(helperSyntax.SyntaxTree))
             {
+                string? boundValue = null;
+                if (helper.Parameters.Length == 1)
+                {
+                    if (helper.Parameters[0].Type.SpecialType != SpecialType.System_String
+                        || !SafeString(call.ArgumentList.Arguments[0].Expression,
+                            model, owner, out var resolvedArgument))
+                    {
+                        Block("POM_HELPER_ARGUMENT_UNSUPPORTED", call,
+                            "Typed private helper arguments must be source-bound string parameters or literal strings.");
+                        return null;
+                    }
+                    boundValue = resolvedArgument;
+                }
+                var effectCheckpoint = effects.Count;
                 if (!activeHelpers.Add(helper))
                 {
                     Block("POM_HELPER_RECURSION", call,
@@ -198,6 +249,31 @@ public static partial class SemanticPomActionProjector
                     Block("POM_PRIVATE_HELPER_UNRESOLVED", call,
                         "Same-class private helper has an unresolved effect or control-flow path.");
                     return null;
+                }
+                if (boundValue != null)
+                {
+                    var parameterName = helper.Parameters[0].Name;
+                    var boundBody = BindHelperStringArgument(
+                        expanded, parameterName, boundValue);
+                    if (boundBody == null)
+                    {
+                        Block("POM_HELPER_BINDING_INVALID", call,
+                            "Generated helper statements could not be parsed for source-bound argument substitution.");
+                        return null;
+                    }
+                    expanded = boundBody;
+                    for (var i = effectCheckpoint; i < effects.Count; i++)
+                    {
+                        var boundEffect = BindHelperStringArgument(
+                            effects[i].TargetStatement, parameterName, boundValue);
+                        if (boundEffect == null)
+                        {
+                            Block("POM_HELPER_BINDING_INVALID", call,
+                                "Source helper effect cannot safely bind the selected string parameter.");
+                            return null;
+                        }
+                        effects[i] = effects[i] with { TargetStatement = boundEffect };
+                    }
                 }
                 Evidence(call, helper, "private_helper_inline", expanded);
                 return expanded;

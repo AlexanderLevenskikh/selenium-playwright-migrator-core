@@ -95,7 +95,7 @@ internal static class PomStructuredActionsSmoke
 
             var combo = engine.PlanPomActions(root, "Fictional.P31.SyntheticPage",
                 "Choose", hash);
-            Check(combo.SchemaVersion == "migrator-pom-action/v1alpha2"
+            Check(combo.SchemaVersion == "migrator-pom-action/v1alpha3"
                 && combo.Status == "requires_review" && !combo.RuntimeVerified
                 && !combo.CanAutoApply && combo.Blockers.Count == 0
                 && combo.TargetStatements.Count == 4

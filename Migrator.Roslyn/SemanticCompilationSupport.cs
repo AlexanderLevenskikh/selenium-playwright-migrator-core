@@ -148,6 +148,17 @@ internal static class SemanticCompilationSupport
             // Namespace is separate, so emitted below as a second namespace.
         }
 
+        if (compilation.GetTypeByMetadataName("OpenQA.Selenium.WebDriverTimeoutException") == null)
+        {
+            declarations.Add(
+                """
+                public sealed class WebDriverTimeoutException : System.Exception
+                {
+                    public WebDriverTimeoutException() {}
+                }
+                """);
+        }
+
         if (compilation.GetTypeByMetadataName("OpenQA.Selenium.Keys") == null)
         {
             declarations.Add(

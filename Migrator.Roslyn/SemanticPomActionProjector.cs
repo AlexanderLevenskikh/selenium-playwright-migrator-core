@@ -80,7 +80,7 @@ public static partial class SemanticPomActionProjector
         var noMethod = matching.Length != 1;
         if (noMethod)
         {
-            return new Projection("migrator-pom-action/v1alpha2", "blocked",
+            return new Projection("migrator-pom-action/v1alpha3", "blocked",
                 sourceType, sourceMethod, "", "", "", 0, "", empty,
                 new[] { new Problem(matching.Length == 0
                     ? "POM_METHOD_NOT_RESOLVED" : "POM_METHOD_AMBIGUOUS",
@@ -122,7 +122,7 @@ public static partial class SemanticPomActionProjector
             method, semantic, symbol, compilation, details, problems,
             cancellationToken);
 
-        return new Projection("migrator-pom-action/v1alpha2",
+        return new Projection("migrator-pom-action/v1alpha3",
             problems.Count == 0 && emittedStatements.Count > 0
                 ? "requires_review" : "blocked",
             sourceType, sourceMethod, methodSymbol, methodSha, origin, Line(method),

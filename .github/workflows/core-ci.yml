@@ -66,6 +66,15 @@ jobs:
           name: migrator-preview31-structured-pom-evidence-linux
           path: artifacts/pom-preview31/*
           if-no-files-found: warn
+      - name: preview.32 typed POM helper and bounded retry real Chromium + NUnit TRX Linux
+        timeout-minutes: 18
+        run: python3 scripts/p2_typed_retry_source_target_chromium_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview32-pom-evidence-linux
+          path: artifacts/pom-preview32/*
+          if-no-files-found: warn
       - name: Pack version-matched Core NuGet packages
         run: |
           mkdir -p artifacts/nuget
@@ -97,6 +106,15 @@ jobs:
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: Real NUnit 3/4 source-target discovery and TRX on Windows
         run: python scripts/nunit_execution_runtime.py
+      - name: preview.32 typed POM helper and bounded retry real Chromium + NUnit TRX Windows
+        timeout-minutes: 18
+        run: python scripts/p2_typed_retry_source_target_chromium_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview32-pom-evidence-windows
+          path: artifacts/pom-preview32/*
+          if-no-files-found: warn
       - name: preview.31 structured POM source/target NUnit and Chromium on Windows
         timeout-minutes: 18
         run: python scripts/p2_structured_source_target_chromium_runtime.py
@@ -139,3 +157,5 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
       - name: preview.31 source-backed structured POM AST success/failure
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-structured-only
+      - name: preview.32 typed POM helpers and bounded retry source AST
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-typed-retry-only
