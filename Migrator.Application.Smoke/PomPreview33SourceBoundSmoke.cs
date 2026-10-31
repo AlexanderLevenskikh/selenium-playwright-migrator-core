@@ -27,6 +27,9 @@ internal static class PomPreview33SourceBoundSmoke
                     public void LookupLiteral() {
                         SearchThenConfirm("literal-value", "yes");
                     }
+                    public void ForwardInt(int minimum, string label) {
+                        NumericThenType(minimum, label);
+                    }
                     public void Guard(int minimum) {
                         if (!(minimum < 2) &&
                             (driver.FindElements(By.CssSelector("[data-test='option']")).Count > 0
@@ -108,6 +111,13 @@ internal static class PomPreview33SourceBoundSmoke
                                 Is.GreaterThan(0));
                         }
                     }
+                    private void NumericThenType(int threshold, string value) {
+                        if (threshold > 0) {
+                            driver.FindElement(By.Id("search")).SendKeys(value);
+                        } else {
+                            driver.FindElement(By.Id("accept")).Click();
+                        }
+                    }
                 }
                 """);
             var inspector = new PomSourceInspector();
@@ -142,6 +152,20 @@ internal static class PomPreview33SourceBoundSmoke
                 .Contains("PressSequentiallyAsync(\"literal-value\")")
                 && Plan("LookupLiteral").TargetStatements.Single()
                 .Contains("if (\"yes\" == \"yes\")"), "Literal binding lost.");
+
+            var numeric = Plan("ForwardInt");
+            Check(numeric.Status == "requires_review"
+                && numeric.TargetStatements.Single().Contains("if (minimum > 0)")
+                && numeric.TargetStatements.Single().Contains("PressSequentiallyAsync(label)")
+                && numeric.TargetStatements.Single().Contains("else")
+                && numeric.Actions.Any(a => a.SourcePath == "Helpers.cs"
+                    && a.ControlFlowPath.Contains("helper:NumericThenType@"))
+                && numeric.AdapterCandidate is { RequiresReview: true }
+                && numeric.AdapterCandidate.TargetStatementTemplates.Single()
+                    .Contains("{minimum} > 0")
+                && numeric.AdapterCandidate.TargetStatementTemplates.Single()
+                    .Contains("PressSequentiallyAsync({label})"),
+                "Source-bound mixed int/string helper must preserve value flow and both branches.");
 
             var guard = Plan("Guard");
             Check(guard.Status == "requires_review"
