@@ -16,9 +16,18 @@ public static partial class SemanticPomActionProjector
         string targetStatements, IReadOnlyDictionary<string, string> bindings)
     {
         const string prefix = "{\n";
-        var syntax = SyntaxFactory.ParseStatement(prefix + targetStatements + "\n}");
+        var suffix = "\n}";
+        var syntax = SyntaxFactory.ParseStatement(prefix + targetStatements + suffix);
         if (syntax.ContainsDiagnostics)
-            return null;
+        {
+            // Evidence for an if-guard is an expression ("a == b"),
+            // not a standalone C# statement. Parse it with a synthetic
+            // semicolon AFTER the original span, preserving all offsets.
+            suffix = ";\n}";
+            syntax = SyntaxFactory.ParseStatement(prefix + targetStatements + suffix);
+            if (syntax.ContainsDiagnostics)
+                return null;
+        }
 
         // Coordinates refer to the original syntax. Rewrite from right to
         // left so swaps and overlapping identifiers cannot cascade.
@@ -38,7 +47,7 @@ public static partial class SemanticPomActionProjector
                 return null;
             text = text[..start] + bindings[node.Identifier.ValueText] + text[end..];
         }
-        return SyntaxFactory.ParseStatement(prefix + text + "\n}")
+        return SyntaxFactory.ParseStatement(prefix + text + suffix)
             .ContainsDiagnostics ? null : text;
     }
 
