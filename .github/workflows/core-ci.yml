@@ -69,6 +69,15 @@ jobs:
       - name: preview.32 typed POM helper and bounded retry real Chromium + NUnit TRX Linux
         timeout-minutes: 18
         run: python3 scripts/p2_typed_retry_source_target_chromium_runtime.py
+      - name: preview.33 multi-argument ComboBox and detached Loader Chromium + NUnit TRX Linux
+        timeout-minutes: 18
+        run: python3 scripts/p2_preview33_source_target_chromium_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview33-pom-evidence-linux
+          path: artifacts/pom-preview33/*
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -109,6 +118,15 @@ jobs:
       - name: preview.32 typed POM helper and bounded retry real Chromium + NUnit TRX Windows
         timeout-minutes: 18
         run: python scripts/p2_typed_retry_source_target_chromium_runtime.py
+      - name: preview.33 multi-argument ComboBox and detached Loader Chromium + NUnit TRX Windows
+        timeout-minutes: 18
+        run: python scripts/p2_preview33_source_target_chromium_runtime.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-preview33-pom-evidence-windows
+          path: artifacts/pom-preview33/*
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
