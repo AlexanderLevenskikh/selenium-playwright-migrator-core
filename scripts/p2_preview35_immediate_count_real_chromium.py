@@ -101,7 +101,7 @@ window.removeLoader=()=>{const l=document.querySelector("#loader");if(l){l.remov
 window.beginRace=()=>{const o=document.querySelector("#option");if(o)o.remove();emit("race:started");setTimeout(()=>{const n=document.createElement("button");n.id="option";n.textContent="Option";document.body.appendChild(n);emit("race:inserted");},450);};
 window.beginTextRace=()=>{const e=document.querySelector("#message");e.textContent="pending";emit("text:start");setTimeout(()=>{e.textContent="ready";emit("text:end");},1800);};
 window.beginInsertionRace=()=>{emit("insertion:start");setTimeout(()=>{const e=document.createElement("span");e.id="delayed-text";e.textContent="ready";document.body.appendChild(e);emit("insertion:end");},1800);};
-window.snapshot=()=>({events:window.appEvents.slice(),applicationConsole:window.appConsole.slice(),selected:document.querySelector("#selected").textContent,search:document.querySelector("#search").value,optionCount:document.querySelectorAll("#option").length,loaderCount:document.querySelectorAll("#loader").length,userAgent:navigator.userAgent});
+window.snapshot=()=>({events:window.appEvents.slice(),applicationConsole:window.appConsole.slice(),selected:document.querySelector("#selected").textContent,message:document.querySelector("#message").textContent,search:document.querySelector("#search").value,optionCount:document.querySelectorAll("#option").length,loaderCount:document.querySelectorAll("#loader").length,userAgent:navigator.userAgent});
 const scenario=new URLSearchParams(location.search).get("scenario");
 if(scenario==="missing")document.querySelector("#option").remove();
 if(scenario==="loader_gone")setTimeout(window.removeLoader,90);
@@ -333,7 +333,9 @@ def read_trx(path):
 def test(project,evidence,engine,scenario):
     fixture="SeleniumParityTests" if engine=="selenium" else "PlaywrightParityTests"
     expr="FullyQualifiedName~"+fixture
-    selected={"retry":"RetryExhausted","race":"AssertionRaceNegative"}.get(scenario)
+    selected={"retry":"RetryExhausted","race":"AssertionRaceNegative",
+              "text_race":"TextRaceNegative","insertion":"TextInsertionNegative",
+              "hidden":"TextHiddenMismatch"}.get(scenario)
     if selected:expr+="&Name~"+selected
     label=engine+"_"+scenario
     argv=["dotnet","test","-c","Release","--no-build","--no-restore",
@@ -424,9 +426,10 @@ def main():
             os.environ["POM35_EVIDENCE"]=str(evidence)
             results={}
             for engine in ("selenium","playwright"):
-                for scenario in ("default","retry","race"):
+                for scenario in ("default","retry","race","text_race","insertion","hidden"):
                     results[engine+"_"+scenario]=test(project,evidence,engine,scenario)
-                    should_fail=scenario in ("retry","race")
+                    should_fail=scenario in ("retry","race","text_race","insertion") or (
+                        scenario=="hidden" and engine=="playwright")
                     check((results[engine+"_"+scenario]["code"]!=0)==should_fail,
                           "Unexpected real NUnit exit "+engine+"/"+scenario+": "
                           +str(results[engine+"_"+scenario]))
@@ -436,7 +439,7 @@ def main():
             # NUnit4 does not necessarily write unselected Explicit
             # cases into the default TRX. Independently selected TRX runs
             # below prove those declarations were discovered and executed.
-            check(set(orig)=={"ComboFound","ComboMissing","LoaderGone","RetryRecovery"}
+            check(set(orig)=={"ComboFound","ComboMissing","LoaderGone","RetryRecovery","TextStatic"}
                   and all(x=="Passed" for x in orig.values()),
                   "Unexpected default real NUnit cases: "+str(orig))
             for engine in ("selenium","playwright"):
@@ -444,7 +447,14 @@ def main():
                       "Terminal timeout failed to produce selected NUnit failure "+engine)
             check(results["selenium_race"]["cases"]=={"AssertionRaceNegative":"Failed"}
                   and results["playwright_race"]["cases"]=={"AssertionRaceNegative":"Failed"},
-                  "Required NUnit immediate-vs-Playwright auto-retry counterexample missing")
+                  "Count race must fail immediately on both real drivers")
+            for category,method in (("text_race","TextRaceNegative"),("insertion","TextInsertionNegative")):
+                check(results["selenium_"+category]["cases"]=={method:"Failed"}
+                      and results["playwright_"+category]["cases"]=={method:"Failed"},
+                      "Text must not gain assertion/locator auto-wait: "+category)
+            check(results["selenium_hidden"]["cases"]=={"TextHiddenMismatch":"Passed"}
+                  and results["playwright_hidden"]["cases"]=={"TextHiddenMismatch":"Failed"},
+                  "Hidden rendered text remains a known review-required discrepancy")
             def record(engine,name):
                 f=evidence/(engine+"-"+name+".json")
                 check(f.exists(),"Missing real browser trace "+str(f))
@@ -454,7 +464,7 @@ def main():
                 r["snapshot"]=json.loads(r["snapshot"])
                 return r
             pairs={}
-            for name in ("ComboFound","ComboMissing","LoaderGone","RetryRecovery"):
+            for name in ("ComboFound","ComboMissing","LoaderGone","RetryRecovery","TextStatic"):
                 a,b=record("selenium",name),record("playwright",name)
                 check(a["outcome"]==b["outcome"]=="Passed"
                       and a["snapshot"]==b["snapshot"],
@@ -484,14 +494,30 @@ def main():
             check(race_s["exceptionType"]=="NUnit.Framework.AssertionException"
                   and race_p["exceptionType"]=="NUnit.Framework.AssertionException",
                   "Immediate count assertion must fail on BOTH drivers, not retry")
+            text_s,text_p=record("selenium","TextRaceNegative"),record("playwright","TextRaceNegative")
+            check(text_s["exceptionType"]=="NUnit.Framework.AssertionException"
+                  and text_p["exceptionType"]=="NUnit.Framework.AssertionException",
+                  "Changing text must be evaluated once, both NUnit assertions should fail")
+            missing_s,missing_p=record("selenium","TextInsertionNegative"),record("playwright","TextInsertionNegative")
+            check(missing_s["exceptionType"]=="OpenQA.Selenium.NoSuchElementException"
+                  and missing_p["exceptionType"]=="Microsoft.Playwright.PlaywrightException",
+                  "Absent element must not wait for insertion; note exception type mismatch "
+                  +str(missing_s["exceptionType"])+"/"+str(missing_p["exceptionType"]))
+            hidden_s,hidden_p=record("selenium","TextHiddenMismatch"),record("playwright","TextHiddenMismatch")
+            check(hidden_s["outcome"]=="Passed" and hidden_p["outcome"]=="Failed"
+                  and hidden_p["exceptionType"]=="NUnit.Framework.AssertionException",
+                  "Hidden Selenium rendered text and DOM innerText known non-equivalence missing")
             for engine,name in (("selenium","RetryExhausted"),("playwright","RetryExhausted"),
-                                ("selenium","AssertionRaceNegative"),("playwright","AssertionRaceNegative")):
+                                ("selenium","AssertionRaceNegative"),("playwright","AssertionRaceNegative"),
+                                ("selenium","TextRaceNegative"),("playwright","TextRaceNegative"),
+                                ("selenium","TextInsertionNegative"),("playwright","TextInsertionNegative"),
+                                ("playwright","TextHiddenMismatch")):
                 filename=record(engine,name)["screenshot"]
                 f=evidence/filename
                 check(f.is_file() and f.read_bytes()[:8]==b"\x89PNG\r\n\x1a\n",
                       "Actual failure PNG missing "+str(f))
             summary={
-                "schema":"migrator-preview35-immediate-count-parity/v1",
+                "schema":"migrator-preview35-immediate-count-and-text-parity/v1",
                 "source":"real_Selenium_WebDriver_ChromeDriver_CSharp_NUnit",
                 "target":"real_Playwright_DotNet_source_backed_review_only",
                 "browser":"same_Chrome_for_Testing_executable",
@@ -511,16 +537,27 @@ def main():
                 "retry_attempt_count_runtime_independently_observed":False,
                 "count_assertion_race":{
                     "source":"Failed","target":"Failed",
-                    "reason":"NUnit Count and one-shot Playwright CountAsync are both immediate",
                     "timing_equivalence_observed":True,
                     "auto_approval":"requires_review"},
+                "text_change_assertion_race":{
+                    "source":"Failed","target":"Failed",
+                    "timing_equivalence_observed":True,
+                    "method":"one-shot locator EvaluateAllAsync with NUnit EqualTo"},
+                "text_missing_element_exception_gap":{
+                    "source":missing_s["exceptionType"],
+                    "target":missing_p["exceptionType"],"status":"known_review_required"},
+                "text_hidden_rendering_gap":{
+                    "source":"Passed","target":"Failed",
+                    "status":"known_review_required"},
+                "text_visible_positive_cases":["AssertSelectedText","AssertStaticText"],
+                "parity_scope":"synthetic visible DOM on identical Chrome",
                 "source_candidate_auto_apply":False,
                 "full_product_equivalence":"not_verified","private_ArBilling":"not_run"}
             (evidence/"summary.json").write_text(json.dumps(summary,indent=2)+"\n",encoding="utf-8")
             manifest={p.name:hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in sorted(evidence.iterdir()) if p.is_file() and p.name!="SHA256SUMS.json"}
             (evidence/"SHA256SUMS.json").write_text(json.dumps(manifest,indent=2)+"\n",encoding="utf-8")
-            print("POM_PREVIEW35_IMMEDIATE_COUNT_REAL_BROWSER_PASSED")
+            print("POM_PREVIEW35_IMMEDIATE_ASSERTIONS_REAL_BROWSER_PASSED")
             print(json.dumps(summary,sort_keys=True))
         server.shutdown()
 if __name__=="__main__":main()
