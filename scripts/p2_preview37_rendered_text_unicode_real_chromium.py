@@ -92,7 +92,7 @@ public sealed partial class SourcePage {
     }
     public void AssertPreMultilineText() {
         Assert.That(driver.FindElement(By.Id("space-pre-multiline")).Text,
-            Is.EqualTo("alpha\nbeta"));
+            Is.EqualTo("alpha\\nbeta"));
     }
     public void AssertCssTransformText() {
         Assert.That(driver.FindElement(By.Id("text-transform")).Text,
