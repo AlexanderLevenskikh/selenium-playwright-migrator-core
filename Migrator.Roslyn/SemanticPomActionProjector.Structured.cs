@@ -206,7 +206,7 @@ public static partial class SemanticPomActionProjector
                 && SymbolEqualityComparer.Default.Equals(
                     helper.ContainingType, owner.ContainingType)
                 && helper.DeclaredAccessibility == Accessibility.Private
-                && (helper.Parameters.Length is 0 or 1)
+                && helper.Parameters.Length <= 2
                 && helper.Parameters.Length == call.ArgumentList.Arguments.Count
                 && helper.ReturnsVoid && !helper.IsStatic && !helper.IsVirtual
                 && !helper.IsOverride && !helper.IsAsync && !helper.IsGenericMethod
@@ -218,18 +218,31 @@ public static partial class SemanticPomActionProjector
                     is MethodDeclarationSyntax helperSyntax
                 && compilation.SyntaxTrees.Contains(helperSyntax.SyntaxTree))
             {
-                string? boundValue = null;
-                if (helper.Parameters.Length == 1)
+                // Bind all formal identifiers simultaneously, never by sequential
+                // text replacement: e.g. helper(a, b) called as helper(b, a)
+                // must not capture or overwrite the other argument.
+                var boundValues = new Dictionary<string, string>(StringComparer.Ordinal);
+                for (var i = 0; i < helper.Parameters.Length; i++)
                 {
-                    if (helper.Parameters[0].Type.SpecialType != SpecialType.System_String
-                        || !SafeString(call.ArgumentList.Arguments[0].Expression,
-                            model, owner, out var resolvedArgument))
+                    var formal = helper.Parameters[i];
+                    var expression = call.ArgumentList.Arguments[i].Expression;
+                    var valid = formal.RefKind == RefKind.None
+                        && (formal.Type.SpecialType switch
+                        {
+                            SpecialType.System_String => SafeString(
+                                expression, model, owner, out var resolvedString)
+                                && boundValues.TryAdd(formal.Name, resolvedString),
+                            SpecialType.System_Int32 => SafeInt(
+                                expression, model, owner, out var resolvedInt)
+                                && boundValues.TryAdd(formal.Name, resolvedInt),
+                            _ => false
+                        });
+                    if (!valid)
                     {
                         Block("POM_HELPER_ARGUMENT_UNSUPPORTED", call,
-                            "Typed private helper arguments must be source-bound string parameters or literal strings.");
+                            "At most two source-bound string/int arguments, literal or unchanged owning-method parameters; no ref/out, dynamic values, conversions or side effects.");
                         return null;
                     }
-                    boundValue = resolvedArgument;
                 }
                 var effectCheckpoint = effects.Count;
                 if (!activeHelpers.Add(helper))
@@ -250,26 +263,24 @@ public static partial class SemanticPomActionProjector
                         "Same-class private helper has an unresolved effect or control-flow path.");
                     return null;
                 }
-                if (boundValue != null)
+                if (boundValues.Count != 0)
                 {
-                    var parameterName = helper.Parameters[0].Name;
-                    var boundBody = BindHelperStringArgument(
-                        expanded, parameterName, boundValue);
+                    var boundBody = BindHelperArguments(expanded, boundValues);
                     if (boundBody == null)
                     {
                         Block("POM_HELPER_BINDING_INVALID", call,
-                            "Generated helper statements could not be parsed for source-bound argument substitution.");
+                            "Generated helper statements could not be parsed for token-safe simultaneous binding.");
                         return null;
                     }
                     expanded = boundBody;
                     for (var i = effectCheckpoint; i < effects.Count; i++)
                     {
-                        var boundEffect = BindHelperStringArgument(
-                            effects[i].TargetStatement, parameterName, boundValue);
+                        var boundEffect = BindHelperArguments(
+                            effects[i].TargetStatement, boundValues);
                         if (boundEffect == null)
                         {
                             Block("POM_HELPER_BINDING_INVALID", call,
-                                "Source helper effect cannot safely bind the selected string parameter.");
+                                "Source helper effect cannot safely bind its arguments.");
                             return null;
                         }
                         effects[i] = effects[i] with { TargetStatement = boundEffect };
@@ -346,6 +357,15 @@ public static partial class SemanticPomActionProjector
             sourceSymbol = leftSymbol;
             return true;
         }
+        if (expression is PrefixUnaryExpressionSyntax negation
+            && negation.IsKind(SyntaxKind.LogicalNotExpression)
+            && TryCondition(negation.Operand, model, owner,
+                out var operand, out var operandSymbol))
+        {
+            target = "!(" + operand + ")";
+            sourceSymbol = operandSymbol;
+            return true;
+        }
         if (expression is not BinaryExpressionSyntax binary)
             return false;
 
@@ -360,6 +380,19 @@ public static partial class SemanticPomActionProjector
             _ => ""
         };
         if (op.Length == 0) return false;
+
+        if (binary.Left is IdentifierNameSyntax numericName
+            && model.GetSymbolInfo(numericName).Symbol is IParameterSymbol numeric
+            && owner != null
+            && SymbolEqualityComparer.Default.Equals(numeric.ContainingSymbol, owner)
+            && numeric.Type.SpecialType == SpecialType.System_Int32
+            && LiteralInt(binary.Right, out var integer))
+        {
+            target = numeric.Name + " " + op + " "
+                + integer.ToString(CultureInfo.InvariantCulture);
+            sourceSymbol = numeric;
+            return true;
+        }
 
         if (op is "==" or "!=" && binary.Left is IdentifierNameSyntax name
             && model.GetSymbolInfo(name).Symbol is IParameterSymbol parameter
