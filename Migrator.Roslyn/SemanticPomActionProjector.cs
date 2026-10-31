@@ -262,7 +262,7 @@ public static partial class SemanticPomActionProjector
                 // exception type remain review-required runtime boundaries.
                 effect = "text_assertion";
                 target = "NUnit.Framework.Assert.That(await " + textLocator
-                    + ".EvaluateAllAsync<string>(\\"els => { if (els.length == 0) throw new Error('POM_SOURCE_ELEMENT_ABSENT'); return els[0].innerText; }\\"), NUnit.Framework.Is.EqualTo("
+                    + ".EvaluateAllAsync<string>(\"els => { if (els.length == 0) throw new Error('POM_SOURCE_ELEMENT_ABSENT'); return els[0].innerText; }\"), NUnit.Framework.Is.EqualTo("
                     + textValue + "));";
                 return true;
             }
