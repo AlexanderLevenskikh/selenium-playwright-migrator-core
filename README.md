@@ -839,3 +839,41 @@ newest assertion-corrected script.
 
 No automatic conversion approval is implied. Private ArBilling is
 \`not_run\`; independent retry-attempt counting remains unverified.
+
+
+## Preview.36 — narrow source-backed rendered-text subset (real Selenium comparison)
+
+Preview.35 removed auto-retrying Count/Text expectations, but an immediate
+DOM \`innerText\` read was NOT Selenium \`IWebElement.Text\`: a hidden
+\`display:none\` element yielded \`""\` under real Selenium and its secret
+text under the old Playwright candidate. WebDriver Get Element Text
+intends *rendered text* semantics, not raw DOM text.
+
+Preview.36 updates only the review-required Roslyn \`IWebElement.Text\`
+candidate to a single \`EvaluateAllAsync<string>\` DOM snapshot that checks
+the source-selected element and ancestor CSS \`display:none\` /
+\`visibility:hidden\` or \`visibility:collapse\` and returns an empty
+string for those cases. It normalizes a narrow CSS normal-whitespace
+subset (collapse spaces/tabs, trim line edges). For \`white-space: pre\`,
+\`pre-wrap\` and \`break-spaces\`, the target deliberately throws
+\`POM_TEXT_PRESERVED_WHITESPACE_REVIEW\`; it does NOT guess behavior.
+Missing elements still fail immediately with a different exception type
+than Selenium (PlaywrightException versus NoSuchElementException);
+the exact source exception identity remains unproven.
+
+The public Linux/Windows Chrome-for-Testing fixture executes the **same**
+source Selenium WebDriver and projected Playwright .NET test methods,
+including hidden root/ancestor, CSS visibility hidden, normal whitespace,
+Count and visible Text races, an absent element, and the intentionally
+unresolved preformatted text control. The checker requires normal and
+hidden-subset matching DOM/events, matching source/target NUnit outcomes
+on positives, and explicit non-equivalence on the preserved-white-space
+negative. Exact source tree/method hashes, Chrome binaries, TRX, real PNG
+screenshots and SHA256SUMS are retained. It is a public synthetic
+subset, not an implementation or proof of the full Selenium/WebDriver
+rendered-text algorithm.
+
+**All proposed target statements remain \`requires_review\`;
+\`CanAutoApply=false\`.** This code does not read or execute private
+ArBilling; unsupported CSS and exception semantics must never be
+treated as automatically migrated.

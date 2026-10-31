@@ -181,9 +181,11 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview33-only
       - name: preview.35 immediate Count/Text NUnit assertion source AST
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview35-only
+      - name: preview.36 source-backed rendered-text CSS/whitespace AST positives and blockers
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview36-only
 
   p2-preview34-real-selenium-vs-playwright:
-    name: Preview.35 immediate Count and Text Selenium + Playwright (${{ matrix.os }})
+    name: Preview.36 rendered Text Selenium + Playwright (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -210,11 +212,11 @@ jobs:
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
-        run: python scripts/p2_preview35_immediate_count_real_chromium.py
+        run: python scripts/p2_preview36_rendered_text_real_chromium.py
       - name: Retain real browser TRX, DOM and failure screenshot evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: migrator-preview35-count-browser-${{ matrix.os }}
-          path: artifacts/pom-preview35/*
+          name: migrator-preview36-rendered-text-browser-${{ matrix.os }}
+          path: artifacts/pom-preview36/*
           if-no-files-found: warn

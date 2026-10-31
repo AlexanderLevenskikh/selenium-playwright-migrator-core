@@ -251,19 +251,19 @@ public static partial class SemanticPomActionProjector
                 && constraint.Name == "EqualTo"
                 && SafeString(expected, model, enclosingMethod, out var textValue))
             {
-                // Selenium's IWebElement.Text is observed immediately after
-                // FindElement(s), and NUnit EqualTo is not an auto-retrying
-                // assertion. Playwright ToHaveTextAsync (and InnerTextAsync)
-                // can wait for an element or changing text. EvaluateAllAsync
-                // executes one DOM query without waiting for a match; when
-                // absent, fail instead of comparing null/empty as if it
-                // came from an existing Selenium IWebElement. The exact
-                // Selenium rendered-text algorithm, hidden elements and
-                // exception type remain review-required runtime boundaries.
+                // WebDriver Get Element Text uses rendered text, not raw
+                // DOM innerText. Preview.36 handles only measured normal
+                // whitespace and direct/ancestor CSS hidden states. For CSS
+                // pre/break-spaces it deliberately fails closed instead of
+                // silently changing source assertion behavior. This remains
+                // an unapproved source-only candidate: missing-element
+                // exception identity, visibility inheritance and other CSS
+                // text modes still require independent runtime review.
                 effect = "text_assertion";
                 target = "NUnit.Framework.Assert.That(await " + textLocator
-                    + ".EvaluateAllAsync<string>(\"els => { if (els.length == 0) throw new Error('POM_SOURCE_ELEMENT_ABSENT'); return els[0].innerText; }\"), NUnit.Framework.Is.EqualTo("
-                    + textValue + "));";
+                    + ".EvaluateAllAsync<string>(" + JsonSerializer.Serialize(
+                        SourceRenderedTextSnapshotJavaScript)
+                    + "), NUnit.Framework.Is.EqualTo(" + textValue + "));";
                 return true;
             }
             if (read.Name.Identifier.ValueText == "Count"

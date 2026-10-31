@@ -1,7 +1,14 @@
 using Migrator.Application;
+if (args.Contains("--p2-preview36-only", StringComparer.Ordinal))
+{
+    PomPreview36RenderedTextSmoke.Run();
+    Console.WriteLine("POM_PREVIEW36_RENDERED_TEXT_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-preview35-only", StringComparer.Ordinal))
 {
     PomPreview35ImmediateAssertionSmoke.Run();
+    PomPreview36RenderedTextSmoke.Run();
     Console.WriteLine("POM_PREVIEW35_IMMEDIATE_ASSERTION_AST_PASSED");
     return;
 }
