@@ -222,9 +222,23 @@ public static partial class SemanticPomActionProjector
                 // text replacement: e.g. helper(a, b) called as helper(b, a)
                 // must not capture or overwrite the other argument.
                 var boundValues = new Dictionary<string, string>(StringComparer.Ordinal);
+                var helperModel = compilation.GetSemanticModel(helperSyntax.SyntaxTree, true);
                 for (var i = 0; i < helper.Parameters.Length; i++)
                 {
                     var formal = helper.Parameters[i];
+                    // Do not loosen the preview.32 conservative contract for
+                    // unused int arguments. Only project a numeric parameter
+                    // when Roslyn proves it participates in the helper body.
+                    if (formal.Type.SpecialType == SpecialType.System_Int32
+                        && !helperSyntax.DescendantNodes()
+                            .OfType<IdentifierNameSyntax>().Any(id =>
+                                SymbolEqualityComparer.Default.Equals(
+                                    helperModel.GetSymbolInfo(id).Symbol, formal)))
+                    {
+                        Block("POM_HELPER_ARGUMENT_UNSUPPORTED", call,
+                            "Unused int helper parameter has no source-backed target value flow.");
+                        return null;
+                    }
                     var expression = call.ArgumentList.Arguments[i].Expression;
                     var valid = formal.RefKind == RefKind.None
                         && (formal.Type.SpecialType switch
