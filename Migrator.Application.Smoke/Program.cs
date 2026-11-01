@@ -1,4 +1,10 @@
 using Migrator.Application;
+if(args.Contains("--p2-preview46-only",StringComparer.Ordinal))
+{
+    PomPreview46TypedTargetClosedSmoke.Run();
+    Console.WriteLine("POM_PREVIEW46_TYPED_TARGET_CLOSED_NUNIT_AST_PASSED");
+    return;
+}
 if(args.Contains("--p2-preview45-only",StringComparer.Ordinal))
 {
     PomPreview45FaultWitnessSmoke.Run();

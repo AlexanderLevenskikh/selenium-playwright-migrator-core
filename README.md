@@ -1204,3 +1204,38 @@ are observed while the fixture is running, including start identity
 to avoid PID-reuse false positives. A bounded descendant survey
 does not guarantee global OS process leak freedom, unreturned API
 resources, or private ArBilling equivalence. No release/auto-apply.
+
+
+## P1 preview.46-A — typed TargetClosedException in one NUnit TearDown
+
+A **separate opt-in**, immutable, review-only contract
+\`PlanPomTypedTargetClosedTearDown\` and local CLI
+\`pom-targetclosed-teardown DIR TYPE METHOD TREE_SHA PAGE CONTEXT BROWSER PW\`
+require the full previously proven PageObject -> TestBase -> NUnit
+recovery chain, real Playwright typed IPage/IBrowserContext constructor
+ownership, failure-atomic setup/one-time teardown, fixed-code guarded
+diagnostics, and no captured Console.SetError rebinding.
+
+The new \`[TearDown] async Task\` must **exactly** await the source-owned
+\`IPage.CloseAsync\` in a \`try\`, catch only the real
+\`Microsoft.Playwright.TargetClosedException\` (verified by Roslyn
+assembly/type symbol, with no filter or variable), and preserve
+\`IBrowserContext.CloseAsync\` in \`finally\`, itself guarded by an
+identically typed \`TargetClosedException\` catch. Each catch permits
+only one independently guarded \`System.Console.Error.WriteLine\` of
+the established per-resource fixed code; exceptions thrown by that
+diagnostic sink cannot replace the NUnit test failure.
+
+A terminal NUnit test failure remains the primary test result **for
+these exact typed teardown errors**, conditional on NUnit behavior
+and no unrelated \`OneTimeTearDown\` or non-TargetClosed failure.
+Unrelated exceptions, other teardown/fixture hooks, unknown receiver,
+exception filters, broad catches, dynamic dispatch and effects remain
+\`blocked\`. This is not an adapter for Selenium CLR exception types.
+The CLI never applies C# and redacts target snippets unless
+\`--emit-target\` is explicit; the MCP never sends source code or
+target snippets. Runtime browser and OS-specific evidence is separate.
+Known earlier preview.45 evidence: real Windows
+\`IBrowserContext.CloseAsync\` produced \`TargetClosedException\`
+after terminating the Playwright driver; Linux was \`not_observed\`
+and must not be misrepresented as confirmed positive.
