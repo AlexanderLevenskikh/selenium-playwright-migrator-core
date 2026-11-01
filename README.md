@@ -1072,3 +1072,36 @@ constructor injection, exact target Page Object field wiring, missing
 exception CLR identity and arbitrary side effects are not inferred.
 No Selenium package is generated in the Playwright-only target.
 Private ArBilling remains not_run.
+
+
+## P1 preview.42-A — source-attested fixture page/context lifecycle
+
+The opt-in, read-only plan \`PlanPomExternalAsyncLifecycleCountContract\`
+and CLI \`pom-lifecycle-count-contract DIR TYPE METHOD TREE_SHA PAGE CONTEXT BROWSER PLAYWRIGHT\`
+require **all four explicit field identifiers**; none are inferred.
+
+The narrow source contract demands one sealed ordinary NUnit fixture,
+one \`[OneTimeSetUp]\` creating Playwright and Chromium, one
+\`[SetUp]\` creating \`IBrowserContext\` from exactly that \`IBrowser\`,
+then \`IPage\` from the same context, then constructing the source
+Page Object using exactly those fields and the source IWebDriver.
+The Page Object constructor must assign one real assembly-typed IPage
+and IBrowserContext into readonly fields, and its source-proven
+TestBase forwarder must read the same source Page Object slot.
+\`[TearDown]\` must await \`IPage.CloseAsync\` and unconditionally
+await \`IBrowserContext.CloseAsync\` in \`finally\`.
+\`[OneTimeTearDown]\` must await \`IBrowser.CloseAsync\` and
+unconditionally dispose IPlaywright in \`finally\`.
+Roslyn checks field identity and rejects extra writers, wrong
+receiver, missing lifecycle hook and extra effects.
+
+This accepts **only the captured synchronous source action/Count
+exception chain** and source-authored ownership shape. It does not
+invent a DI container, NUnit fixture constructor arguments, browser
+launch configuration or a new cleanup action. Three async Task
+method proposals remain review-only. The CLI redacts target C#
+unless explicitly invoked with \`--emit-target\`; no auto-apply.
+The old preview.40 and preview.41 APIs remain unchanged.
+Real runtime success/failure, browser close and setup-failure
+resilience require independent evidence; partial setup failures
+and external assemblies remain unverified. Private ArBilling not_run.
