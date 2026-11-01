@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--p2-preview42-only", StringComparer.Ordinal))
+{
+    PomPreview42FixtureLifecycleSmoke.Run();
+    Console.WriteLine("POM_PREVIEW42_FIXTURE_LIFECYCLE_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-preview41-only",StringComparer.Ordinal))
 {
     PomPreview41AsyncCountSmoke.Run();

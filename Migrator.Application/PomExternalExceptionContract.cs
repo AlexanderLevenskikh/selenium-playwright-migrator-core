@@ -20,6 +20,16 @@ public sealed record PomExternalAsyncMethodCandidate(
     string SourcePath, int SourceLine, string SourceSha256,
     string SourceSymbol, string TargetSignature, string TargetBody);
 
+public sealed record PomExternalFixtureLifecycleCandidate(
+    string FixtureSourcePath, string FixtureSourceSha256,
+    string PageConstructorSha256, string OneTimeSetUpSha256,
+    string SetUpSha256, string TearDownSha256, string OneTimeTearDownSha256,
+    string PageField, string ContextField, string BrowserField,
+    string PlaywrightField, string FixtureType,
+    bool ContextFromBrowser, bool PageFromContext,
+    bool PageAndContextConstructorInjected,
+    bool PerTestCleanupInFinally, bool OneTimeCleanupInFinally);
+
 public sealed record PomExternalExceptionContractPlan(
     string SchemaVersion, string SourceTreeHash, string Status,
     string SourceType, string SourceMethod, string SourceMethodSha256,
@@ -30,6 +40,7 @@ public sealed record PomExternalExceptionContractPlan(
     public IReadOnlyList<PomExternalAsyncMethodCandidate> AsyncMethods { get; init; }
         = Array.Empty<PomExternalAsyncMethodCandidate>();
     public string VerifiedPageReceiver { get; init; } = "";
+    public PomExternalFixtureLifecycleCandidate? FixtureLifecycle { get; init; }
     public bool RuntimeVerified => false;
     public bool CanAutoApply => false;
     public bool RequiresReview => true;
@@ -58,10 +69,27 @@ public sealed partial class MigrationEngine
             expectedSourceTreeHash, sourceLine, true, explicitPageReceiver,
             cancellationToken);
 
+    /// <summary>
+    /// Preview.42-A: source-attested, opt-in NUnit fixture ownership and
+    /// Playwright page/context constructor flow. Still review-only.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomExternalAsyncLifecycleCountContract(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string pageField, string contextField,
+        string browserField, string playwrightField,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, pageField,
+            cancellationToken, true, contextField, browserField,
+            playwrightField);
+
     private PomExternalExceptionContractPlan PlanExternalCatchCore(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
-        string explicitPageReceiver, CancellationToken cancellationToken)
+        string explicitPageReceiver, CancellationToken cancellationToken,
+        bool requireFixtureLifecycle = false,
+        string explicitContextReceiver = "", string explicitBrowserReceiver = "",
+        string explicitPlaywrightReceiver = "")
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -105,7 +133,9 @@ public sealed partial class MigrationEngine
         var result = SemanticPomActionProjector.ProjectExternalExceptionContract(
             snapshot.Select(x => (x.Path, x.Source)).ToArray(),
             sourceType, sourceMethod, sourceLine, cancellationToken,
-            verifiedAsyncCount, explicitPageReceiver);
+            verifiedAsyncCount, explicitPageReceiver,
+            requireFixtureLifecycle, explicitContextReceiver,
+            explicitBrowserReceiver, explicitPlaywrightReceiver);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -127,7 +157,26 @@ public sealed partial class MigrationEngine
                 new PomExternalAsyncMethodCandidate(
                     m.SourcePath, m.SourceLine, m.SourceSha256,
                     m.SourceSymbol, m.TargetSignature, m.TargetBody)).ToArray(),
-            VerifiedPageReceiver = result.VerifiedPageReceiver
+            VerifiedPageReceiver = result.VerifiedPageReceiver,
+            FixtureLifecycle = result.FixtureLifecycle == null ? null
+                : new PomExternalFixtureLifecycleCandidate(
+                    result.FixtureLifecycle.FixtureSourcePath,
+                    result.FixtureLifecycle.FixtureSourceSha256,
+                    result.FixtureLifecycle.PageConstructorSha256,
+                    result.FixtureLifecycle.OneTimeSetUpSha256,
+                    result.FixtureLifecycle.SetUpSha256,
+                    result.FixtureLifecycle.TearDownSha256,
+                    result.FixtureLifecycle.OneTimeTearDownSha256,
+                    result.FixtureLifecycle.PageField,
+                    result.FixtureLifecycle.ContextField,
+                    result.FixtureLifecycle.BrowserField,
+                    result.FixtureLifecycle.PlaywrightField,
+                    result.FixtureLifecycle.FixtureType,
+                    result.FixtureLifecycle.ContextFromBrowser,
+                    result.FixtureLifecycle.PageFromContext,
+                    result.FixtureLifecycle.PageAndContextConstructorInjected,
+                    result.FixtureLifecycle.PerTestCleanupInFinally,
+                    result.FixtureLifecycle.OneTimeCleanupInFinally)
         };
     }
 }
