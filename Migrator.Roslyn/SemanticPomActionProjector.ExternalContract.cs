@@ -445,6 +445,7 @@ public static partial class SemanticPomActionProjector
             || matches[0].Type.ContainingAssembly?.Name != "Microsoft.Playwright")
             return false;
         field = matches[0];
+        var boundField = field;
         var constructors = nunit.ContainingType.InstanceConstructors
             .Where(c => c.DeclaringSyntaxReferences.Length != 0).ToArray();
         if (constructors.Length != 1 || constructors[0].Parameters
@@ -460,7 +461,7 @@ public static partial class SemanticPomActionProjector
             .Select(s => s.Expression)
             .OfType<AssignmentExpressionSyntax>()
             .Count(a => SymbolEqualityComparer.Default.Equals(
-                    ctorModel.GetSymbolInfo(a.Left).Symbol, field)
+                    ctorModel.GetSymbolInfo(a.Left).Symbol, boundField)
                 && ctorModel.GetSymbolInfo(a.Right).Symbol is IParameterSymbol p
                 && SymbolEqualityComparer.Default.Equals(p.ContainingSymbol, ctor)
                 && p.Type.ToDisplayString() == "Microsoft.Playwright.IPage") == 1;
