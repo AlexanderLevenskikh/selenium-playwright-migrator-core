@@ -470,12 +470,16 @@ public static partial class SemanticPomActionProjector
         CatchClauseSyntax? contextTargetClosedCatch = null;
         if (requireTargetClosedClrTearDown)
         {
-            if (!requireFaultWitness || !requireSafeDiagnostics
-                || !TryVerifyTargetClosedClrTearDown(downModel, teardown,
-                    page, context, out pageTargetClosedCatch,
-                    out contextTargetClosedCatch))
+            if (!requireFaultWitness || !requireSafeDiagnostics)
             {
-                reason = "Require an exact public Microsoft.Playwright.PlaywrightException catch with Roslyn-verified GetType().FullName and same Microsoft.Playwright assembly filter matching the real non-public TargetClosedException subtype; Page.CloseAsync and Context.CloseAsync must be source-owned, Context in finally, fixed guarded diagnostics, no other effects.";
+                reason = "P46_PREVIOUS_SOURCE_FAULT_WITNESS_REQUIRED";
+                return false;
+            }
+            if (!TryVerifyTargetClosedClrTearDown(downModel, teardown,
+                    page, context, out pageTargetClosedCatch,
+                    out contextTargetClosedCatch, out var filterFailure))
+            {
+                reason = filterFailure;
                 return false;
             }
         }
