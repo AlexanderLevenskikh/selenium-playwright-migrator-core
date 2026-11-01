@@ -115,9 +115,10 @@ public static partial class SemanticPomActionProjector
             failure = "P46_EXACT_AND_FILTER_SHAPE_UNPROVEN";
             return false;
         }
-        if (!IsExactCatchTypeProperty(model, byName.Left, caught, "FullName"))
+        if (!IsExactCatchTypeProperty(model, byName.Left, caught,
+                "FullName", out var fullNameReason))
         {
-            failure = "P46_REAL_GETTYPE_FULLNAME_SYMBOL_UNPROVEN";
+            failure = "P46_REAL_GETTYPE_FULLNAME_SYMBOL_UNPROVEN_" + fullNameReason;
             return false;
         }
         if (byName.Right is not LiteralExpressionSyntax literal
@@ -127,9 +128,10 @@ public static partial class SemanticPomActionProjector
             failure = "P46_TARGET_CLOSED_CLR_NAME_NOT_EXACT";
             return false;
         }
-        if (!IsExactCatchTypeProperty(model, byAssembly.Left, caught, "Assembly"))
+        if (!IsExactCatchTypeProperty(model, byAssembly.Left, caught,
+                "Assembly", out var assemblyReason))
         {
-            failure = "P46_REAL_GETTYPE_ASSEMBLY_SYMBOL_UNPROVEN";
+            failure = "P46_REAL_GETTYPE_ASSEMBLY_SYMBOL_UNPROVEN_" + assemblyReason;
             return false;
         }
         if (byAssembly.Right is not MemberAccessExpressionSyntax right
@@ -153,24 +155,38 @@ public static partial class SemanticPomActionProjector
     }
 
     private static bool IsExactCatchTypeProperty(SemanticModel model,
-        ExpressionSyntax expression, ILocalSymbol caught, string propertyName)
+        ExpressionSyntax expression, ILocalSymbol caught,
+        string propertyName, out string failure)
     {
+        failure = "NOT_MEMBER";
         if (expression is not MemberAccessExpressionSyntax access
-            || access.Name.Identifier.ValueText != propertyName
-            || model.GetSymbolInfo(access).Symbol is not IPropertySymbol property
+            || access.Name.Identifier.ValueText != propertyName)
+            return false;
+        failure = "PROPERTY_SYMBOL";
+        if (model.GetSymbolInfo(access).Symbol is not IPropertySymbol property
             || property.Name != propertyName
-            || property.ContainingType.ToDisplayString() != "System.Type"
-            || access.Expression is not InvocationExpressionSyntax call
+            || property.ContainingType.ToDisplayString() != "System.Type")
+            return false;
+        failure = "NOT_METHOD_CALL";
+        if (access.Expression is not InvocationExpressionSyntax call
             || call.ArgumentList.Arguments.Count != 0
             || call.Expression is not MemberAccessExpressionSyntax methodAccess
-            || methodAccess.Name.Identifier.ValueText != "GetType"
-            || model.GetSymbolInfo(call).Symbol is not IMethodSymbol method
-            || method.Name != "GetType"
-            || method.Parameters.Length != 0
-            || method.ContainingType.SpecialType != SpecialType.System_Object)
+            || methodAccess.Name.Identifier.ValueText != "GetType")
             return false;
-        return SymbolEqualityComparer.Default.Equals(
-            model.GetSymbolInfo(methodAccess.Expression).Symbol, caught);
+        failure = "GETTYPE_METHOD_SYMBOL";
+        if (model.GetSymbolInfo(call).Symbol is not IMethodSymbol method
+            || method.Name != "GetType"
+            || method.Parameters.Length != 0)
+            return false;
+        failure = "GETTYPE_OBJECT_CONTAINING_TYPE";
+        if (method.ContainingType.SpecialType != SpecialType.System_Object)
+            return false;
+        failure = "CATCH_VARIABLE_SOURCE_SYMBOL";
+        if (!SymbolEqualityComparer.Default.Equals(
+                model.GetSymbolInfo(methodAccess.Expression).Symbol, caught))
+            return false;
+        failure = "";
+        return true;
     }
 
     private static bool ExactOwnedClose(SemanticModel model,
