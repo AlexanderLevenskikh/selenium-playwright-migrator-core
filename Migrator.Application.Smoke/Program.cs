@@ -1,10 +1,10 @@
+using Migrator.Application;
 if(args.Contains("--p2-preview47-only",StringComparer.Ordinal))
 {
     PomPreview47OneTimeCleanupSmoke.Run();
     Console.WriteLine("POM_PREVIEW47_ONE_TIME_TARGETCLOSED_CLEANUP_AST_PASSED");
     return;
 }
-using Migrator.Application;
 if(args.Contains("--p2-preview46-only",StringComparer.Ordinal))
 {
     PomPreview46TypedTargetClosedSmoke.Run();
