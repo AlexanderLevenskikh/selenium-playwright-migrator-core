@@ -148,8 +148,8 @@ internal static class PomPreview46TypedTargetClosedSmoke
                 "typeof(Microsoft.Playwright.IPage).Assembly",
                 "typeof(System.String).Assembly");
             Changed("missing real exception assembly identity",
-                "closed.GetType().Assembly == ",
-                "typeof(System.String).Assembly == ");
+                "closed.GetType().Assembly ==",
+                "typeof(System.String).Assembly ==");
             Changed("wrong cleanup receiver",
                 "await Context.CloseAsync();",
                 "await Page.CloseAsync();");
