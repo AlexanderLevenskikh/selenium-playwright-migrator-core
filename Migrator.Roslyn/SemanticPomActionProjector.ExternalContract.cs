@@ -38,10 +38,13 @@ public static partial class SemanticPomActionProjector
         bool requireVerifiedAsyncCount = false, string explicitPageReceiver = "",
         bool requireFixtureLifecycle = false,
         string explicitContextReceiver = "", string explicitBrowserReceiver = "",
-        string explicitPlaywrightReceiver = "")
+        string explicitPlaywrightReceiver = "",
+        bool requireFailureAtomic = false)
     {
-        var schema = requireFixtureLifecycle
-            ? "migrator-pom-external-async-lifecycle-count/v1"
+        var schema = requireFailureAtomic
+            ? "migrator-pom-external-failure-atomic-count/v1"
+            : requireFixtureLifecycle
+                ? "migrator-pom-external-async-lifecycle-count/v1"
             : requireVerifiedAsyncCount
                 ? "migrator-pom-external-async-count/v1"
                 : "migrator-pom-external-exception-contract/v1";
@@ -54,10 +57,14 @@ public static partial class SemanticPomActionProjector
             problems.Count == 0 && candidates.Count == 1
                 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
                 && (!requireFixtureLifecycle || lifecycleEvidence != null)
+                && (!requireFailureAtomic ||
+                    lifecycleEvidence?.PrimaryExceptionRethrown == true)
                 ? "requires_review" : "blocked",
             methodSha, problems.Count == 0
                 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
                 && (!requireFixtureLifecycle || lifecycleEvidence != null)
+                && (!requireFailureAtomic ||
+                    lifecycleEvidence?.PrimaryExceptionRethrown == true)
                 ? candidates : Array.Empty<ExternalCatchEvidence>(),
             problems,
             new[] {
@@ -68,7 +75,8 @@ public static partial class SemanticPomActionProjector
                 "An unknown/duplicate caller or catch filter blocks the whole contract, never produces a partial target.",
                 "Async conversion proposals require explicit source-typed Playwright IPage constructor binding; external runtime lifecycle and same-DOM semantics are not automatically proven.",
                 "Three method bodies/signatures are review-only snippets; target Page Object and TestBase instance wiring require independent build and real browser comparison.",
-                "Preview.42-A proves only the captured exact NUnit fixture's typed setup/cleanup and constructor flow; other assemblies, NUnit scheduling, failure of lifecycle setup itself, reflection and runtime browser parity are not inferred."
+                "Preview.42-A proves only the captured exact NUnit fixture's typed setup/cleanup and constructor flow; other assemblies, NUnit scheduling, failure of lifecycle setup itself, reflection and runtime browser parity are not inferred.",
+                "Preview.43-A validates explicit guarded setup cleanup followed by bare rethrow. Secondary cleanup failures are deliberately suppressed to preserve the primary exception, not logged; cleanup of resources an API never returned is not proven."
             })
         {
             AsyncMethods = problems.Count == 0 && candidates.Count == 1
@@ -76,7 +84,10 @@ public static partial class SemanticPomActionProjector
             VerifiedPageReceiver = problems.Count == 0 && candidates.Count == 1
                 && requireVerifiedAsyncCount ? explicitPageReceiver : "",
             FixtureLifecycle = problems.Count == 0 && candidates.Count == 1
-                && requireFixtureLifecycle ? lifecycleEvidence : null
+                && requireFixtureLifecycle
+                && (!requireFailureAtomic ||
+                    lifecycleEvidence?.PrimaryExceptionRethrown == true)
+                ? lifecycleEvidence : null
         };
         void Block(string code, SyntaxNode node, string reason) =>
             problems.Add(new Problem(code, node.SyntaxTree.FilePath,
@@ -84,6 +95,12 @@ public static partial class SemanticPomActionProjector
         void InputBlock(string code, string reason) =>
             problems.Add(new Problem(code, "", 0, "", reason));
 
+        if (requireFailureAtomic && !requireFixtureLifecycle)
+        {
+            InputBlock("POM_EXTERNAL_ATOMIC_REQUIRES_LIFECYCLE",
+                "An atomic setup proof must also prove exact source lifecycle ownership.");
+            return Result();
+        }
         if (requireFixtureLifecycle
             && (!requireVerifiedAsyncCount
                 || new[] { explicitPageReceiver, explicitContextReceiver,
@@ -370,7 +387,8 @@ public static partial class SemanticPomActionProjector
                             call.Caller,
                             explicitPageReceiver, explicitContextReceiver,
                             explicitBrowserReceiver, explicitPlaywrightReceiver,
-                            out var verified, out var reason))
+                            out var verified, out var reason,
+                            requireFailureAtomic))
                         {
                             Block("POM_EXTERNAL_LIFECYCLE_FLOW_UNPROVEN", member,
                                 reason);
