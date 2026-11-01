@@ -1007,8 +1007,11 @@ catch. Each external TestBase forwarding method must be a synchronous
 void method with one exact symbol-bound call. There must be precisely
 one external caller with one try containing that call, one exact
 source catch, and no finally, filters, external rethrows or side effects.
-Only an empty external catch or one immediate typed NUnit Count equality
-recovery can be proposed.
+Only an empty external catch can be proposed. An outer NUnit Count
+recovery is explicitly blocked: its projected CountAsync needs an awaited
+async method and a verified IPage receiver that this clause-only planner
+does not source-prove or rewrite. No partial, non-compilable catch candidate
+is exposed for nonempty source handlers.
 
 The proposal is only a C# catch clause, not an invented converted test:
 a narrow PlaywrightException catch constrained by the emitted
