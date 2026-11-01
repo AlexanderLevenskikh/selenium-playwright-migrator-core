@@ -19,10 +19,12 @@ public static partial class SemanticPomActionProjector
     private static bool TryVerifyTargetClosedClrTearDown(
         SemanticModel model, MethodDeclarationSyntax teardown,
         IFieldSymbol page, IFieldSymbol context,
-        out CatchClauseSyntax? pageCatch, out CatchClauseSyntax? contextCatch)
+        out CatchClauseSyntax? pageCatch, out CatchClauseSyntax? contextCatch,
+        out string failure)
     {
         pageCatch = null;
         contextCatch = null;
+        failure = "P46_NUNIT_TEARDOWN_SOURCE_SHAPE_UNPROVEN";
         if (teardown.Body?.Statements.Count != 1 ||
             teardown.Body.Statements[0] is not TryStatementSyntax outer ||
             outer.Block.Statements.Count != 1 ||
@@ -30,19 +32,48 @@ public static partial class SemanticPomActionProjector
             outer.Finally?.Block.Statements.Count != 1 ||
             outer.Finally.Block.Statements[0] is not TryStatementSyntax inner ||
             inner.Finally != null || inner.Catches.Count != 1 ||
-            inner.Block.Statements.Count != 1 ||
-            !ExactOwnedClose(model, outer.Block.Statements[0], page, "IPage") ||
-            !ExactOwnedClose(model, inner.Block.Statements[0], context,
-                "IBrowserContext") ||
-            !SafeFixedCleanupDiagnostic(model, outer.Catches[0],
+            inner.Block.Statements.Count != 1)
+            return false;
+        if (!ExactOwnedClose(model, outer.Block.Statements[0], page, "IPage"))
+        {
+            failure = "P46_REAL_IPAGE_CLOSE_RECEIVER_UNPROVEN";
+            return false;
+        }
+        if (!ExactOwnedClose(model, inner.Block.Statements[0], context,
+                "IBrowserContext"))
+        {
+            failure = "P46_REAL_CONTEXT_CLOSE_RECEIVER_UNPROVEN";
+            return false;
+        }
+        if (!ExactRealTargetClosedFilter(model, outer.Catches[0],
+                out var pageFilterFailure))
+        {
+            failure = "P46_PAGE_" + pageFilterFailure;
+            return false;
+        }
+        if (!ExactRealTargetClosedFilter(model, inner.Catches[0],
+                out var contextFilterFailure))
+        {
+            failure = "P46_CONTEXT_" + contextFilterFailure;
+            return false;
+        }
+        if (!SafeFixedCleanupDiagnostic(model, outer.Catches[0],
                 "MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED",
-                requireTargetClosedClrIdentity: true) ||
-            !SafeFixedCleanupDiagnostic(model, inner.Catches[0],
+                requireTargetClosedClrIdentity: true))
+        {
+            failure = "P46_PAGE_FIXED_GUARDED_DIAGNOSTIC_UNPROVEN";
+            return false;
+        }
+        if (!SafeFixedCleanupDiagnostic(model, inner.Catches[0],
                 "MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED",
                 requireTargetClosedClrIdentity: true))
+        {
+            failure = "P46_CONTEXT_FIXED_GUARDED_DIAGNOSTIC_UNPROVEN";
             return false;
+        }
         pageCatch = outer.Catches[0];
         contextCatch = inner.Catches[0];
+        failure = "";
         return true;
     }
 
