@@ -199,16 +199,16 @@ public static partial class SemanticPomActionProjector
                     continue;
                 }
                 var expression = call.Site.Parent as ExpressionStatementSyntax;
-                if (expression == null || !expression.Expression.Span != call.Site.Span)
+                if (expression == null || expression.Expression.Span != call.Site.Span)
                 {
                     Block("POM_EXTERNAL_CONTRACT_COMPOSED_CALL", call.Site,
                         "An exact synchronous call expression is required; do not infer side effects or values.");
                     continue;
                 }
                 var member = call.CallerDeclaration;
-                var statements = member.Body?.Statements;
+                var statements = member.Body?.Statements ?? default;
                 var callerRoute = route + " -> " + call.Caller.ToDisplayString();
-                if (statements?.Count == 1
+                if (statements.Count == 1
                     && statements[0].Span == expression.Span)
                 {
                     if (!visited.Add(call.Caller))
@@ -221,7 +221,7 @@ public static partial class SemanticPomActionProjector
                     continue;
                 }
 
-                if (statements?.Count != 1 ||
+                if (statements.Count != 1 ||
                     statements[0] is not TryStatementSyntax outer
                     || outer.Block.Statements.Count != 1
                     || outer.Block.Statements[0].Span != expression.Span
