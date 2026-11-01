@@ -262,23 +262,18 @@ public static partial class SemanticPomActionProjector
                         continue;
                     }
                 }
-                string handler;
-                if (clause.Block.Statements.Count == 0)
-                    handler = "";
-                else if (clause.Block.Statements.Count == 1
-                    && clause.Block.Statements[0] is ExpressionStatementSyntax
-                    { Expression: InvocationExpressionSyntax recovery }
-                    && TryTranslate(recovery, model, call.Caller,
-                        out var recoveryEffect, out var translated,
-                        out _, out _, out _, out _)
-                    && recoveryEffect == "table_count_assertion")
-                    handler = translated;
-                else
+                // A projected CountAsync recovery needs 'await' and a
+                // verified Playwright IPage receiver in the OUTER method.
+                // This read-only clause planner cannot prove or rewrite that
+                // NUnit/TestBase async context; do not offer a non-compilable
+                // catch snippet for any nonempty handler.
+                if (clause.Block.Statements.Count != 0)
                 {
                     Block("POM_EXTERNAL_CONTRACT_CATCH_BODY_UNSUPPORTED", clause,
-                        "Only an empty catch or one typed immediate NUnit Count equality is allowed; external throw/rethrow and side effects change CLR exception identity.");
+                        "Nonempty outer catch (including NUnit Count recovery) requires an unverified async conversion, target receiver or side-effect mapping; block rather than emit a partial clause.");
                     continue;
                 }
+                const string handler = "";
 
                 var header = kind == SourceCatchKind.NoSuchElementFromImmediateText
                     ? "catch (Microsoft.Playwright.PlaywrightException externalMissing) " +
