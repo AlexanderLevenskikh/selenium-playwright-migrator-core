@@ -92,7 +92,7 @@ using NUnit.Framework;
 using Microsoft.Playwright;
 namespace Fictional.P42;
 
-internal sealed class TargetPage {
+public sealed class TargetPage {
     private readonly IPage Page;
     private readonly IBrowserContext Context;
     public TargetPage(IPage page,IBrowserContext context){Page=page;Context=context;}
@@ -100,7 +100,7 @@ internal sealed class TargetPage {
     __ROOT_MISSING__
     __ROOT_TIMEOUT__
 }
-internal class TargetBase {
+public class TargetBase {
     protected TargetPage page = null!;
     __FORWARD_MISSING__
     __FORWARD_TIMEOUT__
