@@ -382,3 +382,41 @@ jobs:
           name: migrator-preview41-async-count-browser-${{ matrix.os }}
           path: artifacts/pom-preview41/*
           if-no-files-found: warn
+
+
+  p1-preview42-real-fixture-context:
+    name: Preview.42 real NUnit IPage Context cleanup (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exact same Chrome for Testing and ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: Build Core CLI and lifecycle source inspection
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Actual Selenium versus Playwright NUnit injected Context/Page success and failure cleanup
+        timeout-minutes: 24
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p2_preview42_fixture_lifecycle_real_chromium.py
+      - name: Retain NUnit TRX, DOM, failure PNG, teardown and SHA receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview42-fixture-context-browser-${{ matrix.os }}
+          path: artifacts/pom-preview42/*
+          if-no-files-found: warn
