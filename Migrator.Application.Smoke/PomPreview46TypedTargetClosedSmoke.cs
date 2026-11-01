@@ -1,6 +1,6 @@
 using Migrator.Application;
 
-/// <summary>Source-only: real Playwright typed TargetClosed, exact owned resources.</summary>
+/// <summary>Source-only: exact public PlaywrightException CLR subtype/assembly filter for non-public TargetClosed.</summary>
 internal static class PomPreview46TypedTargetClosedSmoke
 {
     internal const string OriginalTearDown = """
@@ -12,13 +12,21 @@ internal static class PomPreview46TypedTargetClosedSmoke
     internal const string TypedTearDown = """
         [TearDown] public async Task StopEach() {
             try { await Page.CloseAsync(); }
-            catch (Microsoft.Playwright.TargetClosedException) {
+            catch (Microsoft.Playwright.PlaywrightException closed)
+                when (closed.GetType().FullName ==
+                          "Microsoft.Playwright.TargetClosedException" &&
+                      closed.GetType().Assembly ==
+                          typeof(Microsoft.Playwright.IPage).Assembly) {
                 try { System.Console.Error.WriteLine(
                     "MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED"); } catch {}
             }
             finally {
                 try { await Context.CloseAsync(); }
-                catch (Microsoft.Playwright.TargetClosedException) {
+                catch (Microsoft.Playwright.PlaywrightException closed)
+                when (closed.GetType().FullName ==
+                          "Microsoft.Playwright.TargetClosedException" &&
+                      closed.GetType().Assembly ==
+                          typeof(Microsoft.Playwright.IPage).Assembly) {
                     try { System.Console.Error.WriteLine(
                         "MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED"); } catch {}
                 }
@@ -79,14 +87,16 @@ internal static class PomPreview46TypedTargetClosedSmoke
                 var p=Plan(method,frozen);
                 var f=p.FixtureLifecycle;
                 Require(p.Status=="requires_review"&&
-                    p.SchemaVersion=="migrator-pom-typed-target-closed-teardown/v1"
+                    p.SchemaVersion=="migrator-pom-target-closed-clr-teardown/v1"
                     &&p.SourceTreeHash==frozen
                     &&p.Blockers.Count==0&&p.CatchCandidates.Count==1
                     &&p.AsyncMethods.Count==3
-                    &&f!=null &&f.TypedTargetClosedTearDownSourceOnly
-                    &&f.PageTargetClosedCatchGuarded
-                    &&f.ContextTargetClosedCatchGuarded
+                    &&f!=null &&f.TargetClosedClrTearDownSourceOnly
+                    &&f.PageTargetClosedClrFilterGuarded
+                    &&f.ContextTargetClosedClrFilterGuarded
                     &&f.TestFailurePrecedenceOnlyForTargetClosed
+                    &&f.PublicCaughtType=="Microsoft.Playwright.PlaywrightException"
+                    &&f.ExactRuntimeClrSubtype=="Microsoft.Playwright.TargetClosedException"
                     &&f.PageTargetClosedCatchSha256.Length==64
                     &&f.ContextTargetClosedCatchSha256.Length==64
                     &&f.PageTargetClosedCatchLine>0
@@ -125,17 +135,21 @@ internal static class PomPreview46TypedTargetClosedSmoke
                 Block(label,canonical.Replace(old,modified,StringComparison.Ordinal));
             }
             Changed("broad exception type",
-                "catch (Microsoft.Playwright.TargetClosedException)",
-                "catch (System.Exception)");
-            Changed("other Playwright exception type",
-                "catch (Microsoft.Playwright.TargetClosedException)",
-                "catch (Microsoft.Playwright.PlaywrightException)");
-            Changed("filtered TargetClosed",
-                "catch (Microsoft.Playwright.TargetClosedException)",
-                "catch (Microsoft.Playwright.TargetClosedException e) when (e.Message.Length>0)");
-            Changed("caught exception object",
-                "catch (Microsoft.Playwright.TargetClosedException)",
-                "catch (Microsoft.Playwright.TargetClosedException e)");
+                "catch (Microsoft.Playwright.PlaywrightException closed)",
+                "catch (System.Exception closed)");
+            Changed("wrong CLR subtype",
+                "\"Microsoft.Playwright.TargetClosedException\"",
+                "\"Microsoft.Playwright.PlaywrightException\"");
+            Changed("wrong exception variable",
+                "closed.GetType().FullName","System.DateTime.Now.ToString()");
+            Changed("filter via message instead of CLR type",
+                "closed.GetType().FullName","closed.Message");
+            Changed("wrong assembly identity",
+                "typeof(Microsoft.Playwright.IPage).Assembly",
+                "typeof(System.String).Assembly");
+            Changed("missing real exception assembly identity",
+                "closed.GetType().Assembly == ",
+                "typeof(System.String).Assembly == ");
             Changed("wrong cleanup receiver",
                 "await Context.CloseAsync();",
                 "await Page.CloseAsync();");
