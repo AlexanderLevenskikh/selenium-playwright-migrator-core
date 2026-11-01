@@ -264,3 +264,40 @@ jobs:
           name: migrator-preview38-real-exception-parity-${{ matrix.os }}
           path: artifacts/pom-preview38/*
           if-no-files-found: warn
+
+  p2-preview39-external-exception-parity:
+    name: Preview.39 real Selenium external catch counterexample (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install same Chrome for Testing and ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: Compile source-only Core CLI
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Real Selenium outer catch versus unapproved Playwright inner draft
+        timeout-minutes: 24
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p2_preview39_external_exception_real_chromium.py
+      - name: Retain real TRX, DOM, exception, screenshots and source-hash evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview39-real-external-catch-${{ matrix.os }}
+          path: artifacts/pom-preview39/*
+          if-no-files-found: warn
