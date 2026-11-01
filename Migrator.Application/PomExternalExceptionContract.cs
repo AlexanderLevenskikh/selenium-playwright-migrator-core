@@ -34,6 +34,9 @@ public sealed record PomExternalFixtureLifecycleCandidate(
     public bool SetUpFailureCleanup { get; init; }
     public bool PrimaryExceptionRethrown { get; init; }
     public bool CleanupFailuresDoNotReplacePrimary { get; init; }
+    public bool SafeSecondaryDiagnosticCodes { get; init; }
+    public bool DiagnosticSinkFailurePreservesPrimary { get; init; }
+    public string DiagnosticSurface { get; init; } = "";
 }
 
 public sealed record PomExternalExceptionContractPlan(
@@ -103,6 +106,20 @@ public sealed partial class MigrationEngine
             cancellationToken, true, contextField, browserField,
             playwrightField, true);
 
+    /// <summary>
+    /// preview.44-A: fixed diagnostic codes only (no exception messages,
+    /// selectors, source text or dynamic content); local read-only review.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomSafeCleanupDiagnosticsContract(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string pageField, string contextField,
+        string browserField, string playwrightField,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, pageField,
+            cancellationToken, true, contextField, browserField,
+            playwrightField, true, true);
+
     private PomExternalExceptionContractPlan PlanExternalCatchCore(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
@@ -110,7 +127,8 @@ public sealed partial class MigrationEngine
         bool requireFixtureLifecycle = false,
         string explicitContextReceiver = "", string explicitBrowserReceiver = "",
         string explicitPlaywrightReceiver = "",
-        bool requireFailureAtomic = false)
+        bool requireFailureAtomic = false,
+        bool requireSafeDiagnostics = false)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -157,7 +175,7 @@ public sealed partial class MigrationEngine
             verifiedAsyncCount, explicitPageReceiver,
             requireFixtureLifecycle, explicitContextReceiver,
             explicitBrowserReceiver, explicitPlaywrightReceiver,
-            requireFailureAtomic);
+            requireFailureAtomic, requireSafeDiagnostics);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -207,7 +225,12 @@ public sealed partial class MigrationEngine
                     PrimaryExceptionRethrown =
                         result.FixtureLifecycle.PrimaryExceptionRethrown,
                     CleanupFailuresDoNotReplacePrimary =
-                        result.FixtureLifecycle.CleanupFailuresDoNotReplacePrimary
+                        result.FixtureLifecycle.CleanupFailuresDoNotReplacePrimary,
+                    SafeSecondaryDiagnosticCodes =
+                        result.FixtureLifecycle.SafeSecondaryDiagnosticCodes,
+                    DiagnosticSinkFailurePreservesPrimary =
+                        result.FixtureLifecycle.DiagnosticSinkFailurePreservesPrimary,
+                    DiagnosticSurface = result.FixtureLifecycle.DiagnosticSurface
                 }
         };
     }
