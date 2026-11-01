@@ -178,6 +178,12 @@ internal static class PomPreview42FixtureLifecycleSmoke
             Negative(Fixture.Replace(
                 "page = new SourcePage(driver,Page,Context);",
                 "page = new SourcePage(driver,Page,Context); page = new SourcePage(driver,Page,Context);"));
+            Negative(Fixture.Replace(
+                "page = new SourcePage(driver,Page,Context);",
+                "page = new SourcePage(driver,Page,Context); _ = new SourcePage(driver,Page,Context);"));
+            Negative(Fixture.Replace(
+                "Page = await Context.NewPageAsync();",
+                "Page = await Context.NewPageAsync(); await Context.CloseAsync();"));
             Negative(Fixture, Page.Replace("this.Context=Context;",
                 "this.Context=Context; this.Context=Context;"));
             Negative(Fixture, Page.Replace("this.Context=Context;",
