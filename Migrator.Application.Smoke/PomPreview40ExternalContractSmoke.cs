@@ -187,12 +187,8 @@ internal static class PomPreview40ExternalContractSmoke
             foreach(var (method,sourceType,targetType,fragment) in new[] {
                 ("MissingEmpty","OpenQA.Selenium.NoSuchElementException",
                     "Microsoft.Playwright.PlaywrightException","POM_SOURCE_ELEMENT_ABSENT"),
-                ("MissingCount","OpenQA.Selenium.NoSuchElementException",
-                    "Microsoft.Playwright.PlaywrightException",".CountAsync(), NUnit.Framework.Is.EqualTo(0)"),
                 ("TimeoutEmpty","OpenQA.Selenium.WebDriverTimeoutException",
-                    "System.TimeoutException","catch (System.TimeoutException)"),
-                ("TimeoutCount","OpenQA.Selenium.WebDriverTimeoutException",
-                    "System.TimeoutException",".CountAsync(), NUnit.Framework.Is.EqualTo(1)")
+                    "System.TimeoutException","catch (System.TimeoutException)")
             })
             {
                 var p=Plan(method);
@@ -217,6 +213,7 @@ internal static class PomPreview40ExternalContractSmoke
                     method+" "+System.Text.Json.JsonSerializer.Serialize(p));
             }
             foreach(var method in new[] {
+                "MissingCount","TimeoutCount",
                 "MissingFilter","MissingBroad","MissingRethrow",
                 "MissingUsedVariable","MissingFinally","MissingExtraEffect",
                 "MissingTwoPaths","MissingNoCaller","MissingWrongType",
