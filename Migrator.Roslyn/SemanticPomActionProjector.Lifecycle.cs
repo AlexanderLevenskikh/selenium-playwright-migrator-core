@@ -302,6 +302,58 @@ public static partial class SemanticPomActionProjector
             }
         }
 
+        // Exactly one source-backed construction of this Page Object is
+        // admitted in the entire captured tree. A second constructor call
+        // could inject an unrelated Page/Context even when field writes in
+        // the selected NUnit fixture itself are unique.
+        var constructionCount = compilation.SyntaxTrees
+            .Where(t => !t.FilePath.StartsWith("__Migrator.", StringComparison.Ordinal))
+            .Sum(t =>
+            {
+                var model = compilation.GetSemanticModel(t, true);
+                return t.GetRoot().DescendantNodes()
+                    .OfType<ObjectCreationExpressionSyntax>()
+                    .Count(c => Same(model.GetSymbolInfo(c).Symbol, ctors[0]));
+            });
+        if (constructionCount != 1)
+        {
+            reason = "Multiple or missing SourcePage constructor call sites in the captured tree; receiver ownership is not a single proven path.";
+            return false;
+        }
+
+        // A second source invocation of CloseAsync/Dispose or NewPageAsync
+        // can invalidate test ownership without reassigning a field.
+        // Admit only one close per owned resource and exactly one page/context
+        // allocation for the selected fixture. Unknown effects remain blocked.
+        foreach (var (name, resource, expected) in new[]
+        {
+            ("NewContextAsync", (IFieldSymbol)browser, 1),
+            ("NewPageAsync", (IFieldSymbol)context, 1),
+            ("CloseAsync", (IFieldSymbol)page, 1),
+            ("CloseAsync", (IFieldSymbol)context, 1),
+            ("CloseAsync", (IFieldSymbol)browser, 1),
+            ("Dispose", (IFieldSymbol)playwright, 1)
+        })
+        {
+            var calls = compilation.SyntaxTrees
+                .Where(t => !t.FilePath.StartsWith("__Migrator.", StringComparison.Ordinal))
+                .Sum(t =>
+                {
+                    var model = compilation.GetSemanticModel(t, true);
+                    return t.GetRoot().DescendantNodes()
+                        .OfType<InvocationExpressionSyntax>()
+                        .Count(inv => inv.Expression
+                            is MemberAccessExpressionSyntax member
+                            && member.Name.Identifier.ValueText == name
+                            && Same(Symbol(model, member.Expression), resource));
+                });
+            if (calls != expected)
+            {
+                reason = "Unexpected extra resource allocation or close invocation in captured source; a single owned lifecycle is not proven.";
+                return false;
+            }
+        }
+
         if (teardown.Body!.Statements.Count != 1
             || teardown.Body.Statements[0] is not TryStatementSyntax downTry
             || downTry.Catches.Count != 0
