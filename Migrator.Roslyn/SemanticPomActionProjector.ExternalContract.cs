@@ -109,7 +109,11 @@ public static partial class SemanticPomActionProjector
                 "Preview.45-A additionally proves no Console.SetError calls in the captured source snapshot. External test frameworks, unrelated assemblies and runtime sink reassignment cannot be ruled out, so real sink/CloseAsync/Dispose failures and process ancestry are separate runtime evidence only.",
                 "Preview.46-A: TargetClosedException is non-public in pinned Playwright .NET 1.63 (external direct catch fails CS0122). The only admitted catch is public PlaywrightException with an exact Roslyn-bound CLR FullName AND Microsoft.Playwright assembly identity filter. No message matching, broad swallowing or automatic code edits. Only matching TargetClosed cleanup failures can be suppressed; other CLR failures and OneTimeTearDown effects are unproven. Windows positive and Linux not_observed require independent runtime evidence.",
                 "Preview.47-A: only exact Browser.CloseAsync and IPlaywright.Dispose OneTimeTearDown source-owned calls with independent TargetClosed-only catch and guarded fixed diagnostics. Real CloseAsync/Dispose failures and NUnit precedence are separate OS evidence; unrelated exception subtypes, unreturned resources and external hooks remain blocked."
-            })
+            }.Concat(requireOneTimeTargetClosedCleanup
+                ? new[] {
+                    "Preview.48 source-only pinned Microsoft.Playwright 1.63.0 oracle commit 6d5c263758e8b50cfc18d3abb384f251b7deb370: IBrowser.CloseAsync already suppresses TargetClosed via DriverMessages.IsTargetClosedError. An exact external TargetClosed catch may be structurally sound yet is not evidence it will be exercised.",
+                    "PlaywrightImpl.Dispose delegates to Connection.Dispose, which signals outstanding tasks and invokes Close observers. Real synchronous TargetClosed from Dispose was not observed; unrelated event handlers, other exceptions, customer assembly identity and entire OS process cleanup remain unproven. Browser-crash evidence is separate, not a synthetic API exception."
+                } : Array.Empty<string>()).ToArray())
         {
             AsyncMethods = problems.Count == 0 && candidates.Count == 1
                 ? asyncMethods : Array.Empty<ExternalAsyncMethodEvidence>(),

@@ -1256,3 +1256,36 @@ exception kind from message text, broad exception class or guess a
 runtime callsite. Primary NUnit test failure is only preserved in
 the narrow verified conditional path, other exceptions remain
 unsupported, and no automatic migration is emitted.
+
+
+## P1 preview.48-A — upstream-attested close/dispose semantics and actual Chromium crash
+
+Preview.47 accepts a strict *source-only* NUnit OneTimeTearDown shape; it
+does not prove that IBrowser.CloseAsync or IPlaywright.Dispose will actually
+throw the internal non-public TargetClosedException. This distinction is now
+checked against **pinned upstream Playwright .NET 1.63.0**, exact tag commit
+`6d5c263758e8b50cfc18d3abb384f251b7deb370` and five Git blob IDs,
+using `scripts/p2_preview48_upstream_close_source_oracle.py`.
+The strict guard verifies in source that Browser.CloseAsync *already catches*
+`DriverMessages.IsTargetClosedError` and swallows that exception. The same
+pinned upstream shows `IPage.CloseAsync` also swallows this class of error
+except the `RunBeforeUnload=true` path, whereas `IBrowserContext.CloseAsync`
+does not have that same internal catch. This explains why real preview.46
+observed a Context exception but not a Page exception. `PlaywrightImpl.Dispose`
+delegates into `Connection.Dispose`, which signals pending callbacks. It does not claim a whole-program no-throw guarantee.
+
+A separate actual Linux/Windows Chrome-for-Testing experiment
+`scripts/p2_preview48_browser_crash_real_chromium.py` kills the observed
+**Chromium root process**, not the Playwright Node driver, and checks
+source-exact NUnit OneTimeTearDown, original test exception precedence,
+observed OS process identity/ancestry and any *actually produced*
+Browser.CloseAsync / Dispose exceptions. Every exception is recorded
+`observed`, `not_observed`, or the run is `blocked`, never supplied by
+synthetic injection. `TargetClosed` caught internally by Playwright is
+not represented as a user-visible API exception.
+
+This is a version-specific source-attested experiment, not a blanket
+claim about other Playwright versions, arbitrary callbacks, custom
+framework hooks, browser race conditions, unreturned resources or
+whole-OS absence of orphan processes. Existing preview.40–46 tools are
+unchanged; preview.47 stays opt-in, `requires_review`, `CanAutoApply=false`.
