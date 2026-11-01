@@ -199,6 +199,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview43-only
       - name: preview.44 safe constant cleanup diagnostics source AST and negative controls
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview44-only
+      - name: preview.45 source-only sink fault witness and Console.SetError negative AST
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview45-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})
@@ -499,4 +501,42 @@ jobs:
         with:
           name: migrator-preview44-real-create-os-pid-${{ matrix.os }}
           path: artifacts/pom-preview44/*
+          if-no-files-found: warn
+
+
+  p1-preview45-real-sink-and-ancestry:
+    name: Preview.45 real sink/Close/Dispose and process ancestry (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install exact Chrome for Testing and ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: Build Core CLI and Roslyn fault provenance
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Actual Chromium sink failure, CloseAsync and OS ancestry
+        timeout-minutes: 24
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p2_preview45_sink_close_process_ancestry.py
+      - name: Retain actual NUnit TRX and bounded OS ancestry evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview45-sink-close-process-${{ matrix.os }}
+          path: artifacts/pom-preview45/*
           if-no-files-found: warn

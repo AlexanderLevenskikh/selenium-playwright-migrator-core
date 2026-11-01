@@ -37,6 +37,10 @@ public sealed record PomExternalFixtureLifecycleCandidate(
     public bool SafeSecondaryDiagnosticCodes { get; init; }
     public bool DiagnosticSinkFailurePreservesPrimary { get; init; }
     public string DiagnosticSurface { get; init; } = "";
+    public bool SourceSinkNotRebound { get; init; }
+    public bool FaultWitnessSourceOnly { get; init; }
+    public bool RealCleanupFailureCertified { get; init; }
+    public bool OsProcessAncestryCertified { get; init; }
 }
 
 public sealed record PomExternalExceptionContractPlan(
@@ -120,6 +124,20 @@ public sealed partial class MigrationEngine
             cancellationToken, true, contextField, browserField,
             playwrightField, true, true);
 
+    /// <summary>
+    /// preview.45-A: captured-source-only fault witness. Explicitly does
+    /// NOT certify actual browser exceptions or process ancestry.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomCleanupFaultWitness(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string pageField, string contextField,
+        string browserField, string playwrightField,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, pageField,
+            cancellationToken, true, contextField, browserField,
+            playwrightField, true, true, true);
+
     private PomExternalExceptionContractPlan PlanExternalCatchCore(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
@@ -128,7 +146,8 @@ public sealed partial class MigrationEngine
         string explicitContextReceiver = "", string explicitBrowserReceiver = "",
         string explicitPlaywrightReceiver = "",
         bool requireFailureAtomic = false,
-        bool requireSafeDiagnostics = false)
+        bool requireSafeDiagnostics = false,
+        bool requireFaultWitness = false)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -175,7 +194,8 @@ public sealed partial class MigrationEngine
             verifiedAsyncCount, explicitPageReceiver,
             requireFixtureLifecycle, explicitContextReceiver,
             explicitBrowserReceiver, explicitPlaywrightReceiver,
-            requireFailureAtomic, requireSafeDiagnostics);
+            requireFailureAtomic, requireSafeDiagnostics,
+            requireFaultWitness);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -230,7 +250,11 @@ public sealed partial class MigrationEngine
                         result.FixtureLifecycle.SafeSecondaryDiagnosticCodes,
                     DiagnosticSinkFailurePreservesPrimary =
                         result.FixtureLifecycle.DiagnosticSinkFailurePreservesPrimary,
-                    DiagnosticSurface = result.FixtureLifecycle.DiagnosticSurface
+                    DiagnosticSurface = result.FixtureLifecycle.DiagnosticSurface,
+                    SourceSinkNotRebound = result.FixtureLifecycle.SourceSinkNotRebound,
+                    FaultWitnessSourceOnly = result.FixtureLifecycle.FaultWitnessSourceOnly,
+                    RealCleanupFailureCertified = result.FixtureLifecycle.RealCleanupFailureCertified,
+                    OsProcessAncestryCertified = result.FixtureLifecycle.OsProcessAncestryCertified
                 }
         };
     }

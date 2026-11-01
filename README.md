@@ -1173,3 +1173,34 @@ driver startup errors from synthetic fault injection. Absence of
 surviving observed Chrome PIDs is NOT a complete process-tree
 audit or proof about resources an API failed to return. ArBilling
 not_run.
+
+
+## P1 preview.45-A — cleanup fault witness, strict source boundary
+
+\`PlanPomCleanupFaultWitness(DIR,TYPE,METHOD,SHA,PAGE,CONTEXT,BROWSER,PW)\`
+is a separate opt-in, read-only source-only Roslyn proof. It uses
+the same captured SHA, exact typed PageObject→TestBase→NUnit/Count,
+failure-atomic OneTimeSetUp/SetUp rollback, and fixed,
+independently guarded diagnostic codes admitted by preview.44.
+It **also blocks** any \`System.Console.SetError\` call resolved
+in the captured customer C# source graph. This is NOT evidence
+that external assemblies or NUnit do not alter the process-level sink.
+
+\`SourceSinkNotRebound\` and \`FaultWitnessSourceOnly\` describe
+ONLY captured C# source. \`RealCleanupFailureCertified\` and
+\`OsProcessAncestryCertified\` intentionally remain false even
+if the standalone public browser fault probe observes behavior.
+No target code is emitted by default; \`--emit-target\` is explicit.
+No automatic migration; unresolved dynamic dispatch/unknown paths
+remain blocked, preserving previous preview.40–44 semantics.
+
+The public fault harness independently invokes real Playwright
+interfaces on a browser and uses a deliberately throwing TextWriter
+to test an actual \`System.Console.Error.WriteLine\` failure.
+If real CloseAsync/Dispose does not throw reproducibly, report
+\`not_observed\`; only clearly marked injected wrappers/throws may
+simulate secondary faults. OS Linux /proc and Windows CIM ancestry
+are observed while the fixture is running, including start identity
+to avoid PID-reuse false positives. A bounded descendant survey
+does not guarantee global OS process leak freedom, unreturned API
+resources, or private ArBilling equivalence. No release/auto-apply.

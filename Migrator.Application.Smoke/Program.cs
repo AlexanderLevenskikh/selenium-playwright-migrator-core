@@ -1,4 +1,10 @@
 using Migrator.Application;
+if(args.Contains("--p2-preview45-only",StringComparer.Ordinal))
+{
+    PomPreview45FaultWitnessSmoke.Run();
+    Console.WriteLine("POM_PREVIEW45_SOURCE_FAULT_WITNESS_AST_PASSED");
+    return;
+}
 if(args.Contains("--p2-preview44-only",StringComparer.Ordinal))
 {
     PomPreview44SafeDiagnosticsSmoke.Run();
