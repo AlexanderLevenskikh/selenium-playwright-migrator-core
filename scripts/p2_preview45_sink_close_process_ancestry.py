@@ -292,6 +292,7 @@ def run_stage(stage,project,evidence,chrome,url):
         stderr=subprocess.PIPE,text=True,encoding="utf-8",errors="replace")
     root=proc.pid
     observed={}
+    ancestryRecords={}
     rooted=0
     edges=set()
     kill_status="not_requested"
@@ -305,6 +306,9 @@ def run_stage(stage,project,evidence,chrome,url):
             if chain is None:continue
             key=(pid,start)
             observed[key]=kind
+            ancestryRecords[key]=[{'pid':ancestor,'parentPid':data[ancestor][0],
+                'startIdentity':str(data[ancestor][1]),'kind':data[ancestor][2]}
+                for ancestor in chain if ancestor in data]
             rooted+=1
             edges.update(zip(chain,chain[1:]))
         if stage in ("real-close-after-kill","real-close-after-driver-kill") \
@@ -345,6 +349,11 @@ def run_stage(stage,project,evidence,chrome,url):
             chain=ancestry(data,pid,root)
             if chain:
                 observed[(pid,start)]=kind
+                ancestryRecords[(pid,start)]=[{'pid':ancestor,
+                    'parentPid':data[ancestor][0],
+                    'startIdentity':str(data[ancestor][1]),
+                    'kind':data[ancestor][2]}
+                    for ancestor in chain if ancestor in data]
                 edges.update(zip(chain,chain[1:]))
     survivors=set()
     end=time.monotonic()+12
@@ -390,6 +399,12 @@ def run_stage(stage,project,evidence,chrome,url):
         "sourceOwnedPlaywrightDriversObserved":
             sum(k=="driver" for k in observed.values()),
         "observedParentEdges":len(edges),
+        "observedAncestry":[
+            {"observedPid":pid,"observedStartIdentity":str(start),
+             "observedKind":kind,
+             "pathToNUnitRoot":ancestryRecords[(pid,start)]}
+            for (pid,start),kind in sorted(observed.items())
+            if (pid,start) in ancestryRecords],
         "survivingObservedDescendantCount":len(survivors),
         "pidIdentityIncludesStartTime":True,
         "sinkFailureKind":"real_Console_Error_WriteLine_on_injected_throwing_TextWriter"
