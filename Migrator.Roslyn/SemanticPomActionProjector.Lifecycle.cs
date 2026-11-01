@@ -38,6 +38,13 @@ public static partial class SemanticPomActionProjector
         public int ContextTargetClosedCatchLine { get; init; }
         public string PublicCaughtType { get; init; } = "";
         public string ExactRuntimeClrSubtype { get; init; } = "";
+        public bool OneTimeTargetClosedSourceOnly { get; init; }
+        public bool BrowserCloseTargetClosedGuarded { get; init; }
+        public bool PlaywrightDisposeTargetClosedGuarded { get; init; }
+        public string BrowserCloseCatchSha256 { get; init; } = "";
+        public string PlaywrightDisposeCatchSha256 { get; init; } = "";
+        public int BrowserCloseCatchLine { get; init; }
+        public int PlaywrightDisposeCatchLine { get; init; }
     }
 
     // No runtime code or lifecycle methods are synthesized. This accepts
@@ -53,7 +60,8 @@ public static partial class SemanticPomActionProjector
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
         bool requireFaultWitness = false,
-        bool requireTargetClosedClrTearDown = false)
+        bool requireTargetClosedClrTearDown = false,
+        bool requireOneTimeTargetClosedCleanup = false)
     {
         evidence = null;
         reason = "Lifecycle shape, fixture ownership or typed constructor flow is not proven.";
@@ -329,7 +337,17 @@ public static partial class SemanticPomActionProjector
         // The one-time browser and Playwright must be cleaned in a finally
         // even if CloseAsync itself fails. This is about test outcome paths,
         // not claims concerning a partially failed OneTimeSetUp.
-        if (oneDown.Body!.Statements.Count != 1
+        CatchClauseSyntax? browserOneTimeCatch = null;
+        CatchClauseSyntax? disposeOneTimeCatch = null;
+        if (requireOneTimeTargetClosedCleanup)
+        {
+            if (!requireTargetClosedClrTearDown ||
+                !TryVerifyOneTimeTargetClosedCleanup(oneDownModel, oneDown,
+                    browser, playwright, out browserOneTimeCatch,
+                    out disposeOneTimeCatch, out reason))
+                return false;
+        }
+        else if (oneDown.Body!.Statements.Count != 1
             || oneDown.Body.Statements[0] is not TryStatementSyntax oneTry
             || oneTry.Catches.Count != 0
             || oneTry.Block.Statements.Count != 1
@@ -562,7 +580,18 @@ public static partial class SemanticPomActionProjector
             PublicCaughtType = requireTargetClosedClrTearDown
                 ? "Microsoft.Playwright.PlaywrightException" : "",
             ExactRuntimeClrSubtype = requireTargetClosedClrTearDown
-                ? "Microsoft.Playwright.TargetClosedException" : ""
+                ? "Microsoft.Playwright.TargetClosedException" : "",
+            OneTimeTargetClosedSourceOnly = requireOneTimeTargetClosedCleanup,
+            BrowserCloseTargetClosedGuarded = requireOneTimeTargetClosedCleanup,
+            PlaywrightDisposeTargetClosedGuarded = requireOneTimeTargetClosedCleanup,
+            BrowserCloseCatchSha256 = browserOneTimeCatch is null
+                ? "" : Hash(browserOneTimeCatch),
+            PlaywrightDisposeCatchSha256 = disposeOneTimeCatch is null
+                ? "" : Hash(disposeOneTimeCatch),
+            BrowserCloseCatchLine = browserOneTimeCatch is null
+                ? 0 : Line(browserOneTimeCatch),
+            PlaywrightDisposeCatchLine = disposeOneTimeCatch is null
+                ? 0 : Line(disposeOneTimeCatch)
         };
         reason = "";
         return true;
