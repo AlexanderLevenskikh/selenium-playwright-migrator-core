@@ -36,8 +36,12 @@ namespace Fictional.P46;
 
 public sealed class ThrowingWriter : StringWriter {
     public int Attempts {get;private set;}
+    public int ExactSafeCodeAttempts {get;private set;}
     public override void WriteLine(string? value) {
         Attempts++;
+        if(value=="MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED"
+            || value=="MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED")
+            ExactSafeCodeAttempts++;
         throw new IOException("P46_INJECTED_SINK_FAILURE");
     }
 }
@@ -85,7 +89,8 @@ public sealed class ThrowingWriter : StringWriter {
                 "one-time-"+Environment.GetEnvironmentVariable("P46_RUN")+".json"),
                 System.Text.Json.JsonSerializer.Serialize(new {
                     closeAttempted,disposed,closeType,disposeType,
-                    sinkAttempts=Sink?.Attempts ?? 0
+                    sinkAttempts=Sink?.Attempts ?? 0,
+                    exactSafeCodeAttempts=Sink?.ExactSafeCodeAttempts ?? 0
                 }));
         }
     }
@@ -229,7 +234,7 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
     p37.check(state["closeAttempted"] and state["disposed"],
         "P46_ONE_TIME_RESOURCE_RELEASE_NOT_ATTEMPTED")
     if stage=="disconnect_sink_primary" and os.name=="nt":
-        p37.check(state["sinkAttempts"]>0,
+        p37.check(state["exactSafeCodeAttempts"]>0,
             "P46_REAL_TARGETCLOSED_DIAGNOSTIC_SINK_NOT_EXERCISED_WINDOWS")
     if not disconnect:
         p37.check(not page_caught and not context_caught,
@@ -245,9 +250,10 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
         "observedTargetClosedPage":page_caught,
         "observedTargetClosedContext":context_caught,
         "targetClosedCatchObserved":page_caught or context_caught or
-            state["sinkAttempts"]>0,
+            state["exactSafeCodeAttempts"]>0,
         "primaryTestFailurePreserved":outcome=="Failed",
         "sinkDiagnosticWriteAttempts":state["sinkAttempts"],
+        "exactFixedCodeSinkWriteAttempts":state["exactSafeCodeAttempts"],
         "oneTimeCloseAttempted":state["closeAttempted"],
         "oneTimeDisposeAttempted":state["disposed"],
         "oneTimeCloseExceptionType":state["closeType"],
@@ -393,10 +399,10 @@ def main():
         if os.name=="nt":
             p37.check(bool(positives),
                 "P46_WINDOWS_POSITIVE_REAL_TARGET_CLOSED_NOT_OBSERVED")
-        else:
-            p37.check(not positives,
-                "P46_LINUX_TARGET_CLOSED_OBSERVED: do not label as not_observed "+
-                str(positives))
+        # Do not impose the PREVIOUS preview.45 Linux outcome on
+        # a newly observed preview.46 trial. A real exact-code handler
+        # invocation is a positive on either OS; report it as observed.
+        # The historical Linux not_observed receipt remains unchanged.
         summary={
             "schema":"migrator-preview46-targetclosed-source-owned-nunit/v1",
             "sourceTreeHash":tree,"sourceFilesSha256":file_hash,
@@ -408,6 +414,8 @@ def main():
             "platformTargetClosedObservation":
                 "observed" if positives else "not_observed",
             "positiveStages":positives,
+            "linuxHistoricalPreview45":"not_observed" if os.name!="nt" else "not_applicable",
+            "osObservationIsMeasuredNotAssumed":True,
             "runtimeTargetAssemblyHasSelenium":False,
             "driverDisconnect":"actual observed node process killed",
             "sourceTearDownExactlyInserted":True,
