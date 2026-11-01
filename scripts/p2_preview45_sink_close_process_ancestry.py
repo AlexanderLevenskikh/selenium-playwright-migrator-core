@@ -74,7 +74,7 @@ public sealed class ThrowingSink : StringWriter {
                 "() => JSON.stringify(window.snapshot())"),Does.Contain("ready"));
             if(stage=="healthy") {
                 await Task.Delay(7000);
-            } else if(stage=="real-close-after-kill") {
+            } else if(stage=="real-close-after-kill" || stage=="real-close-after-driver-kill") {
                 var ready=Path.Combine(folder,"kill-ready");
                 var ack=Path.Combine(folder,"kill-ack");
                 File.WriteAllText(ready,"ready");
@@ -212,7 +212,8 @@ CODES=("MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED",
        "MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED",
        "MIGRATOR_CLEANUP_BROWSER_CLOSE_FAILED",
        "MIGRATOR_CLEANUP_PLAYWRIGHT_DISPOSE_FAILED")
-STAGES=("healthy","sink-fault-primary","real-close-after-kill","dispose-repeat")
+STAGES=("healthy","sink-fault-primary","real-close-after-kill",
+        "real-close-after-driver-kill","dispose-repeat")
 def snapshot(chrome):
     """Sanitized process metadata: id, parent, creation identity, label only."""
     data={}
@@ -306,26 +307,32 @@ def run_stage(stage,project,evidence,chrome,url):
             observed[key]=kind
             rooted+=1
             edges.update(zip(chain,chain[1:]))
-        if stage=="real-close-after-kill" and (evidence/"kill-ready").exists() \
+        if stage in ("real-close-after-kill","real-close-after-driver-kill") \
+                and (evidence/"kill-ready").exists() \
                 and not (evidence/"kill-ack").exists():
             # Choose an exact Chrome root attached to this NUnit invocation.
             roots=[]
+            targetKind="driver" if stage=="real-close-after-driver-kill" else "chrome"
             for (pid,start),kind in observed.items():
-                if kind!="chrome" or pid not in data or data[pid][1]!=start:continue
-                parent=data[pid][0]
-                if parent not in data or data[parent][2]!="chrome":
+                if kind!=targetKind or pid not in data or data[pid][1]!=start:
+                    continue
+                if targetKind=="driver":
                     roots.append(pid)
+                else:
+                    parent=data[pid][0]
+                    if parent not in data or data[parent][2]!="chrome":
+                        roots.append(pid)
             if roots:
                 pid=sorted(roots)[0]
                 try:
                     os.kill(pid,signal.SIGTERM)
-                    kill_status="sent_to_observed_chrome"
+                    kill_status="sent_to_observed_"+targetKind
                 except (OSError,PermissionError):
                     kill_status="kill_not_permitted"
             else:
                 kill_status="root_not_observed"
             (evidence/"kill-ack").write_text(
-                "killed" if kill_status=="sent_to_observed_chrome" else "skipped",
+                "killed" if kill_status.startswith("sent_to_observed_") else "skipped",
                 encoding="utf-8")
         if time.monotonic()>deadline:
             proc.kill()
