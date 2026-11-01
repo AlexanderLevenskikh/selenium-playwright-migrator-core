@@ -28,14 +28,16 @@ public static partial class SemanticPomActionProjector
         public bool FaultWitnessSourceOnly { get; init; }
         public bool RealCleanupFailureCertified { get; init; }
         public bool OsProcessAncestryCertified { get; init; }
-        public bool TypedTargetClosedTearDownSourceOnly { get; init; }
-        public bool PageTargetClosedCatchGuarded { get; init; }
-        public bool ContextTargetClosedCatchGuarded { get; init; }
+        public bool TargetClosedClrTearDownSourceOnly { get; init; }
+        public bool PageTargetClosedClrFilterGuarded { get; init; }
+        public bool ContextTargetClosedClrFilterGuarded { get; init; }
         public bool TestFailurePrecedenceOnlyForTargetClosed { get; init; }
         public string PageTargetClosedCatchSha256 { get; init; } = "";
         public string ContextTargetClosedCatchSha256 { get; init; } = "";
         public int PageTargetClosedCatchLine { get; init; }
         public int ContextTargetClosedCatchLine { get; init; }
+        public string PublicCaughtType { get; init; } = "";
+        public string ExactRuntimeClrSubtype { get; init; } = "";
     }
 
     // No runtime code or lifecycle methods are synthesized. This accepts
@@ -51,7 +53,7 @@ public static partial class SemanticPomActionProjector
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
         bool requireFaultWitness = false,
-        bool requireTypedTargetClosedTearDown = false)
+        bool requireTargetClosedClrTearDown = false)
     {
         evidence = null;
         reason = "Lifecycle shape, fixture ownership or typed constructor flow is not proven.";
@@ -466,14 +468,14 @@ public static partial class SemanticPomActionProjector
 
         CatchClauseSyntax? pageTargetClosedCatch = null;
         CatchClauseSyntax? contextTargetClosedCatch = null;
-        if (requireTypedTargetClosedTearDown)
+        if (requireTargetClosedClrTearDown)
         {
             if (!requireFaultWitness || !requireSafeDiagnostics
-                || !TryVerifyTypedTargetClosedTearDown(downModel, teardown,
+                || !TryVerifyTargetClosedClrTearDown(downModel, teardown,
                     page, context, out pageTargetClosedCatch,
                     out contextTargetClosedCatch))
             {
-                reason = "Require exact real Microsoft.Playwright.TargetClosedException typed catches around Page.CloseAsync and Context.CloseAsync in the one NUnit TearDown, context in finally, separate guarded fixed-code diagnostic sinks, no filters or other effects; unknown exceptions are not admitted.";
+                reason = "Require an exact public Microsoft.Playwright.PlaywrightException catch with Roslyn-verified GetType().FullName and same Microsoft.Playwright assembly filter matching the real non-public TargetClosedException subtype; Page.CloseAsync and Context.CloseAsync must be source-owned, Context in finally, fixed guarded diagnostics, no other effects.";
                 return false;
             }
         }
@@ -541,10 +543,10 @@ public static partial class SemanticPomActionProjector
             FaultWitnessSourceOnly = requireFaultWitness,
             RealCleanupFailureCertified = false,
             OsProcessAncestryCertified = false,
-            TypedTargetClosedTearDownSourceOnly = requireTypedTargetClosedTearDown,
-            PageTargetClosedCatchGuarded = requireTypedTargetClosedTearDown,
-            ContextTargetClosedCatchGuarded = requireTypedTargetClosedTearDown,
-            TestFailurePrecedenceOnlyForTargetClosed = requireTypedTargetClosedTearDown,
+            TargetClosedClrTearDownSourceOnly = requireTargetClosedClrTearDown,
+            PageTargetClosedClrFilterGuarded = requireTargetClosedClrTearDown,
+            ContextTargetClosedClrFilterGuarded = requireTargetClosedClrTearDown,
+            TestFailurePrecedenceOnlyForTargetClosed = requireTargetClosedClrTearDown,
             PageTargetClosedCatchSha256 = pageTargetClosedCatch is null
                 ? "" : Hash(pageTargetClosedCatch),
             ContextTargetClosedCatchSha256 = contextTargetClosedCatch is null
@@ -552,7 +554,11 @@ public static partial class SemanticPomActionProjector
             PageTargetClosedCatchLine = pageTargetClosedCatch is null
                 ? 0 : Line(pageTargetClosedCatch),
             ContextTargetClosedCatchLine = contextTargetClosedCatch is null
-                ? 0 : Line(contextTargetClosedCatch)
+                ? 0 : Line(contextTargetClosedCatch),
+            PublicCaughtType = requireTargetClosedClrTearDown
+                ? "Microsoft.Playwright.PlaywrightException" : "",
+            ExactRuntimeClrSubtype = requireTargetClosedClrTearDown
+                ? "Microsoft.Playwright.TargetClosedException" : ""
         };
         reason = "";
         return true;
