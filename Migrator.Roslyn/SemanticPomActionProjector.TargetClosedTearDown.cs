@@ -179,7 +179,11 @@ public static partial class SemanticPomActionProjector
             || method.Parameters.Length != 0)
             return false;
         failure = "GETTYPE_OBJECT_CONTAINING_TYPE";
-        if (method.ContainingType.SpecialType != SpecialType.System_Object)
+        // A source tree can resolve Object.GetType through a metadata facade
+        // whose SpecialType is not marked, while its fully qualified owner
+        // is still the real System.Object. Never accept user-defined GetType.
+        if (method.ContainingType.SpecialType != SpecialType.System_Object
+            && method.ContainingType.ToDisplayString() != "System.Object")
             return false;
         failure = "CATCH_VARIABLE_SOURCE_SYMBOL";
         if (!SymbolEqualityComparer.Default.Equals(
