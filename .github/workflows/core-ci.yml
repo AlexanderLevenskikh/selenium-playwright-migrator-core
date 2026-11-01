@@ -303,3 +303,40 @@ jobs:
           name: migrator-preview39-real-external-catch-${{ matrix.os }}
           path: artifacts/pom-preview39/*
           if-no-files-found: warn
+
+  p2-preview40-real-external-contract:
+    name: Preview.40 source-attested external catch real Chrome (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install identical Chrome for Testing and ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: Build Core CLI and external contract AST
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Real Selenium vs Playwright NUnit external source catch with negatives
+        timeout-minutes: 24
+        env:
+          MIGRATOR${{ steps.chrome.outputs.chrome-path }}BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR${{ steps.chrome.outputs.chrome-path }}VERSION: ${{ steps.chrome.outputs.chrome-path }}VERSION_
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-path }}VERSION_
+        run: python scripts/p2_preview40_external_contract_real_chromium.py
+      - name: Retain real NUnit TRX, browser DOM, PNG, clause and source SHA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview40-external-contract-browser-${{ matrix.os }}
+          path: artifacts/pom-preview40/*
+          if-no-files-found: warn
