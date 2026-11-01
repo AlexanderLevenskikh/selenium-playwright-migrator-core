@@ -28,11 +28,20 @@ internal static class PomPreview46TypedTargetClosedSmoke
     internal static string CanonicalFixture()
     {
         var prev = PomPreview44SafeDiagnosticsSmoke.CanonicalFixture();
-        var old = OriginalTearDown.Trim();
-        var replacement = TypedTearDown.Trim();
-        if (prev.Split(old, StringSplitOptions.None).Length != 2)
+        var start = prev.IndexOf("[TearDown]", StringComparison.Ordinal);
+        var end = prev.IndexOf("[OneTimeTearDown]", StringComparison.Ordinal);
+        if (start < 0 || end <= start
+            || prev.IndexOf("[TearDown]", start + 1,
+                StringComparison.Ordinal) >= 0)
             throw new InvalidOperationException("PREVIEW46_NUNIT_SOURCE_TEARDOWN_AMBIGUOUS");
-        return prev.Replace(old,replacement,StringComparison.Ordinal);
+        var old = prev[start..end];
+        if (!old.Contains("try { await Page.CloseAsync(); }",
+                StringComparison.Ordinal)
+            || !old.Contains("finally { await Context.CloseAsync(); }",
+                StringComparison.Ordinal))
+            throw new InvalidOperationException("PREVIEW46_ORIGINAL_TEARDOWN_NOT_ATTESTED");
+        return prev[..start] + TypedTearDown.Trim()
+            + "\n            " + prev[end..];
     }
 
     public static void Run()
