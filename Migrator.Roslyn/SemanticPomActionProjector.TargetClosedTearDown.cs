@@ -178,12 +178,21 @@ public static partial class SemanticPomActionProjector
             || method.Name != "GetType"
             || method.Parameters.Length != 0)
             return false;
-        failure = "GETTYPE_OBJECT_CONTAINING_TYPE";
-        // A source tree can resolve Object.GetType through a metadata facade
-        // whose SpecialType is not marked, while its fully qualified owner
-        // is still the real System.Object. Never accept user-defined GetType.
-        if (method.ContainingType.SpecialType != SpecialType.System_Object
-            && method.ContainingType.ToDisplayString() != "System.Object")
+        failure = "GETTYPE_BCL_CONTAINING_TYPE";
+        // .NET exposes BOTH Object.GetType and Exception.GetType.
+        // Compare the actual framework symbols, not just their names:
+        // user-defined GetType methods and unrelated extension methods
+        // must not be able to satisfy the source proof.
+        var bclObject=model.Compilation.GetSpecialType(SpecialType.System_Object);
+        var bclException=model.Compilation.GetTypeByMetadataName("System.Exception");
+        if (method.IsStatic || method.IsGenericMethod
+            || method.DeclaredAccessibility != Accessibility.Public
+            || method.ReturnType.ToDisplayString() != "System.Type"
+            || !(SymbolEqualityComparer.Default.Equals(
+                    method.ContainingType,bclObject)
+                || (bclException is not null
+                    && SymbolEqualityComparer.Default.Equals(
+                        method.ContainingType,bclException))))
             return false;
         failure = "CATCH_VARIABLE_SOURCE_SYMBOL";
         if (!SymbolEqualityComparer.Default.Equals(
