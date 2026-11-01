@@ -286,8 +286,8 @@ def main():
         original=p42.synthetic("Fixture",
             (repo/"Migrator.Application.Smoke/PomPreview42FixtureLifecycleSmoke.cs")
                 .read_text(encoding="utf-8"))
-        atomic=(repo/"Migrator.Application.Smoke/PomPreview43FailureAtomicSmoke.cs")
-            .read_text(encoding="utf-8")
+        atomic=(repo/"Migrator.Application.Smoke/PomPreview43FailureAtomicSmoke.cs").read_text(
+            encoding="utf-8")
         import re,textwrap
         hook=re.search(r'private const string AtomicHooks = """\n(.*?)\n        """;',atomic,re.S)
         p37.check(hook is not None,"P46_CANONICAL_ATOMIC_HOOKS_MISSING")
