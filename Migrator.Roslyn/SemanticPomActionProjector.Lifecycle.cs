@@ -24,6 +24,10 @@ public static partial class SemanticPomActionProjector
         public bool SafeSecondaryDiagnosticCodes { get; init; }
         public bool DiagnosticSinkFailurePreservesPrimary { get; init; }
         public string DiagnosticSurface { get; init; } = "";
+        public bool SourceSinkNotRebound { get; init; }
+        public bool FaultWitnessSourceOnly { get; init; }
+        public bool RealCleanupFailureCertified { get; init; }
+        public bool OsProcessAncestryCertified { get; init; }
     }
 
     // No runtime code or lifecycle methods are synthesized. This accepts
@@ -37,7 +41,8 @@ public static partial class SemanticPomActionProjector
         string playwrightName,
         out ExternalFixtureLifecycleEvidence? evidence, out string reason,
         bool requireFailureAtomic = false,
-        bool requireSafeDiagnostics = false)
+        bool requireSafeDiagnostics = false,
+        bool requireFaultWitness = false)
     {
         evidence = null;
         reason = "Lifecycle shape, fixture ownership or typed constructor flow is not proven.";
@@ -509,7 +514,11 @@ public static partial class SemanticPomActionProjector
             SafeSecondaryDiagnosticCodes = requireSafeDiagnostics,
             DiagnosticSinkFailurePreservesPrimary = requireSafeDiagnostics,
             DiagnosticSurface = requireSafeDiagnostics
-                ? "fixed_code_stderr_only" : ""
+                ? "fixed_code_stderr_only" : "",
+            SourceSinkNotRebound = requireFaultWitness,
+            FaultWitnessSourceOnly = requireFaultWitness,
+            RealCleanupFailureCertified = false,
+            OsProcessAncestryCertified = false
         };
         reason = "";
         return true;
