@@ -42,10 +42,13 @@ public static partial class SemanticPomActionProjector
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
         bool requireFaultWitness = false,
-        bool requireTargetClosedClrTearDown = false)
+        bool requireTargetClosedClrTearDown = false,
+        bool requireOneTimeTargetClosedCleanup = false)
     {
-        var schema = requireTargetClosedClrTearDown
-            ? "migrator-pom-target-closed-clr-teardown/v1"
+        var schema = requireOneTimeTargetClosedCleanup
+            ? "migrator-pom-one-time-targetclosed-cleanup/v1"
+            : requireTargetClosedClrTearDown
+                ? "migrator-pom-target-closed-clr-teardown/v1"
             : requireFaultWitness
                 ? "migrator-pom-external-cleanup-fault-witness/v1"
             : requireSafeDiagnostics
@@ -74,6 +77,8 @@ public static partial class SemanticPomActionProjector
                     lifecycleEvidence?.SourceSinkNotRebound == true)
                 && (!requireTargetClosedClrTearDown ||
                     lifecycleEvidence?.TargetClosedClrTearDownSourceOnly == true)
+                && (!requireOneTimeTargetClosedCleanup ||
+                    lifecycleEvidence?.OneTimeTargetClosedSourceOnly == true)
                 ? "requires_review" : "blocked",
             methodSha, problems.Count == 0
                 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
@@ -86,6 +91,8 @@ public static partial class SemanticPomActionProjector
                     lifecycleEvidence?.SourceSinkNotRebound == true)
                 && (!requireTargetClosedClrTearDown ||
                     lifecycleEvidence?.TargetClosedClrTearDownSourceOnly == true)
+                && (!requireOneTimeTargetClosedCleanup ||
+                    lifecycleEvidence?.OneTimeTargetClosedSourceOnly == true)
                 ? candidates : Array.Empty<ExternalCatchEvidence>(),
             problems,
             new[] {
@@ -100,7 +107,8 @@ public static partial class SemanticPomActionProjector
                 "Preview.43-A validates explicit guarded setup cleanup followed by bare rethrow. Secondary cleanup failures are deliberately suppressed to preserve the primary exception, not logged; cleanup of resources an API never returned is not proven.",
                 "Preview.44-A admits only source-proven constant stderr codes for secondary cleanup failure and a guarded diagnostic write that cannot replace the primary; external API internals and unrelated OS processes are not covered.",
                 "Preview.45-A additionally proves no Console.SetError calls in the captured source snapshot. External test frameworks, unrelated assemblies and runtime sink reassignment cannot be ruled out, so real sink/CloseAsync/Dispose failures and process ancestry are separate runtime evidence only.",
-                "Preview.46-A: TargetClosedException is non-public in pinned Playwright .NET 1.63 (external direct catch fails CS0122). The only admitted catch is public PlaywrightException with an exact Roslyn-bound CLR FullName AND Microsoft.Playwright assembly identity filter. No message matching, broad swallowing or automatic code edits. Only matching TargetClosed cleanup failures can be suppressed; other CLR failures and OneTimeTearDown effects are unproven. Windows positive and Linux not_observed require independent runtime evidence."
+                "Preview.46-A: TargetClosedException is non-public in pinned Playwright .NET 1.63 (external direct catch fails CS0122). The only admitted catch is public PlaywrightException with an exact Roslyn-bound CLR FullName AND Microsoft.Playwright assembly identity filter. No message matching, broad swallowing or automatic code edits. Only matching TargetClosed cleanup failures can be suppressed; other CLR failures and OneTimeTearDown effects are unproven. Windows positive and Linux not_observed require independent runtime evidence.",
+                "Preview.47-A: only exact Browser.CloseAsync and IPlaywright.Dispose OneTimeTearDown source-owned calls with independent TargetClosed-only catch and guarded fixed diagnostics. Real CloseAsync/Dispose failures and NUnit precedence are separate OS evidence; unrelated exception subtypes, unreturned resources and external hooks remain blocked."
             })
         {
             AsyncMethods = problems.Count == 0 && candidates.Count == 1
@@ -117,6 +125,8 @@ public static partial class SemanticPomActionProjector
                     lifecycleEvidence?.SourceSinkNotRebound == true)
                 && (!requireTargetClosedClrTearDown ||
                     lifecycleEvidence?.TargetClosedClrTearDownSourceOnly == true)
+                && (!requireOneTimeTargetClosedCleanup ||
+                    lifecycleEvidence?.OneTimeTargetClosedSourceOnly == true)
                 ? lifecycleEvidence : null
         };
         void Block(string code, SyntaxNode node, string reason) =>
@@ -125,6 +135,12 @@ public static partial class SemanticPomActionProjector
         void InputBlock(string code, string reason) =>
             problems.Add(new Problem(code, "", 0, "", reason));
 
+        if (requireOneTimeTargetClosedCleanup && !requireTargetClosedClrTearDown)
+        {
+            InputBlock("P47_REQUIRES_P46_TARGET_CLOSED_SOURCE",
+                "Source-only OneTimeTearDown requires exact preview.46 typed ownership.");
+            return Result();
+        }
         if (requireTargetClosedClrTearDown && !requireFaultWitness)
         {
             InputBlock("POM_TARGET_CLOSED_CLR_REQUIRES_FAULT_WITNESS",
@@ -444,7 +460,8 @@ public static partial class SemanticPomActionProjector
                             out var verified, out var reason,
                             requireFailureAtomic, requireSafeDiagnostics,
                             requireFaultWitness,
-                            requireTargetClosedClrTearDown))
+                            requireTargetClosedClrTearDown,
+                            requireOneTimeTargetClosedCleanup))
                         {
                             Block("POM_EXTERNAL_LIFECYCLE_FLOW_UNPROVEN", member,
                                 reason);
