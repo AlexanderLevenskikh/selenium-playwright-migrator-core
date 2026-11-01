@@ -41,10 +41,13 @@ public static partial class SemanticPomActionProjector
         string explicitPlaywrightReceiver = "",
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
-        bool requireFaultWitness = false)
+        bool requireFaultWitness = false,
+        bool requireTypedTargetClosedTearDown = false)
     {
-        var schema = requireFaultWitness
-            ? "migrator-pom-external-cleanup-fault-witness/v1"
+        var schema = requireTypedTargetClosedTearDown
+            ? "migrator-pom-typed-target-closed-teardown/v1"
+            : requireFaultWitness
+                ? "migrator-pom-external-cleanup-fault-witness/v1"
             : requireSafeDiagnostics
                 ? "migrator-pom-external-safe-diagnostics-count/v1"
             : requireFailureAtomic
@@ -69,6 +72,8 @@ public static partial class SemanticPomActionProjector
                     lifecycleEvidence?.SafeSecondaryDiagnosticCodes == true)
                 && (!requireFaultWitness ||
                     lifecycleEvidence?.SourceSinkNotRebound == true)
+                && (!requireTypedTargetClosedTearDown ||
+                    lifecycleEvidence?.TypedTargetClosedTearDownSourceOnly == true)
                 ? "requires_review" : "blocked",
             methodSha, problems.Count == 0
                 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
@@ -79,6 +84,8 @@ public static partial class SemanticPomActionProjector
                     lifecycleEvidence?.SafeSecondaryDiagnosticCodes == true)
                 && (!requireFaultWitness ||
                     lifecycleEvidence?.SourceSinkNotRebound == true)
+                && (!requireTypedTargetClosedTearDown ||
+                    lifecycleEvidence?.TypedTargetClosedTearDownSourceOnly == true)
                 ? candidates : Array.Empty<ExternalCatchEvidence>(),
             problems,
             new[] {
@@ -92,7 +99,8 @@ public static partial class SemanticPomActionProjector
                 "Preview.42-A proves only the captured exact NUnit fixture's typed setup/cleanup and constructor flow; other assemblies, NUnit scheduling, failure of lifecycle setup itself, reflection and runtime browser parity are not inferred.",
                 "Preview.43-A validates explicit guarded setup cleanup followed by bare rethrow. Secondary cleanup failures are deliberately suppressed to preserve the primary exception, not logged; cleanup of resources an API never returned is not proven.",
                 "Preview.44-A admits only source-proven constant stderr codes for secondary cleanup failure and a guarded diagnostic write that cannot replace the primary; external API internals and unrelated OS processes are not covered.",
-                "Preview.45-A additionally proves no Console.SetError calls in the captured source snapshot. External test frameworks, unrelated assemblies and runtime sink reassignment cannot be ruled out, so real sink/CloseAsync/Dispose failures and process ancestry are separate runtime evidence only."
+                "Preview.45-A additionally proves no Console.SetError calls in the captured source snapshot. External test frameworks, unrelated assemblies and runtime sink reassignment cannot be ruled out, so real sink/CloseAsync/Dispose failures and process ancestry are separate runtime evidence only.",
+                "Preview.46-A separately validates typed TargetClosedException catches for one NUnit TearDown Page.CloseAsync and Context.CloseAsync. If those exact exceptions occur and diagnostic sinks stay guarded, the TearDown itself need not replace an NUnit test failure; other CLR errors, OneTimeTearDown failures, external NUnit behavior and an exception-free Linux CloseAsync remain unproven. Real OS-specific behavior must be independently observed."
             })
         {
             AsyncMethods = problems.Count == 0 && candidates.Count == 1
@@ -107,6 +115,8 @@ public static partial class SemanticPomActionProjector
                     lifecycleEvidence?.SafeSecondaryDiagnosticCodes == true)
                 && (!requireFaultWitness ||
                     lifecycleEvidence?.SourceSinkNotRebound == true)
+                && (!requireTypedTargetClosedTearDown ||
+                    lifecycleEvidence?.TypedTargetClosedTearDownSourceOnly == true)
                 ? lifecycleEvidence : null
         };
         void Block(string code, SyntaxNode node, string reason) =>
@@ -115,6 +125,12 @@ public static partial class SemanticPomActionProjector
         void InputBlock(string code, string reason) =>
             problems.Add(new Problem(code, "", 0, "", reason));
 
+        if (requireTypedTargetClosedTearDown && !requireFaultWitness)
+        {
+            InputBlock("POM_TARGET_CLOSED_REQUIRES_FAULT_WITNESS",
+                "Typed TargetClosed teardown requires the previous exact source-bound fault-witness and guarded sink contract.");
+            return Result();
+        }
         if (requireFaultWitness && !requireSafeDiagnostics)
         {
             InputBlock("POM_FAULT_WITNESS_REQUIRES_SAFE_DIAGNOSTICS",
@@ -427,7 +443,8 @@ public static partial class SemanticPomActionProjector
                             explicitBrowserReceiver, explicitPlaywrightReceiver,
                             out var verified, out var reason,
                             requireFailureAtomic, requireSafeDiagnostics,
-                            requireFaultWitness))
+                            requireFaultWitness,
+                            requireTypedTargetClosedTearDown))
                         {
                             Block("POM_EXTERNAL_LIFECYCLE_FLOW_UNPROVEN", member,
                                 reason);
