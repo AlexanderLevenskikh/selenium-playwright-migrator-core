@@ -24,7 +24,7 @@ public static partial class SemanticPomActionProjector
     {
         var declaration = catchBlock.Declaration;
         if ((requireTargetClosedClrIdentity
-                ? !ExactRealTargetClosedFilter(model, catchBlock)
+                ? !ExactRealTargetClosedFilter(model, catchBlock, out _)
                 : declaration != null || catchBlock.Filter != null)
             || catchBlock.Block.Statements.Count != 1
             || catchBlock.Block.Statements[0] is not TryStatementSyntax logTry
