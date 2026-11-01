@@ -149,7 +149,9 @@ internal static class PomPreview43FailureAtomicSmoke
                 "catch {","catch (Exception error) when (error.Message != \"\") {");
             Negative("extra side effects",
                 "throw;","Page = null!; throw;");
-            Negative("missing setup protected try","try {","if (true) {");
+            Negative("unexpected setup action",
+                "Context = await Browser.NewContextAsync();",
+                "Context = await Browser.NewContextAsync(); await System.Threading.Tasks.Task.CompletedTask;");
             Negative("incorrect source context assignment",
                 "Context = await Browser.NewContextAsync();",
                 "Context = null!;");
