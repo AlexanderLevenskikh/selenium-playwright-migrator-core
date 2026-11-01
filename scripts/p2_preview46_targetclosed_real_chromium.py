@@ -304,11 +304,13 @@ def main():
             replacement='catch { try { System.Console.Error.WriteLine("'+code+'"); } catch {} }'
             fixture=fixture[:ix]+replacement+fixture[ix+len("catch {}"):]
             cursor=ix+len(replacement)
-        old=p42.synthetic("OriginalTearDown",source).strip()
-        new=teardown.strip()
-        p37.check(fixture.split(old).__len__()==2,
-            "P46_SOURCE_TEAR_DOWN_EXTRA_OR_MISSING")
-        fixture=fixture.replace(old,new)
+        start=fixture.index("[TearDown]")
+        end=fixture.index("[OneTimeTearDown]",start)
+        old=fixture[start:end]
+        p37.check("try { await Page.CloseAsync(); }" in old
+            and "finally { await Context.CloseAsync(); }" in old,
+            "P46_ORIGINAL_SOURCE_TEARDOWN_UNVERIFIED")
+        fixture=fixture[:start]+teardown.strip()+"\n            "+fixture[end:]
         for name,content in {
             "Page.cs":p42.synthetic("Page",
                 (repo/"Migrator.Application.Smoke/PomPreview42FixtureLifecycleSmoke.cs")
