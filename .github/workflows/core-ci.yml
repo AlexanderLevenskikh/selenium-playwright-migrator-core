@@ -199,6 +199,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview43-only
       - name: preview.44 safe constant cleanup diagnostics source AST and negative controls
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview44-only
+      - name: preview.45 source-only sink fault witness and Console.SetError negative AST
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview45-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})
