@@ -51,6 +51,13 @@ public sealed record PomExternalFixtureLifecycleCandidate(
     public int ContextTargetClosedCatchLine { get; init; }
     public string PublicCaughtType { get; init; } = "";
     public string ExactRuntimeClrSubtype { get; init; } = "";
+    public bool OneTimeTargetClosedSourceOnly { get; init; }
+    public bool BrowserCloseTargetClosedGuarded { get; init; }
+    public bool PlaywrightDisposeTargetClosedGuarded { get; init; }
+    public string BrowserCloseCatchSha256 { get; init; } = "";
+    public string PlaywrightDisposeCatchSha256 { get; init; } = "";
+    public int BrowserCloseCatchLine { get; init; }
+    public int PlaywrightDisposeCatchLine { get; init; }
 }
 
 public sealed record PomExternalExceptionContractPlan(
@@ -163,6 +170,20 @@ public sealed partial class MigrationEngine
             cancellationToken, true, contextField, browserField,
             playwrightField, true, true, true, true);
 
+    /// <summary>
+    /// preview.47-A opt-in source-proven OneTimeTearDown Browser/Dispose
+    /// cleanup. Actual API exceptions are NOT certified by static inspection.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomOneTimeTargetClosedCleanup(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string pageField, string contextField,
+        string browserField, string playwrightField,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, pageField,
+            cancellationToken, true, contextField, browserField,
+            playwrightField, true, true, true, true, true);
+
     private PomExternalExceptionContractPlan PlanExternalCatchCore(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
@@ -173,7 +194,8 @@ public sealed partial class MigrationEngine
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
         bool requireFaultWitness = false,
-        bool requireTargetClosedClrTearDown = false)
+        bool requireTargetClosedClrTearDown = false,
+        bool requireOneTimeTargetClosedCleanup = false)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -222,7 +244,7 @@ public sealed partial class MigrationEngine
             explicitBrowserReceiver, explicitPlaywrightReceiver,
             requireFailureAtomic, requireSafeDiagnostics,
             requireFaultWitness,
-            requireTargetClosedClrTearDown);
+            requireTargetClosedClrTearDown, requireOneTimeTargetClosedCleanup);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -300,7 +322,21 @@ public sealed partial class MigrationEngine
                         result.FixtureLifecycle.ContextTargetClosedCatchLine,
                     PublicCaughtType = result.FixtureLifecycle.PublicCaughtType,
                     ExactRuntimeClrSubtype =
-                        result.FixtureLifecycle.ExactRuntimeClrSubtype
+                        result.FixtureLifecycle.ExactRuntimeClrSubtype,
+                    OneTimeTargetClosedSourceOnly =
+                        result.FixtureLifecycle.OneTimeTargetClosedSourceOnly,
+                    BrowserCloseTargetClosedGuarded =
+                        result.FixtureLifecycle.BrowserCloseTargetClosedGuarded,
+                    PlaywrightDisposeTargetClosedGuarded =
+                        result.FixtureLifecycle.PlaywrightDisposeTargetClosedGuarded,
+                    BrowserCloseCatchSha256 =
+                        result.FixtureLifecycle.BrowserCloseCatchSha256,
+                    PlaywrightDisposeCatchSha256 =
+                        result.FixtureLifecycle.PlaywrightDisposeCatchSha256,
+                    BrowserCloseCatchLine =
+                        result.FixtureLifecycle.BrowserCloseCatchLine,
+                    PlaywrightDisposeCatchLine =
+                        result.FixtureLifecycle.PlaywrightDisposeCatchLine
                 }
         };
     }
