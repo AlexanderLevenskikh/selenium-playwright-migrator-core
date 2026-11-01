@@ -125,6 +125,8 @@ internal static class PomPreview41AsyncCountSmoke
                 "private readonly object Page;"));
             Block(Tests.Replace("this.Page = explicitTargetPage;",
                 "this.Page = null!;"));
+            Block(Tests.Replace("this.Page = explicitTargetPage;",
+                "this.Page = explicitTargetPage; ForwardMissing();"));
             Block(Tests.Replace("[Test] public void CatchMissing()",
                 "public void CatchMissing()"));
             Block(Tests.Replace("Is.EqualTo(0)","Is.GreaterThan(0)"));
