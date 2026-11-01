@@ -992,3 +992,45 @@ hidden Selenium runtime dependency is introduced.
 CI keeps prior real Selenium/Playwright Chromium tests on Linux and
 Windows, adds exact-source caller-chain regressions and records
 exception risk in read-only MCP. Private ArBilling: not_run.
+
+
+## P2 preview.40-A — source-backed external exception catch contract
+
+Preview.39 blocks the ordinary Page Object projection when a TestBase
+or NUnit caller catches Selenium's CLR exception type. Preview.40 adds
+a separate opt-in source-only proposal without changing that blocker.
+
+The only source operation supported is an immediate typed FindElement.Text
+NUnit assertion or a finite WebDriverWait, locally caught and rethrown
+with an exact Selenium NoSuchElementException/WebDriverTimeoutException
+catch. Each external TestBase forwarding method must be a synchronous
+void method with one exact symbol-bound call. There must be precisely
+one external caller with one try containing that call, one exact
+source catch, and no finally, filters, external rethrows or side effects.
+Only an empty external catch or one immediate typed NUnit Count equality
+recovery can be proposed.
+
+The proposal is only a C# catch clause, not an invented converted test:
+a narrow PlaywrightException catch constrained by the emitted
+POM_SOURCE_ELEMENT_ABSENT marker or a System.TimeoutException catch
+for the source-proven finite wait. It does not retain original
+Selenium CLR exception identity, support other Playwright exceptions,
+or add a hidden Selenium target package.
+
+The trusted read-only API is PlanPomExternalExceptionContract;
+the CLI is pom-exception-contract DIR FULL_TYPE METHOD TREE_SHA
+with optional --emit-target for local trusted review. Default
+responses redact private target clauses. SHA-256 source tree, method,
+catch syntax and target clause evidence are retained. No plan is
+runtime-verified or auto-approved. The old PlanPomActions remains
+blocked on external Selenium catches even when this separate plan
+has a review-required catch clause.
+
+Linux and Windows CI runs actual source Selenium WebDriver and
+Playwright .NET on the same Chrome for Testing binary against a
+localhost synthetic application. Two guarded external recovery
+cases must pass on both, while two deliberately unadapted controls
+must preserve their failure on Playwright. Real NUnit TRX, actual
+failure PNGs, browser snapshots and immutable source SHA are kept.
+Other unknown CSS/exception/future behavior requires manual review.
+Private ArBilling is not run.

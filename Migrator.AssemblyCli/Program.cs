@@ -1,6 +1,44 @@
 using System.Text.Json;
 using Migrator.Application;
 
+// Preview.40: optional, standalone external catch CLAUSE proposal. A
+// blocked source chain never emits a partial target. --emit-target must be
+// explicit because a reviewed handler can contain a private source selector.
+if (args.Length >= 5 && args[0] == "pom-exception-contract")
+{
+    try
+    {
+        var emit = args.Skip(5).Contains("--emit-target", StringComparer.Ordinal);
+        var plan = new MigrationEngine().PlanPomExternalExceptionContract(
+            args[1], args[2], args[3], args[4]);
+        var payload = new
+        {
+            plan.SchemaVersion, plan.SourceTreeHash, plan.Status,
+            plan.SourceType, plan.SourceMethod, plan.SourceMethodSha256,
+            plan.Blockers, plan.Limitations, plan.RuntimeVerified,
+            plan.CanAutoApply, plan.RequiresReview, plan.Execution,
+            catches = plan.CatchCandidates.Select(c => new
+            {
+                c.CatchSourcePath, c.CatchSourceLine, c.CatchSourceSha256,
+                c.SourceCaughtType, c.TargetCaughtType,
+                c.SourceCallerSymbol, c.CallerChain, c.TargetCatchSha256,
+                targetCatchClause = emit && plan.Status == "requires_review"
+                    ? c.TargetCatchClause : null
+            })
+        };
+        Console.WriteLine(JsonSerializer.Serialize(payload,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        return plan.Status == "requires_review" ? 0 : 3;
+    }
+    catch (Exception ex) when (ex is ArgumentException
+        or InvalidOperationException or IOException
+        or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message);
+        return 5;
+    }
+}
+
 // P2 read-only POM source plan. This CLI never edits source or target.
 // --emit-target is explicit because templates can contain private selectors.
 if (args.Length >= 2 && args[0] == "pom-inspect")
