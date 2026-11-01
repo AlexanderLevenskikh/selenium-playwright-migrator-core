@@ -19,9 +19,13 @@ public static partial class SemanticPomActionProjector
     // Even failure of the diagnostic sink is swallowed before the protected
     // outer bare throw; preserving original exception precedence.
     private static bool SafeFixedCleanupDiagnostic(
-        SemanticModel model, CatchClauseSyntax catchBlock, string expectedCode)
+        SemanticModel model, CatchClauseSyntax catchBlock, string expectedCode,
+        bool requireTargetClosedClrIdentity = false)
     {
-        if (catchBlock.Declaration != null || catchBlock.Filter != null
+        var declaration = catchBlock.Declaration;
+        if ((requireTargetClosedClrIdentity
+                ? !ExactRealTargetClosedFilter(model, catchBlock, out _)
+                : declaration != null || catchBlock.Filter != null)
             || catchBlock.Block.Statements.Count != 1
             || catchBlock.Block.Statements[0] is not TryStatementSyntax logTry
             || logTry.Finally != null || logTry.Catches.Count != 1
