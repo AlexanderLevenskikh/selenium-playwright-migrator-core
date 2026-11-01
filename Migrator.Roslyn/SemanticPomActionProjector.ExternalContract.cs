@@ -39,10 +39,13 @@ public static partial class SemanticPomActionProjector
         bool requireFixtureLifecycle = false,
         string explicitContextReceiver = "", string explicitBrowserReceiver = "",
         string explicitPlaywrightReceiver = "",
-        bool requireFailureAtomic = false)
+        bool requireFailureAtomic = false,
+        bool requireSafeDiagnostics = false)
     {
-        var schema = requireFailureAtomic
-            ? "migrator-pom-external-failure-atomic-count/v1"
+        var schema = requireSafeDiagnostics
+            ? "migrator-pom-external-safe-diagnostics-count/v1"
+            : requireFailureAtomic
+                ? "migrator-pom-external-failure-atomic-count/v1"
             : requireFixtureLifecycle
                 ? "migrator-pom-external-async-lifecycle-count/v1"
             : requireVerifiedAsyncCount
@@ -59,12 +62,16 @@ public static partial class SemanticPomActionProjector
                 && (!requireFixtureLifecycle || lifecycleEvidence != null)
                 && (!requireFailureAtomic ||
                     lifecycleEvidence?.PrimaryExceptionRethrown == true)
+                && (!requireSafeDiagnostics ||
+                    lifecycleEvidence?.SafeSecondaryDiagnosticCodes == true)
                 ? "requires_review" : "blocked",
             methodSha, problems.Count == 0
                 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
                 && (!requireFixtureLifecycle || lifecycleEvidence != null)
                 && (!requireFailureAtomic ||
                     lifecycleEvidence?.PrimaryExceptionRethrown == true)
+                && (!requireSafeDiagnostics ||
+                    lifecycleEvidence?.SafeSecondaryDiagnosticCodes == true)
                 ? candidates : Array.Empty<ExternalCatchEvidence>(),
             problems,
             new[] {
@@ -76,7 +83,8 @@ public static partial class SemanticPomActionProjector
                 "Async conversion proposals require explicit source-typed Playwright IPage constructor binding; external runtime lifecycle and same-DOM semantics are not automatically proven.",
                 "Three method bodies/signatures are review-only snippets; target Page Object and TestBase instance wiring require independent build and real browser comparison.",
                 "Preview.42-A proves only the captured exact NUnit fixture's typed setup/cleanup and constructor flow; other assemblies, NUnit scheduling, failure of lifecycle setup itself, reflection and runtime browser parity are not inferred.",
-                "Preview.43-A validates explicit guarded setup cleanup followed by bare rethrow. Secondary cleanup failures are deliberately suppressed to preserve the primary exception, not logged; cleanup of resources an API never returned is not proven."
+                "Preview.43-A validates explicit guarded setup cleanup followed by bare rethrow. Secondary cleanup failures are deliberately suppressed to preserve the primary exception, not logged; cleanup of resources an API never returned is not proven.",
+                "Preview.44-A admits only source-proven constant stderr codes for secondary cleanup failure and a guarded diagnostic write that cannot replace the primary; external API internals and unrelated OS processes are not covered."
             })
         {
             AsyncMethods = problems.Count == 0 && candidates.Count == 1
@@ -87,6 +95,8 @@ public static partial class SemanticPomActionProjector
                 && requireFixtureLifecycle
                 && (!requireFailureAtomic ||
                     lifecycleEvidence?.PrimaryExceptionRethrown == true)
+                && (!requireSafeDiagnostics ||
+                    lifecycleEvidence?.SafeSecondaryDiagnosticCodes == true)
                 ? lifecycleEvidence : null
         };
         void Block(string code, SyntaxNode node, string reason) =>
@@ -95,6 +105,12 @@ public static partial class SemanticPomActionProjector
         void InputBlock(string code, string reason) =>
             problems.Add(new Problem(code, "", 0, "", reason));
 
+        if (requireSafeDiagnostics && !requireFailureAtomic)
+        {
+            InputBlock("POM_EXTERNAL_DIAGNOSTICS_REQUIRE_ATOMIC",
+                "Only failure-atomic setup with exact ownership may emit safe diagnostics evidence.");
+            return Result();
+        }
         if (requireFailureAtomic && !requireFixtureLifecycle)
         {
             InputBlock("POM_EXTERNAL_ATOMIC_REQUIRES_LIFECYCLE",
@@ -388,7 +404,7 @@ public static partial class SemanticPomActionProjector
                             explicitPageReceiver, explicitContextReceiver,
                             explicitBrowserReceiver, explicitPlaywrightReceiver,
                             out var verified, out var reason,
-                            requireFailureAtomic))
+                            requireFailureAtomic, requireSafeDiagnostics))
                         {
                             Block("POM_EXTERNAL_LIFECYCLE_FLOW_UNPROVEN", member,
                                 reason);
