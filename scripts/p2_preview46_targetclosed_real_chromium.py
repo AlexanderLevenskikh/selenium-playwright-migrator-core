@@ -332,11 +332,13 @@ def main():
             result=p39.cli_json(args,repo,0)
             facts=result["fixtureLifecycle"]
             p37.check(result["status"]=="requires_review"
-                and result["schemaVersion"]=="migrator-pom-typed-target-closed-teardown/v1"
-                and facts["typedTargetClosedTearDownSourceOnly"]
-                and facts["contextTargetClosedCatchGuarded"]
-                and facts["pageTargetClosedCatchGuarded"]
+                and result["schemaVersion"]=="migrator-pom-target-closed-clr-teardown/v1"
+                and facts["targetClosedClrTearDownSourceOnly"]
+                and facts["contextTargetClosedClrFilterGuarded"]
+                and facts["pageTargetClosedClrFilterGuarded"]
                 and facts["testFailurePrecedenceOnlyForTargetClosed"]
+                and facts["publicCaughtType"]=="Microsoft.Playwright.PlaywrightException"
+                and facts["exactRuntimeClrSubtype"]=="Microsoft.Playwright.TargetClosedException"
                 and len(facts["contextTargetClosedCatchSha256"])==64
                 and len(facts["pageTargetClosedCatchSha256"])==64
                 and len(result["asyncMethods"])==3
