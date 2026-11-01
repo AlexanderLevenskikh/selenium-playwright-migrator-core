@@ -51,40 +51,73 @@ public static partial class SemanticPomActionProjector
     // real System.Object.GetType, System.Type.FullName/Assembly properties,
     // constant full name and the assembly of the real IPage interface.
     private static bool ExactRealTargetClosedFilter(
-        SemanticModel model, CatchClauseSyntax clause)
+        SemanticModel model, CatchClauseSyntax clause,
+        out string failure)
     {
-        var dec=clause.Declaration;
-        if (dec == null || dec.Identifier.ValueText.Length == 0
-            || model.GetDeclaredSymbol(dec) is not ILocalSymbol caught
-            || model.GetTypeInfo(dec.Type).Type is not INamedTypeSymbol catchType
-            || catchType.ToDisplayString() !=
-                "Microsoft.Playwright.PlaywrightException"
-            || catchType.ContainingAssembly?.Name != "Microsoft.Playwright"
-            || catchType.DeclaredAccessibility != Accessibility.Public
-            || clause.Filter?.FilterExpression
-                is not BinaryExpressionSyntax logical
+        failure = "P46_TYPED_CATCH_UNPROVEN";
+        var declaration = clause.Declaration;
+        if (declaration is null || declaration.Identifier.ValueText.Length == 0)
+        {
+            failure = "P46_CATCH_VARIABLE_MISSING";
+            return false;
+        }
+        if (model.GetDeclaredSymbol(declaration) is not ILocalSymbol caught)
+        {
+            failure = "P46_CATCH_SYMBOL_UNAVAILABLE";
+            return false;
+        }
+        if (model.GetTypeInfo(declaration.Type).Type is not INamedTypeSymbol type
+            || type.ToDisplayString() != "Microsoft.Playwright.PlaywrightException"
+            || type.ContainingAssembly?.Name != "Microsoft.Playwright"
+            || type.DeclaredAccessibility != Accessibility.Public)
+        {
+            failure = "P46_PUBLIC_PLAYWRIGHT_CATCH_TYPE_UNPROVEN";
+            return false;
+        }
+        if (clause.Filter?.FilterExpression is not BinaryExpressionSyntax logical
             || !logical.IsKind(SyntaxKind.LogicalAndExpression)
             || logical.Left is not BinaryExpressionSyntax byName
             || !byName.IsKind(SyntaxKind.EqualsExpression)
             || logical.Right is not BinaryExpressionSyntax byAssembly
-            || !byAssembly.IsKind(SyntaxKind.EqualsExpression)
-            || !IsExactCatchTypeProperty(model, byName.Left, caught,
-                "FullName")
-            || byName.Right is not LiteralExpressionSyntax literal
+            || !byAssembly.IsKind(SyntaxKind.EqualsExpression))
+        {
+            failure = "P46_EXACT_AND_FILTER_SHAPE_UNPROVEN";
+            return false;
+        }
+        if (!IsExactCatchTypeProperty(model, byName.Left, caught, "FullName"))
+        {
+            failure = "P46_REAL_GETTYPE_FULLNAME_SYMBOL_UNPROVEN";
+            return false;
+        }
+        if (byName.Right is not LiteralExpressionSyntax literal
             || !literal.IsKind(SyntaxKind.StringLiteralExpression)
-            || literal.Token.ValueText !=
-                "Microsoft.Playwright.TargetClosedException"
-            || !IsExactCatchTypeProperty(model, byAssembly.Left, caught,
-                "Assembly")
-            || byAssembly.Right is not MemberAccessExpressionSyntax right
+            || literal.Token.ValueText != "Microsoft.Playwright.TargetClosedException")
+        {
+            failure = "P46_TARGET_CLOSED_CLR_NAME_NOT_EXACT";
+            return false;
+        }
+        if (!IsExactCatchTypeProperty(model, byAssembly.Left, caught, "Assembly"))
+        {
+            failure = "P46_REAL_GETTYPE_ASSEMBLY_SYMBOL_UNPROVEN";
+            return false;
+        }
+        if (byAssembly.Right is not MemberAccessExpressionSyntax right
             || right.Expression is not TypeOfExpressionSyntax typeOf
             || model.GetSymbolInfo(right).Symbol is not IPropertySymbol property
             || property.Name != "Assembly"
-            || property.ContainingType.ToDisplayString() != "System.Type"
-            || model.GetTypeInfo(typeOf.Type).Type is not INamedTypeSymbol iPage
-            || iPage.ToDisplayString() != "Microsoft.Playwright.IPage"
-            || iPage.ContainingAssembly?.Name != "Microsoft.Playwright")
+            || property.ContainingType.ToDisplayString() != "System.Type")
+        {
+            failure = "P46_REFERENCE_ASSEMBLY_PROPERTY_UNPROVEN";
             return false;
+        }
+        if (model.GetTypeInfo(typeOf.Type).Type is not INamedTypeSymbol page
+            || page.ToDisplayString() != "Microsoft.Playwright.IPage"
+            || page.ContainingAssembly?.Name != "Microsoft.Playwright")
+        {
+            failure = "P46_REAL_IPAGE_ASSEMBLY_REFERENCE_UNPROVEN";
+            return false;
+        }
+        failure = "";
         return true;
     }
 
