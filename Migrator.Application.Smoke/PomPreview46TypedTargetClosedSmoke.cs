@@ -146,8 +146,8 @@ internal static class PomPreview46TypedTargetClosedSmoke
                 "MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED",
                 "MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED");
             Changed("dynamic diagnostic string",
-                "System.Console.Error.WriteLine(\n                    \"MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED\")",
-                "System.Console.Error.WriteLine(System.Guid.NewGuid().ToString())");
+                "\"MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED\"",
+                "System.Guid.NewGuid().ToString()");
             Changed("diagnostic sink exception escapes",
                 "catch {}",
                 "catch { throw; }");
