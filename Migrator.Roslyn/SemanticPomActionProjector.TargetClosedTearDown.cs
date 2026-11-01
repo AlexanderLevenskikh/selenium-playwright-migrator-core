@@ -6,22 +6,17 @@ namespace Migrator.Roslyn;
 
 public static partial class SemanticPomActionProjector
 {
-    // Strictly typed source-attestation for one ordinary NUnit TearDown.
-    // Exact source shape:
-    // try { await Page.CloseAsync(); }
-    // catch (Microsoft.Playwright.TargetClosedException) {
-    //     try { System.Console.Error.WriteLine("MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED"); }
-    //     catch {}
-    // }
-    // finally {
-    //     try { await Context.CloseAsync(); }
-    //     catch (Microsoft.Playwright.TargetClosedException) {
-    //         try { System.Console.Error.WriteLine("MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED"); }
-    //         catch {}
-    //     }
-    // }
-    // Non-TargetClosed exceptions remain explicitly unsupported.
-    private static bool TryVerifyTypedTargetClosedTearDown(
+    // Playwright 1.63's TargetClosedException is NOT public (CS0122).
+    // The only admitted external contract is the real, accessible
+    // PlaywrightException with a strict CLR identity + assembly filter:
+    //
+    // catch (Microsoft.Playwright.PlaywrightException e) when (
+    //     e.GetType().FullName == "Microsoft.Playwright.TargetClosedException" &&
+    //     e.GetType().Assembly == typeof(Microsoft.Playwright.IPage).Assembly)
+    //
+    // The exact observed target-closed subtype is handled, without
+    // matching other PlaywrightException subclasses or any exception text.
+    private static bool TryVerifyTargetClosedClrTearDown(
         SemanticModel model, MethodDeclarationSyntax teardown,
         IFieldSymbol page, IFieldSymbol context,
         out CatchClauseSyntax? pageCatch, out CatchClauseSyntax? contextCatch)
@@ -41,14 +36,77 @@ public static partial class SemanticPomActionProjector
                 "IBrowserContext") ||
             !SafeFixedCleanupDiagnostic(model, outer.Catches[0],
                 "MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED",
-                requireTypedTargetClosed: true) ||
+                requireTargetClosedClrIdentity: true) ||
             !SafeFixedCleanupDiagnostic(model, inner.Catches[0],
                 "MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED",
-                requireTypedTargetClosed: true))
+                requireTargetClosedClrIdentity: true))
             return false;
         pageCatch = outer.Catches[0];
         contextCatch = inner.Catches[0];
         return true;
+    }
+
+    // Source-backed proof of the CLR exception identity predicate, not
+    // structural ToString matching. Check the exact exception variable,
+    // real System.Object.GetType, System.Type.FullName/Assembly properties,
+    // constant full name and the assembly of the real IPage interface.
+    private static bool ExactRealTargetClosedFilter(
+        SemanticModel model, CatchClauseSyntax clause)
+    {
+        var dec=clause.Declaration;
+        if (dec == null || dec.Identifier.ValueText.Length == 0
+            || model.GetDeclaredSymbol(dec) is not ILocalSymbol caught
+            || model.GetTypeInfo(dec.Type).Type is not INamedTypeSymbol catchType
+            || catchType.ToDisplayString() !=
+                "Microsoft.Playwright.PlaywrightException"
+            || catchType.ContainingAssembly?.Name != "Microsoft.Playwright"
+            || catchType.DeclaredAccessibility != Accessibility.Public
+            || clause.Filter?.FilterExpression
+                is not BinaryExpressionSyntax logical
+            || !logical.IsKind(SyntaxKind.LogicalAndExpression)
+            || logical.Left is not BinaryExpressionSyntax byName
+            || !byName.IsKind(SyntaxKind.EqualsExpression)
+            || logical.Right is not BinaryExpressionSyntax byAssembly
+            || !byAssembly.IsKind(SyntaxKind.EqualsExpression)
+            || !IsExactCatchTypeProperty(model, byName.Left, caught,
+                "FullName")
+            || byName.Right is not LiteralExpressionSyntax literal
+            || !literal.IsKind(SyntaxKind.StringLiteralExpression)
+            || literal.Token.ValueText !=
+                "Microsoft.Playwright.TargetClosedException"
+            || !IsExactCatchTypeProperty(model, byAssembly.Left, caught,
+                "Assembly")
+            || byAssembly.Right is not MemberAccessExpressionSyntax right
+            || right.Expression is not TypeOfExpressionSyntax typeOf
+            || model.GetSymbolInfo(right).Symbol is not IPropertySymbol property
+            || property.Name != "Assembly"
+            || property.ContainingType.ToDisplayString() != "System.Type"
+            || model.GetTypeInfo(typeOf.Type).Type is not INamedTypeSymbol iPage
+            || iPage.ToDisplayString() != "Microsoft.Playwright.IPage"
+            || iPage.ContainingAssembly?.Name != "Microsoft.Playwright")
+            return false;
+        return true;
+    }
+
+    private static bool IsExactCatchTypeProperty(SemanticModel model,
+        ExpressionSyntax expression, ILocalSymbol caught, string propertyName)
+    {
+        if (expression is not MemberAccessExpressionSyntax access
+            || access.Name.Identifier.ValueText != propertyName
+            || model.GetSymbolInfo(access).Symbol is not IPropertySymbol property
+            || property.Name != propertyName
+            || property.ContainingType.ToDisplayString() != "System.Type"
+            || access.Expression is not InvocationExpressionSyntax call
+            || call.ArgumentList.Arguments.Count != 0
+            || call.Expression is not MemberAccessExpressionSyntax methodAccess
+            || methodAccess.Name.Identifier.ValueText != "GetType"
+            || model.GetSymbolInfo(call).Symbol is not IMethodSymbol method
+            || method.Name != "GetType"
+            || method.Parameters.Length != 0
+            || method.ContainingType.SpecialType != SpecialType.System_Object)
+            return false;
+        return SymbolEqualityComparer.Default.Equals(
+            model.GetSymbolInfo(methodAccess.Expression).Symbol, caught);
     }
 
     private static bool ExactOwnedClose(SemanticModel model,
