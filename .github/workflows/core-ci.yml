@@ -195,6 +195,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview41-only
       - name: preview.42 typed constructor context/page and NUnit lifecycle AST positive and negative
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview42-only
+      - name: preview.43 failure-atomic OneTimeSetUp/SetUp guarded cleanup and exception precedence AST
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview43-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})

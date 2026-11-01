@@ -1105,3 +1105,36 @@ The old preview.40 and preview.41 APIs remain unchanged.
 Real runtime success/failure, browser close and setup-failure
 resilience require independent evidence; partial setup failures
 and external assemblies remain unverified. Private ArBilling not_run.
+
+
+## P1 preview.43-A — opt-in failure-atomic NUnit setup contract
+
+\`PlanPomExternalFailureAtomicCountContract\` and local
+\`pom-failure-atomic-count-contract DIR TYPE METHOD TREE_SHA PAGE CONTEXT BROWSER PLAYWRIGHT\`
+add a **separate** strict Roslyn proof beyond preview.42. In each
+\`[OneTimeSetUp]\` and \`[SetUp]\`, exactly the previously proved
+Playwright.CreateAsync -> Browser.LaunchAsync and
+Browser.NewContextAsync -> Context.NewPageAsync -> Page Object constructor
+source assignments must appear inside one \`try\`. The sole \`catch\`
+must attempt cleanup of each possibly acquired resource in reverse order,
+with an explicit field-null guard, an independently protected attempt
+that cannot prevent the next cleanup, and a final bare \`throw;\`.
+This establishes primary-exception precedence for the admitted
+**source syntax**: secondary cleanup failures are intentionally
+discarded rather than replacing the original exception.
+
+Existing NUnit \`TearDown\`/\`OneTimeTearDown\` and the exact Page/
+Context constructor flow remain required. Any extra side effects,
+filters, cleanup handlers that rethrow secondary errors, missing guards,
+wrong order, wrong receiver, extra allocations, unsupported lifecycle,
+or stale SHA are \`blocked\` with zero partial target snippets.
+Read-only, \`CanAutoApply=false\`, \`RuntimeVerified=false\`.
+The preview.40/41/42 APIs remain unchanged. Local CLI output redacts
+target code unless \`--emit-target\` is explicitly requested; MCP
+must never expose source bodies or generated C#.
+
+The code cannot dispose resources an external API never returned,
+prove arbitrary source projects, or guarantee NUnit calls teardown
+after a failed OneTimeSetUp. It therefore requires explicit
+source-level rollback, independent real browser experiments, and
+manual review for production admission. Private ArBilling not_run.

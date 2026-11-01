@@ -1,6 +1,51 @@
 using System.Text.Json;
 using Migrator.Application;
 
+// Preview.43: standalone, immutable source-backed failure-atomic NUnit
+// setup/cleanup proof. Target code is visible only on local --emit-target.
+if (args.Length >= 9 && args[0] == "pom-failure-atomic-count-contract")
+{
+    try
+    {
+        var emit = args.Skip(9).Contains("--emit-target", StringComparer.Ordinal);
+        var plan = new MigrationEngine().PlanPomExternalFailureAtomicCountContract(
+            args[1], args[2], args[3], args[4],
+            args[5], args[6], args[7], args[8]);
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            plan.SchemaVersion, plan.SourceTreeHash, plan.Status,
+            plan.SourceType, plan.SourceMethod, plan.SourceMethodSha256,
+            plan.VerifiedPageReceiver, plan.FixtureLifecycle,
+            plan.Blockers, plan.Limitations, plan.RuntimeVerified,
+            plan.CanAutoApply, plan.RequiresReview, plan.Execution,
+            catches = plan.CatchCandidates.Select(c => new
+            {
+                c.CatchSourcePath, c.CatchSourceLine, c.CatchSourceSha256,
+                c.SourceCaughtType, c.TargetCaughtType, c.TargetCatchSha256,
+                targetCatchClause = emit && plan.Status == "requires_review"
+                    ? c.TargetCatchClause : null
+            }),
+            asyncMethods = plan.AsyncMethods.Select(m => new
+            {
+                m.SourcePath, m.SourceLine, m.SourceSha256, m.SourceSymbol,
+                targetSignature = emit && plan.Status == "requires_review"
+                    ? m.TargetSignature : null,
+                targetBody = emit && plan.Status == "requires_review"
+                    ? m.TargetBody : null
+            })
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        return plan.Status == "requires_review" ? 0 : 3;
+    }
+    catch (Exception ex) when (ex is ArgumentException
+        or InvalidOperationException or IOException
+        or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message);
+        return 5;
+    }
+}
+
+
 // Preview.42-A: opt-in, read-only fixture lifecycle and same-context
 // constructor injection evidence. Emits no target C# without --emit-target.
 if (args.Length >= 9 && args[0] == "pom-lifecycle-count-contract")
