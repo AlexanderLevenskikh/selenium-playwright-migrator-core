@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Migrator.Roslyn;
@@ -116,7 +117,6 @@ public static partial class SemanticPomActionProjector
                     continue;
                 }
 
-                var handled = false;
                 foreach (var enclosingTry in site.Invocation.Ancestors()
                     .OfType<TryStatementSyntax>())
                 {
@@ -148,7 +148,6 @@ public static partial class SemanticPomActionProjector
                                     : "POM_EXTERNAL_WEBDRIVER_TIMEOUT_CATCH";
                         Finding(category, clause,
                             "A source-symbol-linked caller up to four method hops away has a Selenium-specific, broad or filtered exception handler. Rewritten Playwright CLR exception types and filter behavior cannot be inferred. Block the entire target candidate.");
-                        handled = true;
                     }
                 }
 
