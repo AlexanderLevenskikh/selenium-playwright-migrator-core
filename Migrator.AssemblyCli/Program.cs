@@ -8,7 +8,7 @@ if(args.Length>=9 && args[0]=="pom-targetclosed-teardown")
     try
     {
         var emit=args.Skip(9).Contains("--emit-target",StringComparer.Ordinal);
-        var plan=new MigrationEngine().PlanPomTypedTargetClosedTearDown(
+        var plan=new MigrationEngine().PlanPomTargetClosedClrTearDown(
             args[1],args[2],args[3],args[4],
             args[5],args[6],args[7],args[8]);
         Console.WriteLine(JsonSerializer.Serialize(new {
