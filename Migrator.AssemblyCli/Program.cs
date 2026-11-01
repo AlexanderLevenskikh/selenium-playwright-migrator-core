@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Migrator.Application;
 // preview.47: source-only OneTimeTearDown, target C# redacted by default.
 if(args.Length>=9 && args[0]=="pom-one-time-targetclosed-cleanup")
 {
@@ -38,8 +40,6 @@ if(args.Length>=9 && args[0]=="pom-one-time-targetclosed-cleanup")
 }
 
 
-using System.Text.Json;
-using Migrator.Application;
 
 // preview.46-A: exact source-backed, typed Playwright TargetClosedException
 // in one NUnit TearDown, only local review; target C# redacted by default.
