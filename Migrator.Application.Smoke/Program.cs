@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--p2-preview41-only",StringComparer.Ordinal))
+{
+    PomPreview41AsyncCountSmoke.Run();
+    Console.WriteLine("POM_PREVIEW41_ASYNC_COUNT_SOURCE_PROOF_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-preview40-only",StringComparer.Ordinal))
 {
     PomPreview40ExternalContractSmoke.Run();

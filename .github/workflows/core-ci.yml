@@ -191,6 +191,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview39-only
       - name: preview.40 source-only external NUnit/TestBase catch contract AST positive and negative
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview40-only
+      - name: preview.41 source-backed NUnit/TestBase async Count receiver AST and blockers
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview41-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})
