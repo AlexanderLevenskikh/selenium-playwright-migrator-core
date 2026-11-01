@@ -197,8 +197,16 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
         stdout[-1300:])
     if disconnect:
         p37.check(chrome_terminated and ack.read_text(encoding="utf-8")
-            =="browser_killed" and chrome_pid is not None,
-            "P48_CHROMIUM_KILL_NOT_REAL")
+            =="browser_killed" and chrome_pid is not None
+            and chrome_start is not None
+            and (chrome_pid,str(chrome_start)) in observed_paths
+            and len(observed_paths[(chrome_pid,str(chrome_start))])>1
+            and observed_paths[(chrome_pid,str(chrome_start))][0]["kind"]=="chrome"
+            and observed_paths[(chrome_pid,str(chrome_start))][1]["kind"]=="driver",
+            "P48_CHROMIUM_KILL_NOT_SOURCE_OWNED")
+        p37.check(not (chrome_pid in last
+            and str(last[chrome_pid][1])==str(chrome_start)),
+            "P48_CHROMIUM_ROOT_PID_SURVIVED")
     message=trx_error(trx)
     if outcome=="Failed":
         p37.check("P48_PRIMARY_ASSERTION_MUST_SURVIVE" in message,
@@ -223,6 +231,12 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
     return {
         "run":stage, "expected":outcome, "actual":values["Operation"],
         "realChromiumKilled":chrome_terminated,
+        "terminatedRootChromiumPid":chrome_pid,
+        "terminatedRootChromiumStartIdentity":
+            str(chrome_start) if chrome_start is not None else None,
+        "terminatedRootChromiumAncestry":
+            observed_paths.get((chrome_pid,str(chrome_start)))
+            if chrome_pid is not None else None,
         "observedTargetClosedPage":page_caught,
         "observedTargetClosedContext":context_caught,
         "observedTargetClosedBrowser":browser_caught,
