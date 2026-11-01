@@ -28,6 +28,14 @@ public static partial class SemanticPomActionProjector
         public bool FaultWitnessSourceOnly { get; init; }
         public bool RealCleanupFailureCertified { get; init; }
         public bool OsProcessAncestryCertified { get; init; }
+        public bool TypedTargetClosedTearDownSourceOnly { get; init; }
+        public bool PageTargetClosedCatchGuarded { get; init; }
+        public bool ContextTargetClosedCatchGuarded { get; init; }
+        public bool TestFailurePrecedenceOnlyForTargetClosed { get; init; }
+        public string PageTargetClosedCatchSha256 { get; init; } = "";
+        public string ContextTargetClosedCatchSha256 { get; init; } = "";
+        public int PageTargetClosedCatchLine { get; init; }
+        public int ContextTargetClosedCatchLine { get; init; }
     }
 
     // No runtime code or lifecycle methods are synthesized. This accepts
@@ -42,7 +50,8 @@ public static partial class SemanticPomActionProjector
         out ExternalFixtureLifecycleEvidence? evidence, out string reason,
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
-        bool requireFaultWitness = false)
+        bool requireFaultWitness = false,
+        bool requireTypedTargetClosedTearDown = false)
     {
         evidence = null;
         reason = "Lifecycle shape, fixture ownership or typed constructor flow is not proven.";
@@ -455,7 +464,20 @@ public static partial class SemanticPomActionProjector
             }
         }
 
-        if (teardown.Body!.Statements.Count != 1
+        CatchClauseSyntax? pageTargetClosedCatch = null;
+        CatchClauseSyntax? contextTargetClosedCatch = null;
+        if (requireTypedTargetClosedTearDown)
+        {
+            if (!requireFaultWitness || !requireSafeDiagnostics
+                || !TryVerifyTypedTargetClosedTearDown(downModel, teardown,
+                    page, context, out pageTargetClosedCatch,
+                    out contextTargetClosedCatch))
+            {
+                reason = "Require exact real Microsoft.Playwright.TargetClosedException typed catches around Page.CloseAsync and Context.CloseAsync in the one NUnit TearDown, context in finally, separate guarded fixed-code diagnostic sinks, no filters or other effects; unknown exceptions are not admitted.";
+                return false;
+            }
+        }
+        else if (teardown.Body!.Statements.Count != 1
             || teardown.Body.Statements[0] is not TryStatementSyntax downTry
             || downTry.Catches.Count != 0
             || downTry.Block.Statements.Count != 1
@@ -518,7 +540,19 @@ public static partial class SemanticPomActionProjector
             SourceSinkNotRebound = requireFaultWitness,
             FaultWitnessSourceOnly = requireFaultWitness,
             RealCleanupFailureCertified = false,
-            OsProcessAncestryCertified = false
+            OsProcessAncestryCertified = false,
+            TypedTargetClosedTearDownSourceOnly = requireTypedTargetClosedTearDown,
+            PageTargetClosedCatchGuarded = requireTypedTargetClosedTearDown,
+            ContextTargetClosedCatchGuarded = requireTypedTargetClosedTearDown,
+            TestFailurePrecedenceOnlyForTargetClosed = requireTypedTargetClosedTearDown,
+            PageTargetClosedCatchSha256 = pageTargetClosedCatch is null
+                ? "" : Hash(pageTargetClosedCatch),
+            ContextTargetClosedCatchSha256 = contextTargetClosedCatch is null
+                ? "" : Hash(contextTargetClosedCatch),
+            PageTargetClosedCatchLine = pageTargetClosedCatch is null
+                ? 0 : Line(pageTargetClosedCatch),
+            ContextTargetClosedCatchLine = contextTargetClosedCatch is null
+                ? 0 : Line(contextTargetClosedCatch)
         };
         reason = "";
         return true;
