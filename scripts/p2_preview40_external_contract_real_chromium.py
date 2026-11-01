@@ -252,6 +252,32 @@ def main():
                 p37.check(build["code"]==0,
                     "Selenium+Playwright NUnit real source and target failed to compile: "+
                     str(build))
+                # Independently compile the actual proposed Playwright C#
+                # without ANY Selenium.WebDriver package or source assembly.
+                # This closes a hidden-runtime-dependency gap in mixed-runner
+                # compilation while still keeping the source benchmark real.
+                target_only=work/"target-only";target_only.mkdir()
+                target_csproj=p37.CSPROJ.replace(
+                    '<PackageReference Include="Selenium.WebDriver" Version="4.33.0" />',"")
+                p37.check(target_csproj!=p37.CSPROJ
+                    and "Selenium" not in target_csproj
+                    and "OpenQA.Selenium" not in target
+                    and "OpenQA.Selenium" not in fixture,
+                    "Target-only C# assembly still references Selenium code/package")
+                for filename,content in {
+                    "Synthetic.Tests.csproj":target_csproj,
+                    "ParityTestsBase.cs":fixture,
+                    "PlaywrightParityTests.cs":target
+                }.items():
+                    (target_only/filename).write_bytes(content.encode("utf-8"))
+                standalone=p37.run(["dotnet","build","-c","Release","--nologo"],
+                    target_only,timeout=360)
+                p37.check(standalone["code"]==0,
+                    "No-Selenium standalone Playwright test assembly failed: "+str(standalone))
+                dependencies=target_only/"bin"/"Release"/"net10.0"/"Synthetic.Tests.deps.json"
+                p37.check(dependencies.is_file()
+                    and "Selenium.WebDriver" not in dependencies.read_text(encoding="utf-8"),
+                    "Target-only compiled binary has Selenium runtime dependencies")
                 os.environ["POM37_URL"]="http://127.0.0.1:"+str(server.server_port)+"/"
                 os.environ["POM37_EVIDENCE"]=str(evidence)
                 cases={}
@@ -311,6 +337,8 @@ def main():
                         for engine in ("selenium","playwright")}
                         for name in TESTS},
                     "runtimeVerifiedByMCP":False,
+                    "targetOnlyCompiledWithoutSeleniumPackage":True,
+                    "targetOnlyDepsContainsSelenium":False,
                     "autoApply":False,
                     "outerExceptionClrIdentityPreserved":False,
                     "fullProductEquivalence":"not_verified",
