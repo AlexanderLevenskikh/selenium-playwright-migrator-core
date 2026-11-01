@@ -28,7 +28,13 @@ public sealed record PomExternalFixtureLifecycleCandidate(
     string PlaywrightField, string FixtureType,
     bool ContextFromBrowser, bool PageFromContext,
     bool PageAndContextConstructorInjected,
-    bool PerTestCleanupInFinally, bool OneTimeCleanupInFinally);
+    bool PerTestCleanupInFinally, bool OneTimeCleanupInFinally)
+{
+    public bool OneTimeSetUpFailureCleanup { get; init; }
+    public bool SetUpFailureCleanup { get; init; }
+    public bool PrimaryExceptionRethrown { get; init; }
+    public bool CleanupFailuresDoNotReplacePrimary { get; init; }
+}
 
 public sealed record PomExternalExceptionContractPlan(
     string SchemaVersion, string SourceTreeHash, string Status,
@@ -83,13 +89,28 @@ public sealed partial class MigrationEngine
             cancellationToken, true, contextField, browserField,
             playwrightField);
 
+    /// <summary>
+    /// preview.43: opt-in source-only failure-atomic OneTimeSetUp/SetUp.
+    /// Original exceptions win even if both resource cleanup attempts fail.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomExternalFailureAtomicCountContract(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string pageField, string contextField,
+        string browserField, string playwrightField,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, pageField,
+            cancellationToken, true, contextField, browserField,
+            playwrightField, true);
+
     private PomExternalExceptionContractPlan PlanExternalCatchCore(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
         string explicitPageReceiver, CancellationToken cancellationToken,
         bool requireFixtureLifecycle = false,
         string explicitContextReceiver = "", string explicitBrowserReceiver = "",
-        string explicitPlaywrightReceiver = "")
+        string explicitPlaywrightReceiver = "",
+        bool requireFailureAtomic = false)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -135,7 +156,8 @@ public sealed partial class MigrationEngine
             sourceType, sourceMethod, sourceLine, cancellationToken,
             verifiedAsyncCount, explicitPageReceiver,
             requireFixtureLifecycle, explicitContextReceiver,
-            explicitBrowserReceiver, explicitPlaywrightReceiver);
+            explicitBrowserReceiver, explicitPlaywrightReceiver,
+            requireFailureAtomic);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -177,6 +199,16 @@ public sealed partial class MigrationEngine
                     result.FixtureLifecycle.PageAndContextConstructorInjected,
                     result.FixtureLifecycle.PerTestCleanupInFinally,
                     result.FixtureLifecycle.OneTimeCleanupInFinally)
+                {
+                    OneTimeSetUpFailureCleanup =
+                        result.FixtureLifecycle.OneTimeSetUpFailureCleanup,
+                    SetUpFailureCleanup =
+                        result.FixtureLifecycle.SetUpFailureCleanup,
+                    PrimaryExceptionRethrown =
+                        result.FixtureLifecycle.PrimaryExceptionRethrown,
+                    CleanupFailuresDoNotReplacePrimary =
+                        result.FixtureLifecycle.CleanupFailuresDoNotReplacePrimary
+                }
         };
     }
 }

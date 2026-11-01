@@ -15,7 +15,13 @@ public static partial class SemanticPomActionProjector
         string PlaywrightField, string FixtureType,
         bool ContextFromBrowser, bool PageFromContext,
         bool PageAndContextConstructorInjected,
-        bool PerTestCleanupInFinally, bool OneTimeCleanupInFinally);
+        bool PerTestCleanupInFinally, bool OneTimeCleanupInFinally)
+    {
+        public bool OneTimeSetUpFailureCleanup { get; init; }
+        public bool SetUpFailureCleanup { get; init; }
+        public bool PrimaryExceptionRethrown { get; init; }
+        public bool CleanupFailuresDoNotReplacePrimary { get; init; }
+    }
 
     // No runtime code or lifecycle methods are synthesized. This accepts
     // only explicitly captured source with exact Roslyn symbol identities.
@@ -26,7 +32,8 @@ public static partial class SemanticPomActionProjector
         IMethodSymbol forwardingMethod, IMethodSymbol nunitMethod,
         string pageName, string contextName, string browserName,
         string playwrightName,
-        out ExternalFixtureLifecycleEvidence? evidence, out string reason)
+        out ExternalFixtureLifecycleEvidence? evidence, out string reason,
+        bool requireFailureAtomic = false)
     {
         evidence = null;
         reason = "Lifecycle shape, fixture ownership or typed constructor flow is not proven.";
@@ -188,12 +195,81 @@ public static partial class SemanticPomActionProjector
             return Same(Symbol(model, member.Expression), field);
         }
 
-        if (oneSet.Body!.Statements.Count != 2
-            || !AssignAwait(oneModel, oneSet.Body.Statements[0],
+        // preview.43: only accept an explicit try/catch around the original
+        // exact source initialization statements. A bare throw after two
+        // independently guarded cleanup attempts preserves the original
+        // exception even when either CloseAsync/Dispose throws.
+        static bool AtomicCatch(SemanticModel model, CatchClauseSyntax clause,
+            (IFieldSymbol Field, string Type, bool Dispose)[] cleanup)
+        {
+            if (clause.Declaration != null || clause.Filter != null
+                || clause.Block.Statements.Count != cleanup.Length + 1
+                || clause.Block.Statements[^1]
+                    is not ThrowStatementSyntax { Expression: null })
+                return false;
+            for (var i = 0; i < cleanup.Length; i++)
+            {
+                if (clause.Block.Statements[i] is not TryStatementSyntax attempt
+                    || attempt.Finally != null || attempt.Catches.Count != 1
+                    || attempt.Catches[0].Declaration != null
+                    || attempt.Catches[0].Filter != null
+                    || attempt.Catches[0].Block.Statements.Count != 0
+                    || attempt.Block.Statements.Count != 1
+                    || attempt.Block.Statements[0] is not IfStatementSyntax guard
+                    || guard.Else != null
+                    || guard.Condition is not BinaryExpressionSyntax condition
+                    || !condition.IsKind(SyntaxKind.NotEqualsExpression)
+                    || !Same(Symbol(model, condition.Left), cleanup[i].Field)
+                    || !condition.Right.IsKind(SyntaxKind.NullLiteralExpression))
+                    return false;
+                if (cleanup[i].Dispose)
+                {
+                    if (!CallDispose(model, guard.Statement, cleanup[i].Field))
+                        return false;
+                }
+                else if (!AwaitClose(model, guard.Statement, cleanup[i].Field,
+                    cleanup[i].Type))
+                    return false;
+            }
+            return true;
+        }
+        static bool AtomicWrapper(MethodDeclarationSyntax hook,
+            SemanticModel model,
+            (IFieldSymbol Field, string Type, bool Dispose)[] cleanup,
+            out SyntaxList<StatementSyntax> protectedStatements)
+        {
+            protectedStatements = default;
+            if (hook.Body?.Statements.Count != 1
+                || hook.Body.Statements[0] is not TryStatementSyntax outer
+                || outer.Finally != null || outer.Catches.Count != 1
+                || !AtomicCatch(model, outer.Catches[0], cleanup))
+                return false;
+            protectedStatements = outer.Block.Statements;
+            return true;
+        }
+
+        var oneStatements = oneSet.Body!.Statements;
+        var setupStatements = setup.Body!.Statements;
+        if (requireFailureAtomic)
+        {
+            if (!AtomicWrapper(oneSet, oneModel,
+                    new[] { (browser, "IBrowser", false),
+                        (playwright, "IPlaywright", true) }, out oneStatements)
+                || !AtomicWrapper(setup, setupModel,
+                    new[] { (page, "IPage", false),
+                        (context, "IBrowserContext", false) }, out setupStatements))
+            {
+                reason = "Both NUnit OneTimeSetUp and SetUp must wrap the exact source initialization in one try, then independently guard cleanup of each already-acquired resource in order, catch cleanup failures without replacing the original, and finish with bare throw;.";
+                return false;
+            }
+        }
+
+        if (oneStatements.Count != 2
+            || !AssignAwait(oneModel, oneStatements[0],
                 playwright, "CreateAsync", "Microsoft.Playwright.Playwright",
                 null, out var create)
             || create?.ArgumentList.Arguments.Count != 0
-            || !AssignAwait(oneModel, oneSet.Body.Statements[1],
+            || !AssignAwait(oneModel, oneStatements[1],
                 browser, "LaunchAsync", "Microsoft.Playwright.IBrowserType",
                 null, out var launch)
             || launch?.Expression is not MemberAccessExpressionSyntax
@@ -234,16 +310,16 @@ public static partial class SemanticPomActionProjector
         // SetUp must bind exactly the context returned by this browser, then
         // bind the page returned by that context, then construct the source
         // Page Object with those SAME two fields and the source driver.
-        if (setup.Body!.Statements.Count != 3
-            || !AssignAwait(setupModel, setup.Body.Statements[0],
+        if (setupStatements.Count != 3
+            || !AssignAwait(setupModel, setupStatements[0],
                 context, "NewContextAsync", "Microsoft.Playwright.IBrowser",
                 browser, out var contextCall)
             || contextCall?.ArgumentList.Arguments.Count != 0
-            || !AssignAwait(setupModel, setup.Body.Statements[1],
+            || !AssignAwait(setupModel, setupStatements[1],
                 page, "NewPageAsync", "Microsoft.Playwright.IBrowserContext",
                 context, out var pageCall)
             || pageCall?.ArgumentList.Arguments.Count != 0
-            || setup.Body.Statements[2] is not ExpressionStatementSyntax
+            || setupStatements[2] is not ExpressionStatementSyntax
                 { Expression: AssignmentExpressionSyntax init }
             || !init.IsKind(SyntaxKind.SimpleAssignmentExpression)
             || !Same(Symbol(setupModel, init.Left), sourcePageField)
@@ -329,10 +405,10 @@ public static partial class SemanticPomActionProjector
         {
             ("NewContextAsync", (IFieldSymbol)browser, 1),
             ("NewPageAsync", (IFieldSymbol)context, 1),
-            ("CloseAsync", (IFieldSymbol)page, 1),
-            ("CloseAsync", (IFieldSymbol)context, 1),
-            ("CloseAsync", (IFieldSymbol)browser, 1),
-            ("Dispose", (IFieldSymbol)playwright, 1)
+            ("CloseAsync", (IFieldSymbol)page, requireFailureAtomic ? 2 : 1),
+            ("CloseAsync", (IFieldSymbol)context, requireFailureAtomic ? 2 : 1),
+            ("CloseAsync", (IFieldSymbol)browser, requireFailureAtomic ? 2 : 1),
+            ("Dispose", (IFieldSymbol)playwright, requireFailureAtomic ? 2 : 1)
         })
         {
             var calls = compilation.SyntaxTrees
@@ -404,7 +480,13 @@ public static partial class SemanticPomActionProjector
             Hash(ctorSyntax), Hash(oneSet), Hash(setup), Hash(teardown),
             Hash(oneDown), pageName, contextName, browserName,
             playwrightName, fixture.ToDisplayString(),
-            true, true, true, true, true);
+            true, true, true, true, true)
+        {
+            OneTimeSetUpFailureCleanup = requireFailureAtomic,
+            SetUpFailureCleanup = requireFailureAtomic,
+            PrimaryExceptionRethrown = requireFailureAtomic,
+            CleanupFailuresDoNotReplacePrimary = requireFailureAtomic
+        };
         reason = "";
         return true;
     }
