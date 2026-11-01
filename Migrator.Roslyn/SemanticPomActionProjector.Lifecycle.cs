@@ -21,6 +21,9 @@ public static partial class SemanticPomActionProjector
         public bool SetUpFailureCleanup { get; init; }
         public bool PrimaryExceptionRethrown { get; init; }
         public bool CleanupFailuresDoNotReplacePrimary { get; init; }
+        public bool SafeSecondaryDiagnosticCodes { get; init; }
+        public bool DiagnosticSinkFailurePreservesPrimary { get; init; }
+        public string DiagnosticSurface { get; init; } = "";
     }
 
     // No runtime code or lifecycle methods are synthesized. This accepts
@@ -33,7 +36,8 @@ public static partial class SemanticPomActionProjector
         string pageName, string contextName, string browserName,
         string playwrightName,
         out ExternalFixtureLifecycleEvidence? evidence, out string reason,
-        bool requireFailureAtomic = false)
+        bool requireFailureAtomic = false,
+        bool requireSafeDiagnostics = false)
     {
         evidence = null;
         reason = "Lifecycle shape, fixture ownership or typed constructor flow is not proven.";
@@ -200,7 +204,8 @@ public static partial class SemanticPomActionProjector
         // independently guarded cleanup attempts preserves the original
         // exception even when either CloseAsync/Dispose throws.
         static bool AtomicCatch(SemanticModel model, CatchClauseSyntax clause,
-            (IFieldSymbol Field, string Type, bool Dispose)[] cleanup)
+            (IFieldSymbol Field, string Type, bool Dispose)[] cleanup,
+            bool diagnostics, string[] codes)
         {
             if (clause.Declaration != null || clause.Filter != null
                 || clause.Block.Statements.Count != cleanup.Length + 1
@@ -213,7 +218,10 @@ public static partial class SemanticPomActionProjector
                     || attempt.Finally != null || attempt.Catches.Count != 1
                     || attempt.Catches[0].Declaration != null
                     || attempt.Catches[0].Filter != null
-                    || attempt.Catches[0].Block.Statements.Count != 0
+                    || (diagnostics
+                        ? !SafeFixedCleanupDiagnostic(
+                            model, attempt.Catches[0], codes[i])
+                        : attempt.Catches[0].Block.Statements.Count != 0)
                     || attempt.Block.Statements.Count != 1
                     || attempt.Block.Statements[0] is not IfStatementSyntax guard
                     || guard.Else != null
@@ -236,13 +244,15 @@ public static partial class SemanticPomActionProjector
         static bool AtomicWrapper(MethodDeclarationSyntax hook,
             SemanticModel model,
             (IFieldSymbol Field, string Type, bool Dispose)[] cleanup,
+            bool diagnostics, string[] codes,
             out SyntaxList<StatementSyntax> protectedStatements)
         {
             protectedStatements = default;
             if (hook.Body?.Statements.Count != 1
                 || hook.Body.Statements[0] is not TryStatementSyntax outer
                 || outer.Finally != null || outer.Catches.Count != 1
-                || !AtomicCatch(model, outer.Catches[0], cleanup))
+                || !AtomicCatch(model, outer.Catches[0], cleanup,
+                    diagnostics, codes))
                 return false;
             protectedStatements = outer.Block.Statements;
             return true;
@@ -254,10 +264,20 @@ public static partial class SemanticPomActionProjector
         {
             if (!AtomicWrapper(oneSet, oneModel,
                     new[] { (browser, "IBrowser", false),
-                        (playwright, "IPlaywright", true) }, out oneStatements)
+                        (playwright, "IPlaywright", true) },
+                    requireSafeDiagnostics, new[]
+                    {
+                        "MIGRATOR_CLEANUP_BROWSER_CLOSE_FAILED",
+                        "MIGRATOR_CLEANUP_PLAYWRIGHT_DISPOSE_FAILED"
+                    }, out oneStatements)
                 || !AtomicWrapper(setup, setupModel,
                     new[] { (page, "IPage", false),
-                        (context, "IBrowserContext", false) }, out setupStatements))
+                        (context, "IBrowserContext", false) },
+                    requireSafeDiagnostics, new[]
+                    {
+                        "MIGRATOR_CLEANUP_PAGE_CLOSE_FAILED",
+                        "MIGRATOR_CLEANUP_CONTEXT_CLOSE_FAILED"
+                    }, out setupStatements))
             {
                 reason = "Both NUnit OneTimeSetUp and SetUp must wrap the exact source initialization in one try, then independently guard cleanup of each already-acquired resource in order, catch cleanup failures without replacing the original, and finish with bare throw;.";
                 return false;
@@ -485,7 +505,11 @@ public static partial class SemanticPomActionProjector
             OneTimeSetUpFailureCleanup = requireFailureAtomic,
             SetUpFailureCleanup = requireFailureAtomic,
             PrimaryExceptionRethrown = requireFailureAtomic,
-            CleanupFailuresDoNotReplacePrimary = requireFailureAtomic
+            CleanupFailuresDoNotReplacePrimary = requireFailureAtomic,
+            SafeSecondaryDiagnosticCodes = requireSafeDiagnostics,
+            DiagnosticSinkFailurePreservesPrimary = requireSafeDiagnostics,
+            DiagnosticSurface = requireSafeDiagnostics
+                ? "fixed_code_stderr_only" : ""
         };
         reason = "";
         return true;
