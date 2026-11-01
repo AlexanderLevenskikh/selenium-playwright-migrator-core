@@ -23,6 +23,7 @@ public static partial class SemanticPomActionProjector
         public IReadOnlyList<ExternalAsyncMethodEvidence> AsyncMethods { get; init; }
             = Array.Empty<ExternalAsyncMethodEvidence>();
         public string VerifiedPageReceiver { get; init; } = "";
+        public ExternalFixtureLifecycleEvidence? FixtureLifecycle { get; init; }
     }
 
     /// <summary>
@@ -34,20 +35,29 @@ public static partial class SemanticPomActionProjector
         IReadOnlyList<(string Path, string Source)> sources,
         string sourceType, string sourceMethod, int sourceLine = 0,
         CancellationToken cancel = default,
-        bool requireVerifiedAsyncCount = false, string explicitPageReceiver = "")
+        bool requireVerifiedAsyncCount = false, string explicitPageReceiver = "",
+        bool requireFixtureLifecycle = false,
+        string explicitContextReceiver = "", string explicitBrowserReceiver = "",
+        string explicitPlaywrightReceiver = "")
     {
-        var schema = requireVerifiedAsyncCount
-            ? "migrator-pom-external-async-count/v1"
-            : "migrator-pom-external-exception-contract/v1";
+        var schema = requireFixtureLifecycle
+            ? "migrator-pom-external-async-lifecycle-count/v1"
+            : requireVerifiedAsyncCount
+                ? "migrator-pom-external-async-count/v1"
+                : "migrator-pom-external-exception-contract/v1";
         var problems = new List<Problem>();
         var candidates = new List<ExternalCatchEvidence>();
         var asyncMethods = new List<ExternalAsyncMethodEvidence>();
+        ExternalFixtureLifecycleEvidence? lifecycleEvidence = null;
         var methodSha = "";
         ExternalContractProjection Result() => new(schema,
             problems.Count == 0 && candidates.Count == 1
                 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
+                && (!requireFixtureLifecycle || lifecycleEvidence != null)
                 ? "requires_review" : "blocked",
-            methodSha, problems.Count == 0 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
+            methodSha, problems.Count == 0
+                && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
+                && (!requireFixtureLifecycle || lifecycleEvidence != null)
                 ? candidates : Array.Empty<ExternalCatchEvidence>(),
             problems,
             new[] {
@@ -57,19 +67,37 @@ public static partial class SemanticPomActionProjector
                 "Only a captured exact-symbol synchronous forwarding chain is analyzed; external assemblies, dynamic dispatch, reflection, async and delegates are unverified.",
                 "An unknown/duplicate caller or catch filter blocks the whole contract, never produces a partial target.",
                 "Async conversion proposals require explicit source-typed Playwright IPage constructor binding; external runtime lifecycle and same-DOM semantics are not automatically proven.",
-                "Three method bodies/signatures are review-only snippets; target Page Object and TestBase instance wiring require independent build and real browser comparison."
+                "Three method bodies/signatures are review-only snippets; target Page Object and TestBase instance wiring require independent build and real browser comparison.",
+                "Preview.42-A proves only the captured exact NUnit fixture's typed setup/cleanup and constructor flow; other assemblies, NUnit scheduling, failure of lifecycle setup itself, reflection and runtime browser parity are not inferred."
             })
         {
             AsyncMethods = problems.Count == 0 && candidates.Count == 1
                 ? asyncMethods : Array.Empty<ExternalAsyncMethodEvidence>(),
             VerifiedPageReceiver = problems.Count == 0 && candidates.Count == 1
-                && requireVerifiedAsyncCount ? explicitPageReceiver : ""
+                && requireVerifiedAsyncCount ? explicitPageReceiver : "",
+            FixtureLifecycle = problems.Count == 0 && candidates.Count == 1
+                && requireFixtureLifecycle ? lifecycleEvidence : null
         };
         void Block(string code, SyntaxNode node, string reason) =>
             problems.Add(new Problem(code, node.SyntaxTree.FilePath,
                 Line(node), Hash(node), reason));
         void InputBlock(string code, string reason) =>
             problems.Add(new Problem(code, "", 0, "", reason));
+
+        if (requireFixtureLifecycle
+            && (!requireVerifiedAsyncCount
+                || new[] { explicitPageReceiver, explicitContextReceiver,
+                    explicitBrowserReceiver, explicitPlaywrightReceiver }
+                    .Any(value => !SyntaxFacts.IsValidIdentifier(value)
+                        || value.StartsWith("@", StringComparison.Ordinal))
+                || new[] { explicitPageReceiver, explicitContextReceiver,
+                    explicitBrowserReceiver, explicitPlaywrightReceiver }
+                    .Distinct(StringComparer.Ordinal).Count() != 4))
+        {
+            InputBlock("POM_EXTERNAL_LIFECYCLE_RECEIVERS_REQUIRED",
+                "The exact page, context, browser and Playwright source field identifiers must all be supplied, distinct and valid.");
+            return Result();
+        }
 
         if (requireVerifiedAsyncCount && (
             !SyntaxFacts.IsValidIdentifier(explicitPageReceiver)
@@ -324,12 +352,31 @@ public static partial class SemanticPomActionProjector
                             out _, out _, out _, out _)
                         || recoveryEffect != "table_count_assertion"
                         || !SourceCountDriverField(recovery, model, call.Caller)
-                        || !TryVerifiedPageField(model, call.Caller,
-                            explicitPageReceiver, out var pageField))
+                        || (!requireFixtureLifecycle &&
+                            !TryVerifiedPageField(model, call.Caller,
+                                explicitPageReceiver, out _)))
                     {
                         Block("POM_EXTERNAL_ASYNC_COUNT_OR_RECEIVER_UNPROVEN", clause,
                             "Require one typed immediate NUnit FindElements.Count equality over the source driver and an explicit readonly Microsoft.Playwright.IPage field assigned from a same-typed constructor parameter.");
                         continue;
+                    }
+                    if (requireFixtureLifecycle)
+                    {
+                        if (!TryVerifyFixtureLifecycle(compilation, srcMethod,
+                            compilation.GetSemanticModel(nodes[1].SyntaxTree, true)
+                                .GetDeclaredSymbol(nodes[1]) as IMethodSymbol
+                                    ?? throw new InvalidOperationException(
+                                        "TESTBASE_METHOD_SYMBOL_UNAVAILABLE"),
+                            call.Caller,
+                            explicitPageReceiver, explicitContextReceiver,
+                            explicitBrowserReceiver, explicitPlaywrightReceiver,
+                            out var verified, out var reason))
+                        {
+                            Block("POM_EXTERNAL_LIFECYCLE_FLOW_UNPROVEN", member,
+                                reason);
+                            continue;
+                        }
+                        lifecycleEvidence = verified;
                     }
                     // Only the current project's own source-typed IPage
                     // receiver is allowed; TryTranslate emits Page.Locator.
