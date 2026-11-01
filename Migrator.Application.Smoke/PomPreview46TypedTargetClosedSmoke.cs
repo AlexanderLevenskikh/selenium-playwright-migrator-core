@@ -72,7 +72,7 @@ internal static class PomPreview46TypedTargetClosedSmoke
             string Hash()=>new PomSourceInspector().Inspect(root).SourceTreeHash;
             PomExternalExceptionContractPlan Plan(string method,string hash,
                 string page="Page",string context="Context",string browser="Browser",
-                string pw="PW") => engine.PlanPomTypedTargetClosedTearDown(
+                string pw="PW") => engine.PlanPomTargetClosedClrTearDown(
                     root,"Fictional.P42.SourcePage",method,hash,
                     page,context,browser,pw);
             static void Require(bool valid,string description)
