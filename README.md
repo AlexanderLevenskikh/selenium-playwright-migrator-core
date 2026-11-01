@@ -1267,9 +1267,12 @@ checked against **pinned upstream Playwright .NET 1.63.0**, exact tag commit
 `6d5c263758e8b50cfc18d3abb384f251b7deb370` and five Git blob IDs,
 using `scripts/p2_preview48_upstream_close_source_oracle.py`.
 The strict guard verifies in source that Browser.CloseAsync *already catches*
-`DriverMessages.IsTargetClosedError` and swallows that exception, while
-PlaywrightImpl.Dispose delegates into Connection.Dispose, which signals
-pending callbacks. It does not claim a whole-program no-throw guarantee.
+`DriverMessages.IsTargetClosedError` and swallows that exception. The same
+pinned upstream shows `IPage.CloseAsync` also swallows this class of error
+except the `RunBeforeUnload=true` path, whereas `IBrowserContext.CloseAsync`
+does not have that same internal catch. This explains why real preview.46
+observed a Context exception but not a Page exception. `PlaywrightImpl.Dispose`
+delegates into `Connection.Dispose`, which signals pending callbacks. It does not claim a whole-program no-throw guarantee.
 
 A separate actual Linux/Windows Chrome-for-Testing experiment
 `scripts/p2_preview48_browser_crash_real_chromium.py` kills the observed
