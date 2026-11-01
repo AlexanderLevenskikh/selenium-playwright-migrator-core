@@ -30,6 +30,7 @@ public static partial class SemanticPomActionProjector
         const string schema = "migrator-pom-external-exception-contract/v1";
         var problems = new List<Problem>();
         var candidates = new List<ExternalCatchEvidence>();
+        var methodSha = "";
         ExternalContractProjection Result() => new(schema,
             problems.Count == 0 && candidates.Count == 1
                 ? "requires_review" : "blocked",
@@ -42,7 +43,6 @@ public static partial class SemanticPomActionProjector
                 "Only a captured exact-symbol synchronous forwarding chain is analyzed; external assemblies, dynamic dispatch, reflection, async and delegates are unverified.",
                 "An unknown/duplicate caller or catch filter blocks the whole contract, never produces a partial target."
             });
-        var methodSha = "";
         void Block(string code, SyntaxNode node, string reason) =>
             problems.Add(new Problem(code, node.SyntaxTree.FilePath,
                 Line(node), Hash(node), reason));
@@ -199,7 +199,7 @@ public static partial class SemanticPomActionProjector
                     continue;
                 }
                 var expression = call.Site.Parent as ExpressionStatementSyntax;
-                if (expression == null || !ReferenceEquals(expression.Expression, call.Site))
+                if (expression == null || !expression.Expression.Span != call.Site.Span)
                 {
                     Block("POM_EXTERNAL_CONTRACT_COMPOSED_CALL", call.Site,
                         "An exact synchronous call expression is required; do not infer side effects or values.");
@@ -209,7 +209,7 @@ public static partial class SemanticPomActionProjector
                 var statements = member.Body?.Statements;
                 var callerRoute = route + " -> " + call.Caller.ToDisplayString();
                 if (statements?.Count == 1
-                    && ReferenceEquals(statements[0], expression))
+                    && statements[0].Span == expression.Span)
                 {
                     if (!visited.Add(call.Caller))
                     {
@@ -224,7 +224,7 @@ public static partial class SemanticPomActionProjector
                 if (statements?.Count != 1 ||
                     statements[0] is not TryStatementSyntax outer
                     || outer.Block.Statements.Count != 1
-                    || !ReferenceEquals(outer.Block.Statements[0], expression)
+                    || outer.Block.Statements[0].Span != expression.Span
                     || outer.Finally != null
                     || outer.Catches.Count != 1)
                 {
