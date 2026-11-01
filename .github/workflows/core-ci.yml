@@ -328,10 +328,10 @@ jobs:
       - name: Real Selenium vs Playwright NUnit external source catch with negatives
         timeout-minutes: 24
         env:
-          MIGRATOR${{ steps.chrome.outputs.chrome-path }}BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
-          MIGRATOR${{ steps.chrome.outputs.chrome-path }}VERSION: ${{ steps.chrome.outputs.chrome-path }}VERSION_
-          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-path }}VERSION_
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
         run: python scripts/p2_preview40_external_contract_real_chromium.py
       - name: Retain real NUnit TRX, browser DOM, PNG, clause and source SHA evidence
         if: always()
