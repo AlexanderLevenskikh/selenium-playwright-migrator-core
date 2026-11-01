@@ -1206,7 +1206,7 @@ does not guarantee global OS process leak freedom, unreturned API
 resources, or private ArBilling equivalence. No release/auto-apply.
 
 
-## P1 preview.46-A — typed TargetClosedException in one NUnit TearDown
+## P1 preview.46-A — exact CLR subtype filter for non-public TargetClosedException in NUnit TearDown
 
 A **separate opt-in**, immutable, review-only contract
 \`PlanPomTypedTargetClosedTearDown\` and local CLI
@@ -1239,3 +1239,20 @@ Known earlier preview.45 evidence: real Windows
 \`IBrowserContext.CloseAsync\` produced \`TargetClosedException\`
 after terminating the Playwright driver; Linux was \`not_observed\`
 and must not be misrepresented as confirmed positive.
+
+### Preview.46 compiler-verified public exception filter
+
+In pinned Playwright .NET 1.63, directly writing
+`catch (Microsoft.Playwright.TargetClosedException)` fails with
+`CS0122`: the subtype is internal. The **only** admitted external
+catch is the public `Microsoft.Playwright.PlaywrightException closed`
+combined with **both** exact CLR identity checks:
+`closed.GetType().FullName == "Microsoft.Playwright.TargetClosedException"`
+and `closed.GetType().Assembly == typeof(Microsoft.Playwright.IPage).Assembly`.
+Roslyn validates the public source type, the System.Object.GetType
+invocation, System.Type.FullName and Assembly symbols, the exact
+string literal and the original IPage assembly. It does NOT infer
+exception kind from message text, broad exception class or guess a
+runtime callsite. Primary NUnit test failure is only preserved in
+the narrow verified conditional path, other exceptions remain
+unsupported, and no automatic migration is emitted.
