@@ -41,14 +41,16 @@ public sealed record PomExternalFixtureLifecycleCandidate(
     public bool FaultWitnessSourceOnly { get; init; }
     public bool RealCleanupFailureCertified { get; init; }
     public bool OsProcessAncestryCertified { get; init; }
-    public bool TypedTargetClosedTearDownSourceOnly { get; init; }
-    public bool PageTargetClosedCatchGuarded { get; init; }
-    public bool ContextTargetClosedCatchGuarded { get; init; }
+    public bool TargetClosedClrTearDownSourceOnly { get; init; }
+    public bool PageTargetClosedClrFilterGuarded { get; init; }
+    public bool ContextTargetClosedClrFilterGuarded { get; init; }
     public bool TestFailurePrecedenceOnlyForTargetClosed { get; init; }
     public string PageTargetClosedCatchSha256 { get; init; } = "";
     public string ContextTargetClosedCatchSha256 { get; init; } = "";
     public int PageTargetClosedCatchLine { get; init; }
     public int ContextTargetClosedCatchLine { get; init; }
+    public string PublicCaughtType { get; init; } = "";
+    public string ExactRuntimeClrSubtype { get; init; } = "";
 }
 
 public sealed record PomExternalExceptionContractPlan(
@@ -147,10 +149,11 @@ public sealed partial class MigrationEngine
             playwrightField, true, true, true);
 
     /// <summary>
-    /// Preview.46: exact typed real Playwright TargetClosedException only,
-    /// per-test NUnit TearDown Page/Context, never auto-applied or executed.
+    /// Preview.46: public PlaywrightException catch with exact CLR FullName
+    /// and assembly-bound non-public TargetClosedException subtype filter.
+    /// No direct CS0122 catch and no auto-apply.
     /// </summary>
-    public PomExternalExceptionContractPlan PlanPomTypedTargetClosedTearDown(
+    public PomExternalExceptionContractPlan PlanPomTargetClosedClrTearDown(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, string pageField, string contextField,
         string browserField, string playwrightField,
@@ -170,7 +173,7 @@ public sealed partial class MigrationEngine
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
         bool requireFaultWitness = false,
-        bool requireTypedTargetClosedTearDown = false)
+        bool requireTargetClosedClrTearDown = false)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -219,7 +222,7 @@ public sealed partial class MigrationEngine
             explicitBrowserReceiver, explicitPlaywrightReceiver,
             requireFailureAtomic, requireSafeDiagnostics,
             requireFaultWitness,
-            requireTypedTargetClosedTearDown);
+            requireTargetClosedClrTearDown);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -279,12 +282,12 @@ public sealed partial class MigrationEngine
                     FaultWitnessSourceOnly = result.FixtureLifecycle.FaultWitnessSourceOnly,
                     RealCleanupFailureCertified = result.FixtureLifecycle.RealCleanupFailureCertified,
                     OsProcessAncestryCertified = result.FixtureLifecycle.OsProcessAncestryCertified,
-                    TypedTargetClosedTearDownSourceOnly =
-                        result.FixtureLifecycle.TypedTargetClosedTearDownSourceOnly,
-                    PageTargetClosedCatchGuarded =
-                        result.FixtureLifecycle.PageTargetClosedCatchGuarded,
-                    ContextTargetClosedCatchGuarded =
-                        result.FixtureLifecycle.ContextTargetClosedCatchGuarded,
+                    TargetClosedClrTearDownSourceOnly =
+                        result.FixtureLifecycle.TargetClosedClrTearDownSourceOnly,
+                    PageTargetClosedClrFilterGuarded =
+                        result.FixtureLifecycle.PageTargetClosedClrFilterGuarded,
+                    ContextTargetClosedClrFilterGuarded =
+                        result.FixtureLifecycle.ContextTargetClosedClrFilterGuarded,
                     TestFailurePrecedenceOnlyForTargetClosed =
                         result.FixtureLifecycle.TestFailurePrecedenceOnlyForTargetClosed,
                     PageTargetClosedCatchSha256 =
@@ -294,7 +297,10 @@ public sealed partial class MigrationEngine
                     PageTargetClosedCatchLine =
                         result.FixtureLifecycle.PageTargetClosedCatchLine,
                     ContextTargetClosedCatchLine =
-                        result.FixtureLifecycle.ContextTargetClosedCatchLine
+                        result.FixtureLifecycle.ContextTargetClosedCatchLine,
+                    PublicCaughtType = result.FixtureLifecycle.PublicCaughtType,
+                    ExactRuntimeClrSubtype =
+                        result.FixtureLifecycle.ExactRuntimeClrSubtype
                 }
         };
     }
