@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--p2-preview40-only",StringComparer.Ordinal))
+{
+    PomPreview40ExternalContractSmoke.Run();
+    Console.WriteLine("POM_PREVIEW40_EXTERNAL_EXCEPTION_CONTRACT_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-preview39-only", StringComparer.Ordinal))
 {
     PomPreview39ExceptionFlowSmoke.Run();
