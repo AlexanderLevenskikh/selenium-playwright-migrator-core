@@ -320,6 +320,8 @@ internal static class SemanticCompilationSupport
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(path => path, StringComparer.Ordinal)
+                .Append(typeof(Microsoft.Playwright.IPage).Assembly.Location)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(path => MetadataReference.CreateFromFile(path))
                 .ToArray();
         }
