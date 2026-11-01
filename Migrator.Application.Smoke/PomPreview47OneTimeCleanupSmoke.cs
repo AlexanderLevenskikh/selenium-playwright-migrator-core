@@ -131,8 +131,7 @@ internal static class PomPreview47OneTimeCleanupSmoke
             Change("wrong browser receiver","await Browser.CloseAsync();",
                 "await Context.CloseAsync();");
             Change("wrong disposal receiver","PW.Dispose();","Browser.Dispose();");
-            Change("missing finally","finally {\n                try { PW.Dispose(); }",
-                "catch {\n                try { PW.Dispose(); }");
+            Change("missing finally","finally {","catch {");
             Change("unsafe logger","MIGRATOR_CLEANUP_PLAYWRIGHT_DISPOSE_FAILED",
                 "P47_PRIVATE_EXCEPTION_MESSAGE");
             Change("cleanup failure rethrow","} catch {}","} catch {throw;}");
