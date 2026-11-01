@@ -20,18 +20,12 @@ public static partial class SemanticPomActionProjector
     // outer bare throw; preserving original exception precedence.
     private static bool SafeFixedCleanupDiagnostic(
         SemanticModel model, CatchClauseSyntax catchBlock, string expectedCode,
-        bool requireTypedTargetClosed = false)
+        bool requireTargetClosedClrIdentity = false)
     {
         var declaration = catchBlock.Declaration;
-        if ((requireTypedTargetClosed
-                ? declaration == null || declaration.Identifier.ValueText.Length != 0
-                    || model.GetTypeInfo(declaration.Type).Type is not
-                        INamedTypeSymbol caughtType
-                    || caughtType.ToDisplayString() !=
-                        "Microsoft.Playwright.TargetClosedException"
-                    || caughtType.ContainingAssembly?.Name != "Microsoft.Playwright"
-                : declaration != null)
-            || catchBlock.Filter != null
+        if ((requireTargetClosedClrIdentity
+                ? !ExactRealTargetClosedFilter(model, catchBlock)
+                : declaration != null || catchBlock.Filter != null)
             || catchBlock.Block.Statements.Count != 1
             || catchBlock.Block.Statements[0] is not TryStatementSyntax logTry
             || logTry.Finally != null || logTry.Catches.Count != 1
