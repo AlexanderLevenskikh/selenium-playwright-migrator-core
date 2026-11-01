@@ -187,6 +187,8 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview37-only
       - name: preview.38 typed NoSuchElement/Timeout catch and rethrow AST positive and negative
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview38-only
+      - name: preview.39 external PageObject -> TestBase -> NUnit exception catch chain AST
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview39-only
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})
