@@ -1037,3 +1037,38 @@ must preserve their failure on Playwright. Real NUnit TRX, actual
 failure PNGs, browser snapshots and immutable source SHA are kept.
 Other unknown CSS/exception/future behavior requires manual review.
 Private ArBilling is not run.
+
+
+## preview.41-A — opt-in source-backed NUnit/TestBase async Count recovery
+
+`PlanPomExternalAsyncCountContract(sourceDir, fullyQualifiedPageType,
+sourceMethod, exactTreeSHA, explicitPageReceiver)` is a **separate**
+read-only source-only proposal. The preview.40
+`PlanPomExternalExceptionContract` remains fail-closed on *all* nonempty
+outer catches.
+
+A narrow `requires_review` plan requires one exact Roslyn-resolved
+Page Object void method with locally typed catch/rethrow of a projectable
+Text assertion or finite wait; one no-side-effect TestBase forwarding
+method; one [NUnit Test] outer method with matching, unfiltered external
+catch and a single typed immediate FindElements.Count == literal recovery.
+All three signatures must be convertible to async Task with one awaited
+call edge. The caller must explicitly name a readonly **real**
+Microsoft.Playwright.IPage field assigned from exactly one typed
+constructor parameter; Roslyn verifies its external assembly identity,
+not a same-named customer interface. The source Selenium IWebDriver
+receiver for Count must be a field of the same NUnit type.
+
+The plan contains precisely three target method-signature/body **snippets**
+and one source-bound catch clause, never an automatically patched project.
+CLI `pom-async-count-contract DIR TYPE METHOD TREE_SHA PAGE_RECEIVER`
+redacts target C# by default; `--emit-target` requires trusted local
+inspection. An absent, unbound or guessed receiver, async lifecycle
+ambiguity, unsupported filter/rethrow, multiple invocation paths or
+stale hash returns `blocked` with no partial candidates.
+
+Actual browser parity and target assembly compiles are separate evidence;
+constructor injection, exact target Page Object field wiring, missing
+exception CLR identity and arbitrary side effects are not inferred.
+No Selenium package is generated in the Playwright-only target.
+Private ArBilling remains not_run.

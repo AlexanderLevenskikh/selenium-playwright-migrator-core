@@ -1,6 +1,50 @@
 using System.Text.Json;
 using Migrator.Application;
 
+// Preview.41-A: explicit source-backed, opt-in async NUnit/TestBase +
+/// IPage receiver proof. The historical preview.40 clause path remains
+// unchanged; no generated C# is returned unless --emit-target is set.
+if (args.Length >= 6 && args[0] == "pom-async-count-contract")
+{
+    try
+    {
+        var emit = args.Skip(6).Contains("--emit-target", StringComparer.Ordinal);
+        var plan = new MigrationEngine().PlanPomExternalAsyncCountContract(
+            args[1], args[2], args[3], args[4], args[5]);
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            plan.SchemaVersion, plan.SourceTreeHash, plan.Status,
+            plan.SourceType, plan.SourceMethod, plan.SourceMethodSha256,
+            plan.VerifiedPageReceiver, plan.Blockers, plan.Limitations,
+            plan.RuntimeVerified, plan.CanAutoApply, plan.RequiresReview,
+            plan.Execution,
+            catches = plan.CatchCandidates.Select(c => new {
+                c.CatchSourcePath, c.CatchSourceLine, c.CatchSourceSha256,
+                c.SourceCaughtType, c.TargetCaughtType,
+                c.CallerChain, c.TargetCatchSha256,
+                targetCatchClause = emit && plan.Status == "requires_review"
+                    ? c.TargetCatchClause : null
+            }),
+            asyncMethods = plan.AsyncMethods.Select(m => new {
+                m.SourcePath, m.SourceLine, m.SourceSha256, m.SourceSymbol,
+                targetSignature = emit && plan.Status == "requires_review"
+                    ? m.TargetSignature : null,
+                targetBody = emit && plan.Status == "requires_review"
+                    ? m.TargetBody : null
+            })
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        return plan.Status == "requires_review" ? 0 : 3;
+    }
+    catch (Exception ex) when (ex is ArgumentException
+        or InvalidOperationException or IOException
+        or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine(ex.GetType().Name + ": " + ex.Message);
+        return 5;
+    }
+}
+
+
 // Preview.40: optional, standalone external catch CLAUSE proposal. A
 // blocked source chain never emits a partial target. --emit-target must be
 // explicit because a reviewed handler can contain a private source selector.

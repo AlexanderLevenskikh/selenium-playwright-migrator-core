@@ -11,11 +11,19 @@ public static partial class SemanticPomActionProjector
         string SourceCaughtType, string TargetCaughtType,
         string SourceCallerSymbol, string CallerChain,
         string TargetCatchClause, string TargetCatchSha256);
+    public sealed record ExternalAsyncMethodEvidence(
+        string SourcePath, int SourceLine, string SourceSha256,
+        string SourceSymbol, string TargetSignature, string TargetBody);
     public sealed record ExternalContractProjection(
         string SchemaVersion, string Status, string SourceMethodSha256,
         IReadOnlyList<ExternalCatchEvidence> ExternalCatches,
         IReadOnlyList<Problem> Blockers,
-        IReadOnlyList<string> Limitations);
+        IReadOnlyList<string> Limitations)
+    {
+        public IReadOnlyList<ExternalAsyncMethodEvidence> AsyncMethods { get; init; }
+            = Array.Empty<ExternalAsyncMethodEvidence>();
+        public string VerifiedPageReceiver { get; init; } = "";
+    }
 
     /// <summary>
     /// A separate, unapproved, source-backed catch CLAUSE candidate.
@@ -25,29 +33,52 @@ public static partial class SemanticPomActionProjector
     public static ExternalContractProjection ProjectExternalExceptionContract(
         IReadOnlyList<(string Path, string Source)> sources,
         string sourceType, string sourceMethod, int sourceLine = 0,
-        CancellationToken cancel = default)
+        CancellationToken cancel = default,
+        bool requireVerifiedAsyncCount = false, string explicitPageReceiver = "")
     {
-        const string schema = "migrator-pom-external-exception-contract/v1";
+        var schema = requireVerifiedAsyncCount
+            ? "migrator-pom-external-async-count/v1"
+            : "migrator-pom-external-exception-contract/v1";
         var problems = new List<Problem>();
         var candidates = new List<ExternalCatchEvidence>();
+        var asyncMethods = new List<ExternalAsyncMethodEvidence>();
         var methodSha = "";
         ExternalContractProjection Result() => new(schema,
             problems.Count == 0 && candidates.Count == 1
+                && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
                 ? "requires_review" : "blocked",
-            methodSha, problems.Count == 0 ? candidates : Array.Empty<ExternalCatchEvidence>(),
+            methodSha, problems.Count == 0 && (!requireVerifiedAsyncCount || asyncMethods.Count == 3)
+                ? candidates : Array.Empty<ExternalCatchEvidence>(),
             problems,
             new[] {
                 "Source-only clause proposal; never automatically apply or execute code.",
                 "The isolated catch clause must be reviewed together with the separately migrated source call and NUnit lifecycle.",
                 "The emitted clause is NOT an adapter for the public Selenium CLR exception type.",
                 "Only a captured exact-symbol synchronous forwarding chain is analyzed; external assemblies, dynamic dispatch, reflection, async and delegates are unverified.",
-                "An unknown/duplicate caller or catch filter blocks the whole contract, never produces a partial target."
-            });
+                "An unknown/duplicate caller or catch filter blocks the whole contract, never produces a partial target.",
+                "Async conversion proposals require explicit source-typed Playwright IPage constructor binding; external runtime lifecycle and same-DOM semantics are not automatically proven.",
+                "Three method bodies/signatures are review-only snippets; target Page Object and TestBase instance wiring require independent build and real browser comparison."
+            })
+        {
+            AsyncMethods = problems.Count == 0 && candidates.Count == 1
+                ? asyncMethods : Array.Empty<ExternalAsyncMethodEvidence>(),
+            VerifiedPageReceiver = problems.Count == 0 && candidates.Count == 1
+                && requireVerifiedAsyncCount ? explicitPageReceiver : ""
+        };
         void Block(string code, SyntaxNode node, string reason) =>
             problems.Add(new Problem(code, node.SyntaxTree.FilePath,
                 Line(node), Hash(node), reason));
         void InputBlock(string code, string reason) =>
             problems.Add(new Problem(code, "", 0, "", reason));
+
+        if (requireVerifiedAsyncCount && (
+            !SyntaxFacts.IsValidIdentifier(explicitPageReceiver)
+            || explicitPageReceiver.StartsWith("@", StringComparison.Ordinal)))
+        {
+            InputBlock("POM_EXTERNAL_ASYNC_RECEIVER_REQUIRED",
+                "Pass one explicit C# IPage field identifier; never infer a receiver.");
+            return Result();
+        }
 
         if (sources.Count is < 1 or > MaxFiles ||
             sources.Sum(s => (long)s.Source.Length) > MaxSourceChars)
@@ -156,15 +187,16 @@ public static partial class SemanticPomActionProjector
         }
 
         var frontier = new Queue<(IMethodSymbol Method,
-            int Depth, string Route)>();
+            int Depth, string Route, IReadOnlyList<MethodDeclarationSyntax> Nodes)>();
         var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-        frontier.Enqueue((srcMethod.OriginalDefinition, 0, srcMethod.ToDisplayString()));
+        frontier.Enqueue((srcMethod.OriginalDefinition, 0,
+            srcMethod.ToDisplayString(), new[] { root.Method }));
         visited.Add(srcMethod.OriginalDefinition);
         var endpoints = 0;
         while (frontier.Count != 0)
         {
             cancel.ThrowIfCancellationRequested();
-            var (called, depth, route) = frontier.Dequeue();
+            var (called, depth, route, nodes) = frontier.Dequeue();
             var sites = allCalls.Where(x =>
                 SymbolEqualityComparer.Default.Equals(x.Called, called))
                 .ToArray();
@@ -217,7 +249,8 @@ public static partial class SemanticPomActionProjector
                             "Multiple or cyclic caller paths cannot be reduced to one safe external contract.");
                         continue;
                     }
-                    frontier.Enqueue((call.Caller, depth + 1, callerRoute));
+                    frontier.Enqueue((call.Caller, depth + 1, callerRoute,
+                        nodes.Concat(new[] { member }).ToArray()));
                     continue;
                 }
 
@@ -262,18 +295,80 @@ public static partial class SemanticPomActionProjector
                         continue;
                     }
                 }
-                // A projected CountAsync recovery needs 'await' and a
-                // verified Playwright IPage receiver in the OUTER method.
-                // This read-only clause planner cannot prove or rewrite that
-                // NUnit/TestBase async context; do not offer a non-compilable
-                // catch snippet for any nonempty handler.
-                if (clause.Block.Statements.Count != 0)
+                string handler = "";
+                if (requireVerifiedAsyncCount)
+                {
+                    // Explicit opt-in: exactly Page Object -> one TestBase
+                    // forwarder -> one source NUnit [Test]. All three are
+                    // non-virtual synchronous zero-argument void methods.
+                    if (nodes.Count != 2
+                        || !SymbolEqualityComparer.Default.Equals(
+                            call.Caller.ContainingType.BaseType,
+                            compilation.GetSemanticModel(nodes[1].SyntaxTree, true)
+                                .GetDeclaredSymbol(nodes[1]) is IMethodSymbol helper
+                                    ? helper.ContainingType : null)
+                        || !call.Caller.GetAttributes().Any(a =>
+                            a.AttributeClass?.ToDisplayString() ==
+                                "NUnit.Framework.TestAttribute")
+                        || !nodes.Append(member).All(AsyncConvertibleSignature))
+                    {
+                        Block("POM_EXTERNAL_ASYNC_NUNIT_CHAIN_UNPROVEN", member,
+                            "Require one exact non-polymorphic TestBase forwarder and one ordinary NUnit [Test] void method; async Task conversion cannot be inferred for other methods.");
+                        continue;
+                    }
+                    if (clause.Block.Statements.Count != 1
+                        || clause.Block.Statements[0] is not ExpressionStatementSyntax
+                            { Expression: InvocationExpressionSyntax recovery }
+                        || !TryTranslate(recovery, model, call.Caller,
+                            out var recoveryEffect, out var translated,
+                            out _, out _, out _, out _)
+                        || recoveryEffect != "table_count_assertion"
+                        || !SourceCountDriverField(recovery, model, call.Caller)
+                        || !TryVerifiedPageField(model, call.Caller,
+                            explicitPageReceiver, out var pageField))
+                    {
+                        Block("POM_EXTERNAL_ASYNC_COUNT_OR_RECEIVER_UNPROVEN", clause,
+                            "Require one typed immediate NUnit FindElements.Count equality over the source driver and an explicit readonly Microsoft.Playwright.IPage field assigned from a same-typed constructor parameter.");
+                        continue;
+                    }
+                    // Only the current project's own source-typed IPage
+                    // receiver is allowed; TryTranslate emits Page.Locator.
+                    // There is no target receiver guessing or source selector
+                    // emitted over MCP.
+                    const string originalPrefix = "Page.Locator(";
+                    if (translated.Split(originalPrefix, StringSplitOptions.None).Length != 2)
+                    {
+                        Block("POM_EXTERNAL_ASYNC_LOCATOR_UNVERIFIED", recovery,
+                            "Expected exactly one source-projected Page.Locator Count snapshot.");
+                        continue;
+                    }
+                    handler = translated.Replace(originalPrefix,
+                        explicitPageReceiver + ".Locator(", StringComparison.Ordinal);
+
+                    asyncMethods.Add(new ExternalAsyncMethodEvidence(
+                        root.Method.SyntaxTree.FilePath, Line(root.Method),
+                        Hash(root.Method), srcMethod.ToDisplayString(),
+                        AsyncSignature(root.Method),
+                        "try {\n" + projected + "\n}\n"
+                            + RenderSourceCatchHeader(kind) + " { throw; }"));
+                    var forwarding = nodes[1];
+                    var forwardedCall = (InvocationExpressionSyntax)
+                        ((ExpressionStatementSyntax)forwarding.Body!.Statements[0]).Expression;
+                    asyncMethods.Add(new ExternalAsyncMethodEvidence(
+                        forwarding.SyntaxTree.FilePath, Line(forwarding),
+                        Hash(forwarding),
+                        compilation.GetSemanticModel(forwarding.SyntaxTree, true)
+                            .GetDeclaredSymbol(forwarding)!.ToDisplayString(),
+                        AsyncSignature(forwarding),
+                        "await " + forwardedCall + ";"));
+                    // NUnit conversion gets its complete try/catch body below.
+                }
+                else if (clause.Block.Statements.Count != 0)
                 {
                     Block("POM_EXTERNAL_CONTRACT_CATCH_BODY_UNSUPPORTED", clause,
                         "Nonempty outer catch (including NUnit Count recovery) requires an unverified async conversion, target receiver or side-effect mapping; block rather than emit a partial clause.");
                     continue;
                 }
-                const string handler = "";
 
                 var header = kind == SourceCatchKind.NoSuchElementFromImmediateText
                     ? "catch (Microsoft.Playwright.PlaywrightException externalMissing) " +
@@ -292,14 +387,109 @@ public static partial class SemanticPomActionProjector
                         : "System.TimeoutException",
                     call.Caller.ToDisplayString(), callerRoute,
                     resultClause, sha));
+                if (requireVerifiedAsyncCount)
+                    asyncMethods.Add(new ExternalAsyncMethodEvidence(
+                        member.SyntaxTree.FilePath, Line(member), Hash(member),
+                        call.Caller.ToDisplayString(), AsyncSignature(member),
+                        "try {\nawait " + call.Site + ";\n}\n" + resultClause));
                 endpoints++;
             }
         }
 
+        if (requireVerifiedAsyncCount)
+        {
+            // Constructor, property getter, field initializer and other
+            // out-of-method calls are not represented by the method-edge
+            // traversal. A relevant call at one of those sites is NOT
+            // evidence that the only known NUnit path is complete.
+            foreach (var tree in trees)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var semantic = compilation.GetSemanticModel(tree, true);
+                foreach (var invocation in tree.GetRoot(cancel)
+                    .DescendantNodes().OfType<InvocationExpressionSyntax>())
+                {
+                    if (semantic.GetSymbolInfo(invocation).Symbol
+                        is not IMethodSymbol invoked
+                        || !visited.Contains(invoked.OriginalDefinition))
+                        continue;
+                    if (!allCalls.Any(site =>
+                        site.Site.SyntaxTree == invocation.SyntaxTree
+                        && site.Site.Span == invocation.Span))
+                        Block("POM_EXTERNAL_ASYNC_UNCAPTURED_CALL", invocation,
+                            "An invocation from a constructor, initializer or another non-method scope reaches the candidate chain; no partial async contract is safe.");
+                }
+            }
+        }
         if (endpoints != 1 || candidates.Count != 1)
             Block("POM_EXTERNAL_CONTRACT_PATH_CARDINALITY", root.Method,
                 "Exactly one statically confirmed external NUnit/TestBase catch path is required; missing or multiple paths are blocked.");
         return Result();
+    }
+
+    private static bool AsyncConvertibleSignature(MethodDeclarationSyntax method) =>
+        method.Body != null && method.ExpressionBody == null
+        && method.Modifiers.All(m => m.IsKind(SyntaxKind.PublicKeyword)
+            || m.IsKind(SyntaxKind.ProtectedKeyword)
+            || m.IsKind(SyntaxKind.InternalKeyword)
+            || m.IsKind(SyntaxKind.PrivateKeyword));
+
+    private static string AsyncSignature(MethodDeclarationSyntax method) =>
+        string.Join(" ", method.Modifiers.Select(m => m.ValueText))
+        + " async System.Threading.Tasks.Task "
+        + method.Identifier.ValueText + "()";
+
+    private static bool SourceCountDriverField(
+        InvocationExpressionSyntax recovery, SemanticModel model,
+        IMethodSymbol owner)
+    {
+        if (recovery.ArgumentList.Arguments.Count == 0
+            || recovery.ArgumentList.Arguments[0].Expression
+                is not MemberAccessExpressionSyntax count
+            || count.Expression is not InvocationExpressionSyntax find
+            || find.Expression is not MemberAccessExpressionSyntax findMember)
+            return false;
+        return model.GetSymbolInfo(findMember.Expression).Symbol is IFieldSymbol field
+            && !field.IsStatic
+            && field.Type.ToDisplayString() == "OpenQA.Selenium.IWebDriver"
+            && SymbolEqualityComparer.Default.Equals(field.ContainingType,
+                owner.ContainingType);
+    }
+
+    private static bool TryVerifiedPageField(
+        SemanticModel model, IMethodSymbol nunit,
+        string receiver, out IFieldSymbol? field)
+    {
+        field = null;
+        var matches = nunit.ContainingType.GetMembers(receiver)
+            .OfType<IFieldSymbol>().ToArray();
+        if (matches.Length != 1 || !matches[0].IsReadOnly
+            || matches[0].IsStatic || matches[0].Type.NullableAnnotation
+                == NullableAnnotation.Annotated
+            || matches[0].Type.ToDisplayString() != "Microsoft.Playwright.IPage"
+            || matches[0].Type.ContainingAssembly?.Name != "Microsoft.Playwright")
+            return false;
+        field = matches[0];
+        var boundField = field;
+        var constructors = nunit.ContainingType.InstanceConstructors
+            .Where(c => c.DeclaringSyntaxReferences.Length != 0).ToArray();
+        if (constructors.Length != 1 || constructors[0].Parameters
+            .Count(p => p.Type.ToDisplayString() == "Microsoft.Playwright.IPage"
+                && p.Type.ContainingAssembly?.Name == "Microsoft.Playwright") != 1)
+            return false;
+        var ctor = constructors[0];
+        var syntax = ctor.DeclaringSyntaxReferences.Single().GetSyntax()
+            as ConstructorDeclarationSyntax;
+        if (syntax?.Body == null) return false;
+        var ctorModel = model.Compilation.GetSemanticModel(syntax.SyntaxTree, true);
+        return syntax.Body.Statements.OfType<ExpressionStatementSyntax>()
+            .Select(s => s.Expression)
+            .OfType<AssignmentExpressionSyntax>()
+            .Count(a => SymbolEqualityComparer.Default.Equals(
+                    ctorModel.GetSymbolInfo(a.Left).Symbol, boundField)
+                && ctorModel.GetSymbolInfo(a.Right).Symbol is IParameterSymbol p
+                && SymbolEqualityComparer.Default.Equals(p.ContainingSymbol, ctor)
+                && p.Type.ToDisplayString() == "Microsoft.Playwright.IPage") == 1;
     }
 
     private static bool ValidMethod(IMethodSymbol method) =>
