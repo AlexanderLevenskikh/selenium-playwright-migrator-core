@@ -118,39 +118,39 @@ internal static class PomPreview43FailureAtomicSmoke
                     "Missing negative fixture marker "+label);
                 Block(sourceFixture.Replace(from,to,StringComparison.Ordinal),label);
             }
-            Negative("missing original rethrow", "                    throw;",
-                "                    return;");
-            Negative("wrong cleanup order",
-                "try { if (Browser != null) await Browser.CloseAsync(); }\n                    catch {}\n                    try { if (PW != null) PW.Dispose(); }",
-                "try { if (PW != null) PW.Dispose(); }\n                    catch {}\n                    try { if (Browser != null) await Browser.CloseAsync(); }");
+            Negative("missing original rethrow", "throw;", "return;");
+            // Reordering must be rejected even with all resource calls present.
+            var browserClose = "try { if (Browser != null) await Browser.CloseAsync(); }";
+            var playwrightDispose = "try { if (PW != null) PW.Dispose(); }";
+            Require(sourceFixture.Contains(browserClose,StringComparison.Ordinal)
+                && sourceFixture.Contains(playwrightDispose,StringComparison.Ordinal),
+                "Missing cleanup order markers");
+            Block(sourceFixture.Replace(browserClose,"__BROWSER_CLOSE__",
+                    StringComparison.Ordinal)
+                .Replace(playwrightDispose,browserClose,StringComparison.Ordinal)
+                .Replace("__BROWSER_CLOSE__",playwrightDispose,StringComparison.Ordinal),
+                "wrong cleanup order");
             Negative("missing one-time PW dispose",
                 "try { if (PW != null) PW.Dispose(); }",
                 "try { if (PW != null) _ = PW; }");
             Negative("missing context cleanup",
                 "try { if (Context != null) await Context.CloseAsync(); }",
                 "try { if (Context != null) _ = Context; }");
-            Negative("cleanup escapes catch",
-                "catch {}\n                    try { if (Context != null)",
-                "catch { throw; }\n                    try { if (Context != null)");
+            Negative("cleanup escapes catch","catch {}","catch { throw; }");
             Negative("missing null guard",
                 "if (Page != null) await Page.CloseAsync();",
                 "await Page.CloseAsync();");
             Negative("wrong receiver",
                 "if (Context != null) await Context.CloseAsync();",
                 "if (Context != null) await Page.CloseAsync();");
-            Negative("rethrow new loses original exception",
-                "                    throw;",
-                "                    throw new InvalidOperationException(\"new failure\");");
-            Negative("filter alters exception precedence",
-                "                catch {\n                    try { if (Page != null)",
-                "                catch (Exception error) when (error.Message != \"\") {\n                    try { if (Page != null)");
-            Negative("extra side effects in setup catch",
-                "                    throw;\n                }\n            }\n            [TearDown]",
-                "                    Page = null!;\n                    throw;\n                }\n            }\n            [TearDown]");
-            Negative("missing setup try",
-                "                try {\n                    Context = await Browser.NewContextAsync();",
-                "                if (true) {\n                    Context = await Browser.NewContextAsync();");
-            Negative("unknown generated lifecycle receiver",
+            Negative("throw new loses original exception",
+                "throw;","throw new InvalidOperationException(\"new failure\");");
+            Negative("filter alters precedence",
+                "catch {","catch (Exception error) when (error.Message != \"\") {");
+            Negative("extra side effects",
+                "throw;","Page = null!; throw;");
+            Negative("missing setup protected try","try {","if (true) {");
+            Negative("incorrect source context assignment",
                 "Context = await Browser.NewContextAsync();",
                 "Context = null!;");
             Block(sourceFixture,"guessed Page",page:"Guessed");
