@@ -542,3 +542,41 @@ jobs:
           name: migrator-preview45-sink-close-process-${{ matrix.os }}
           path: artifacts/pom-preview45/*
           if-no-files-found: warn
+
+
+  p1-preview46-real-targetclosed:
+    name: Preview.46 real NUnit TargetClosed after Playwright driver loss (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install pinned Chrome for Testing and matching ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: Build exact Core CLI for source-bound target-closed proof
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Real Node driver disconnect, NUnit primary exception and typed Context.CloseAsync
+        timeout-minutes: 24
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p2_preview46_targetclosed_real_chromium.py
+      - name: Retain original NUnit TRX and SHA source + OS-specific TargetClosed receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview46-real-targetclosed-${{ matrix.os }}
+          path: artifacts/pom-preview46/*
+          if-no-files-found: warn
