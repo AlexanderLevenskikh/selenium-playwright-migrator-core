@@ -16,6 +16,10 @@ public sealed record PomExternalExceptionCatchCandidate(
 /// updates NUnit, TestBase or POM methods. A candidate is only a C# catch
 /// clause, not a complete translated test or a runtime exception adapter.
 /// </summary>
+public sealed record PomExternalAsyncMethodCandidate(
+    string SourcePath, int SourceLine, string SourceSha256,
+    string SourceSymbol, string TargetSignature, string TargetBody);
+
 public sealed record PomExternalExceptionContractPlan(
     string SchemaVersion, string SourceTreeHash, string Status,
     string SourceType, string SourceMethod, string SourceMethodSha256,
@@ -23,6 +27,9 @@ public sealed record PomExternalExceptionContractPlan(
     IReadOnlyList<PomActionBlocker> Blockers,
     IReadOnlyList<string> Limitations)
 {
+    public IReadOnlyList<PomExternalAsyncMethodCandidate> AsyncMethods { get; init; }
+        = Array.Empty<PomExternalAsyncMethodCandidate>();
+    public string VerifiedPageReceiver { get; init; } = "";
     public bool RuntimeVerified => false;
     public bool CanAutoApply => false;
     public bool RequiresReview => true;
@@ -35,6 +42,26 @@ public sealed partial class MigrationEngine
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine = 0,
         CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, false, "", cancellationToken);
+
+    /// <summary>
+    /// Dedicated preview.41 opt-in review-only projection. Requires explicit
+    /// source-typed constructor-bound IPage receiver, NUnit [Test] and exact
+    /// Page Object -> TestBase -> NUnit forwarding path.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomExternalAsyncCountContract(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string explicitPageReceiver,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, explicitPageReceiver,
+            cancellationToken);
+
+    private PomExternalExceptionContractPlan PlanExternalCatchCore(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
+        string explicitPageReceiver, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -77,7 +104,8 @@ public sealed partial class MigrationEngine
 
         var result = SemanticPomActionProjector.ProjectExternalExceptionContract(
             snapshot.Select(x => (x.Path, x.Source)).ToArray(),
-            sourceType, sourceMethod, sourceLine, cancellationToken);
+            sourceType, sourceMethod, sourceLine, cancellationToken,
+            verifiedAsyncCount, explicitPageReceiver);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -93,6 +121,13 @@ public sealed partial class MigrationEngine
             result.Blockers.Select(b => new PomActionBlocker(
                 b.Code, b.SourcePath, b.SourceLine,
                 b.SourceSha256, b.Explanation)).ToArray(),
-            result.Limitations);
+            result.Limitations)
+        {
+            AsyncMethods = result.AsyncMethods.Select(m =>
+                new PomExternalAsyncMethodCandidate(
+                    m.SourcePath, m.SourceLine, m.SourceSha256,
+                    m.SourceSymbol, m.TargetSignature, m.TargetBody)).ToArray(),
+            VerifiedPageReceiver = result.VerifiedPageReceiver
+        };
     }
 }
