@@ -75,8 +75,8 @@ public sealed class ThrowingSink : StringWriter {
             if(stage=="healthy") {
                 await Task.Delay(7000);
             } else if(stage=="real-close-after-kill" || stage=="real-close-after-driver-kill") {
-                var ready=Path.Combine(folder,"kill-ready");
-                var ack=Path.Combine(folder,"kill-ack");
+                var ready=Path.Combine(folder,"kill-ready-"+stage);
+                var ack=Path.Combine(folder,"kill-ack-"+stage);
                 File.WriteAllText(ready,"ready");
                 for(int i=0;i<120&&!File.Exists(ack);i++)
                     await Task.Delay(250);
@@ -308,8 +308,8 @@ def run_stage(stage,project,evidence,chrome,url):
             rooted+=1
             edges.update(zip(chain,chain[1:]))
         if stage in ("real-close-after-kill","real-close-after-driver-kill") \
-                and (evidence/"kill-ready").exists() \
-                and not (evidence/"kill-ack").exists():
+                and (evidence/("kill-ready-"+stage)).exists() \
+                and not (evidence/("kill-ack-"+stage)).exists():
             # Choose an exact Chrome root attached to this NUnit invocation.
             roots=[]
             targetKind="driver" if stage=="real-close-after-driver-kill" else "chrome"
@@ -331,7 +331,7 @@ def run_stage(stage,project,evidence,chrome,url):
                     kill_status="kill_not_permitted"
             else:
                 kill_status="root_not_observed"
-            (evidence/"kill-ack").write_text(
+            (evidence/("kill-ack-"+stage)).write_text(
                 "killed" if kill_status.startswith("sent_to_observed_") else "skipped",
                 encoding="utf-8")
         if time.monotonic()>deadline:
@@ -354,6 +354,9 @@ def run_stage(stage,project,evidence,chrome,url):
             if key[0] in now and now[key[0]][1]==key[1]}
         if not survivors or time.monotonic()>end:break
         time.sleep(.5)
+    if stage in ("real-close-after-kill","real-close-after-driver-kill"):
+        p37.check(kill_status!="not_requested",
+            "Process-termination stage did not attempt a kill: "+stage)
     trx=evidence/(stage+".trx")
     p37.check(trx.is_file(),"NUnit TRX missing "+stage+
         " "+stdout[-600:]+stderr[-600:])
