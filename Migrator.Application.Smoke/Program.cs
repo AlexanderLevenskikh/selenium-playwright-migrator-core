@@ -1,4 +1,10 @@
 using Migrator.Application;
+if(args.Contains("--p2-preview44-only",StringComparer.Ordinal))
+{
+    PomPreview44SafeDiagnosticsSmoke.Run();
+    Console.WriteLine("POM_PREVIEW44_SAFE_CLEANUP_DIAGNOSTICS_AST_PASSED");
+    return;
+}
 if (args.Contains("--p2-preview43-only", StringComparer.Ordinal))
 {
     PomPreview43FailureAtomicSmoke.Run();

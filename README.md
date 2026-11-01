@@ -1138,3 +1138,38 @@ prove arbitrary source projects, or guarantee NUnit calls teardown
 after a failed OneTimeSetUp. It therefore requires explicit
 source-level rollback, independent real browser experiments, and
 manual review for production admission. Private ArBilling not_run.
+
+
+## P1 preview.44-A — source-proven safe cleanup diagnostics
+
+The opt-in read-only Core
+\`PlanPomSafeCleanupDiagnosticsContract(DIR, TYPE, METHOD, SHA,
+PAGE_FIELD, CONTEXT_FIELD, BROWSER_FIELD, PLAYWRIGHT_FIELD)\`
+requires the complete previously source-attested failure-atomic
+NUnit OneTimeSetUp/SetUp, same page/context ownership and exception
+recovery; no cleanup code or diagnostic sink is invented.
+
+Every second-order cleanup \`catch\` must itself contain exactly
+\`try { System.Console.Error.WriteLine("MIGRATOR_CLEANUP_*_FAILED"); }
+catch {}\`, with a **fixed** per-resource literal drawn from:
+\`BROWSER_CLOSE\`, \`PLAYWRIGHT_DISPOSE\`, \`PAGE_CLOSE\`,
+\`CONTEXT_CLOSE\`. Exact BCL Roslyn symbols are required:
+\`System.Console.Error\` and \`System.IO.TextWriter.WriteLine(string)\`.
+Exception messages, stack traces, types, user data, locators, dynamic
+values, incorrect resource codes or a secondary sink failure escaping
+the guard are **blocked** with zero partial candidates. Terminal
+\`throw;\` keeps the primary error and stack. Logging may be captured
+by the NUnit runner; its underlying sink could still fail, but this
+source shape prevents that failure from replacing the primary.
+
+This is a strictly **review-only** source contract, never target
+auto-patching. CLI \`pom-safe-cleanup-diagnostics DIR TYPE METHOD
+TREE_SHA PAGE CONTEXT BROWSER PLAYWRIGHT\` redacts target C# by
+default; trusted local \`--emit-target\` is explicit. All old
+preview.40–43 API contracts are unchanged. No private source or
+exception messages cross MCP; no inference of OS process ownership.
+A separate browser/OS probe distinguishes actual Playwright.CreateAsync
+driver startup errors from synthetic fault injection. Absence of
+surviving observed Chrome PIDs is NOT a complete process-tree
+audit or proof about resources an API failed to return. ArBilling
+not_run.
