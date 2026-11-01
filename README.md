@@ -954,3 +954,41 @@ NUnit TRX, DOM/browser events, failure PNGs and cleanup. Source/method
 SHA256 and binary fingerprints are retained in public synthetic evidence.
 Private ArBilling is not run; general exception identity equivalence is
 not proven or claimed.
+
+
+## preview.39 — source-bound external exception catch chains
+
+Preview.38 established limited inner-page \`NoSuchElementException\`
+and \`WebDriverTimeoutException\` catch/rethrow conversions, but an
+external NUnit test or TestBase catch may still expect the original
+Selenium exception CLR type. The target throws different CLR types
+(PlaywrightException or System.TimeoutException). Returning a locally
+plausible candidate when an outer catch depends on this distinction
+would silently alter test behavior.
+
+The source-only Roslyn POM projector now follows **exact symbol-linked
+caller edges** through the captured *.cs tree, up to four enclosing
+methods. External matching Selenium NoSuch/Timeout catches, broad
+exception catches and catch filters **block the entire projected
+method**. The resulting blocker includes the caller's exact
+relative source path, line and SHA-256 of the catch syntax, without
+returning its source body. Direct calls, same-class helpers, inherited
+TestBase and NUnit caller cases are covered by synthetic AST
+regressions. Same-named unrelated methods or irrelevant catch types
+must not yield false positives. Local-function invocations, virtual
+dispatch, excessive graph depth and oversized call graphs also
+fail closed instead of guessing.
+
+This is a **bounded in-scope graph, not a full MSBuild/runtime call
+graph**. No findings is not proof about external assemblies, unknown
+dependencies, dynamic interface dispatch, delegates, reflection or
+customer runtime behavior. All remaining source-backed drafts stay
+\`requires_review\`, \`RuntimeVerified=false\`,
+\`CanAutoApply=false\`. When a relevant external catch is present,
+status is \`blocked\`, target statements are empty and no adapter
+candidate is returned. No guessed Selenium exception adapter or
+hidden Selenium runtime dependency is introduced.
+
+CI keeps prior real Selenium/Playwright Chromium tests on Linux and
+Windows, adds exact-source caller-chain regressions and records
+exception risk in read-only MCP. Private ArBilling: not_run.

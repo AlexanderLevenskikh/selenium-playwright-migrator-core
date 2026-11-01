@@ -122,6 +122,15 @@ public static partial class SemanticPomActionProjector
             method, semantic, symbol, compilation, details, problems,
             cancellationToken);
 
+        // Additive, fail-closed preview.39 source call-chain analysis. A
+        // local catch/rethrow mapping cannot be approved when TestBase/NUnit
+        // callers catch a Selenium CLR type that Playwright will not throw.
+        // We assess only the exact captured source tree; no runtime claim.
+        if (symbol != null && problems.Count == 0
+            && emittedStatements.Count > 0)
+            problems.AddRange(InspectExternalExceptionCatchChains(
+                compilation, symbol, method, details, cancellationToken));
+
         return new Projection("migrator-pom-action/v1alpha3",
             problems.Count == 0 && emittedStatements.Count > 0
                 ? "requires_review" : "blocked",
@@ -135,7 +144,8 @@ public static partial class SemanticPomActionProjector
                 "A single unknown statement prevents emission of any active target sequence.",
                 "Typed Selenium/NUnit calls are source facts; simulated compile anchors are not actual Selenium restore evidence.",
                 "Playwright actionability, wait timeout/polling, input key behavior, selector scope and DOM state need runtime review.",
-                "The caller must explicitly attach reviewed mappings; this projector never edits tests/config or runs user C#."
+                "The caller must explicitly attach reviewed mappings; this projector never edits tests/config or runs user C#.",
+                "External exception propagation is analyzed through exact in-scope Roslyn call symbols only; external assemblies and virtual/interface/delegate dispatch remain unverified."
             });
     }
 
