@@ -396,6 +396,31 @@ public static partial class SemanticPomActionProjector
             }
         }
 
+        if (requireVerifiedAsyncCount)
+        {
+            // Constructor, property getter, field initializer and other
+            // out-of-method calls are not represented by the method-edge
+            // traversal. A relevant call at one of those sites is NOT
+            // evidence that the only known NUnit path is complete.
+            foreach (var tree in trees)
+            {
+                cancel.ThrowIfCancellationRequested();
+                var semantic = compilation.GetSemanticModel(tree, true);
+                foreach (var invocation in tree.GetRoot(cancel)
+                    .DescendantNodes().OfType<InvocationExpressionSyntax>())
+                {
+                    if (semantic.GetSymbolInfo(invocation).Symbol
+                        is not IMethodSymbol invoked
+                        || !visited.Contains(invoked.OriginalDefinition))
+                        continue;
+                    if (!allCalls.Any(site =>
+                        site.Site.SyntaxTree == invocation.SyntaxTree
+                        && site.Site.Span == invocation.Span))
+                        Block("POM_EXTERNAL_ASYNC_UNCAPTURED_CALL", invocation,
+                            "An invocation from a constructor, initializer or another non-method scope reaches the candidate chain; no partial async contract is safe.");
+                }
+            }
+        }
         if (endpoints != 1 || candidates.Count != 1)
             Block("POM_EXTERNAL_CONTRACT_PATH_CARDINALITY", root.Method,
                 "Exactly one statically confirmed external NUnit/TestBase catch path is required; missing or multiple paths are blocked.");
