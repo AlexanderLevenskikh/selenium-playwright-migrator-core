@@ -41,6 +41,14 @@ public sealed record PomExternalFixtureLifecycleCandidate(
     public bool FaultWitnessSourceOnly { get; init; }
     public bool RealCleanupFailureCertified { get; init; }
     public bool OsProcessAncestryCertified { get; init; }
+    public bool TypedTargetClosedTearDownSourceOnly { get; init; }
+    public bool PageTargetClosedCatchGuarded { get; init; }
+    public bool ContextTargetClosedCatchGuarded { get; init; }
+    public bool TestFailurePrecedenceOnlyForTargetClosed { get; init; }
+    public string PageTargetClosedCatchSha256 { get; init; } = "";
+    public string ContextTargetClosedCatchSha256 { get; init; } = "";
+    public int PageTargetClosedCatchLine { get; init; }
+    public int ContextTargetClosedCatchLine { get; init; }
 }
 
 public sealed record PomExternalExceptionContractPlan(
@@ -138,6 +146,20 @@ public sealed partial class MigrationEngine
             cancellationToken, true, contextField, browserField,
             playwrightField, true, true, true);
 
+    /// <summary>
+    /// Preview.46: exact typed real Playwright TargetClosedException only,
+    /// per-test NUnit TearDown Page/Context, never auto-applied or executed.
+    /// </summary>
+    public PomExternalExceptionContractPlan PlanPomTypedTargetClosedTearDown(
+        string sourceDirectory, string sourceType, string sourceMethod,
+        string expectedSourceTreeHash, string pageField, string contextField,
+        string browserField, string playwrightField,
+        int sourceLine = 0, CancellationToken cancellationToken = default)
+        => PlanExternalCatchCore(sourceDirectory, sourceType, sourceMethod,
+            expectedSourceTreeHash, sourceLine, true, pageField,
+            cancellationToken, true, contextField, browserField,
+            playwrightField, true, true, true, true);
+
     private PomExternalExceptionContractPlan PlanExternalCatchCore(
         string sourceDirectory, string sourceType, string sourceMethod,
         string expectedSourceTreeHash, int sourceLine, bool verifiedAsyncCount,
@@ -147,7 +169,8 @@ public sealed partial class MigrationEngine
         string explicitPlaywrightReceiver = "",
         bool requireFailureAtomic = false,
         bool requireSafeDiagnostics = false,
-        bool requireFaultWitness = false)
+        bool requireFaultWitness = false,
+        bool requireTypedTargetClosedTearDown = false)
     {
         if (string.IsNullOrWhiteSpace(expectedSourceTreeHash))
             throw new ArgumentException(
@@ -195,7 +218,8 @@ public sealed partial class MigrationEngine
             requireFixtureLifecycle, explicitContextReceiver,
             explicitBrowserReceiver, explicitPlaywrightReceiver,
             requireFailureAtomic, requireSafeDiagnostics,
-            requireFaultWitness);
+            requireFaultWitness,
+            requireTypedTargetClosedTearDown);
         if (inspector.Inspect(root, cancellationToken: cancellationToken)
             .SourceTreeHash != expectedSourceTreeHash)
             throw new InvalidOperationException(
@@ -254,7 +278,23 @@ public sealed partial class MigrationEngine
                     SourceSinkNotRebound = result.FixtureLifecycle.SourceSinkNotRebound,
                     FaultWitnessSourceOnly = result.FixtureLifecycle.FaultWitnessSourceOnly,
                     RealCleanupFailureCertified = result.FixtureLifecycle.RealCleanupFailureCertified,
-                    OsProcessAncestryCertified = result.FixtureLifecycle.OsProcessAncestryCertified
+                    OsProcessAncestryCertified = result.FixtureLifecycle.OsProcessAncestryCertified,
+                    TypedTargetClosedTearDownSourceOnly =
+                        result.FixtureLifecycle.TypedTargetClosedTearDownSourceOnly,
+                    PageTargetClosedCatchGuarded =
+                        result.FixtureLifecycle.PageTargetClosedCatchGuarded,
+                    ContextTargetClosedCatchGuarded =
+                        result.FixtureLifecycle.ContextTargetClosedCatchGuarded,
+                    TestFailurePrecedenceOnlyForTargetClosed =
+                        result.FixtureLifecycle.TestFailurePrecedenceOnlyForTargetClosed,
+                    PageTargetClosedCatchSha256 =
+                        result.FixtureLifecycle.PageTargetClosedCatchSha256,
+                    ContextTargetClosedCatchSha256 =
+                        result.FixtureLifecycle.ContextTargetClosedCatchSha256,
+                    PageTargetClosedCatchLine =
+                        result.FixtureLifecycle.PageTargetClosedCatchLine,
+                    ContextTargetClosedCatchLine =
+                        result.FixtureLifecycle.ContextTargetClosedCatchLine
                 }
         };
     }
