@@ -160,7 +160,7 @@ public sealed class PomFlowSourceInspector
                 { Expression: IdentifierNameSyntax nav },
                 "P50_NAVIGATION_CALL_UNPROVEN");
             var navMember = (MemberAccessExpressionSyntax)opened.Expression;
-            var navProperty = nav.Identifier.ValueText;
+            var navProperty = ((IdentifierNameSyntax)((MemberAccessExpressionSyntax)opened.Expression).Expression).Identifier.ValueText;
             var diProp = Property(baseType, navProperty);
             Require(diProp.ExpressionBody?.Expression is InvocationExpressionSyntax diCall
                 && diCall.Expression is MemberAccessExpressionSyntax
