@@ -20,7 +20,7 @@ public sealed record PomFlowSourcePlan(
     public string Execution => "read_only_not_run";
     public IReadOnlyList<string> Limitations => new[] {
         "Exact local C# syntax/declaration flow only; external DI container and reflection factories are not resolved.",
-        "Source Navigation URL expression and Thread.Sleep are recorded as obligations, never translated or guessed.",
+        "Source navigation URL expression and timing are recorded as obligations, never translated or guessed.",
         "ComboBox clicks, input, wait and confirmation are lexical source effects, not a proven Playwright action sequence.",
         "Loader retry/catch/reload and failure path need independent timing, exception and browser validation.",
         "Table ElementAt/Be/Contain are source assertion obligations; DOM, locator uniqueness and assertion semantics are unverified.",
