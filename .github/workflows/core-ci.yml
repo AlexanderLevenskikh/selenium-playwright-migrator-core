@@ -205,7 +205,7 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview46-only
       - name: preview.47 source-owned OneTimeTearDown Browser CloseAsync/Dispose AST
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview47-only
-      - name: preview.50 full-graph source-only navigation DI ComboBox Loader table AST and 12 negatives
+      - name: preview.50 full-graph source-only navigation DI ComboBox Loader table AST and 14 negatives
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview50-only
       - name: Retain preview.50 public synthetic source-only SHA witness
         if: always()
