@@ -131,14 +131,14 @@ internal static class PomPreview50SourceFlowSmoke
                 && plan.TargetStatus=="blocked"
                 && plan.SourceTreeHash==original
                 && plan.SchemaVersion=="migrator-pom-source-flow/v1"
-                && plan.Witnesses.Count==6 && plan.Blockers.Count==0
+                && plan.Witnesses.Count==5 && plan.Blockers.Count==0
                 && plan.Witnesses.All(x=>x.Sha256.Length==64 && x.SourceLine>0)
                 && plan.Witnesses.Select(x=>x.Role).SequenceEqual(new[]{
                     "navigation_di_factory_and_page_alias",
                     "combo_order_filter_confirmation",
                     "combo_open_helper_not_inlined",
                     "loader_bounded_retry_conditional_reload_failure",
-                    "table_indexed_immediate_assertions" }.Append("UNREACHABLE"))==false
+                    "table_indexed_immediate_assertions" })
                 && !plan.CanAutoApply && !plan.RuntimeVerified
                 && plan.Execution=="read_only_not_run",
                 "positive source evidence was not accepted or target was auto-approved");
