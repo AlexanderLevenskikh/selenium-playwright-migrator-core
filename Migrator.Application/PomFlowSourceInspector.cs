@@ -294,8 +294,8 @@ public sealed class PomFlowSourceInspector
                 && bound.Token.Value is int limit && limit >= 1 && limit <= 10
                 && numeric[1].Variables[0].Identifier.ValueText == "attempts"
                 && numeric[1].Variables[0].Initializer?.Value
-                    is LiteralExpressionSyntax initial
-                && initial.Token.Value is int initialCount && initialCount == 0,
+                    is LiteralExpressionSyntax initialLiteral
+                && initialLiteral.Token.Value is int initialCount && initialCount == 0,
                 "P50_LOADER_BOUND_NOT_STATIC");
             Require(whiles.Length == 1
                 && whiles[0].Condition is BinaryExpressionSyntax guard
