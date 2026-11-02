@@ -1289,3 +1289,33 @@ claim about other Playwright versions, arbitrary callbacks, custom
 framework hooks, browser race conditions, unreturned resources or
 whole-OS absence of orphan processes. Existing preview.40–46 tools are
 unchanged; preview.47 stays opt-in, `requires_review`, `CanAutoApply=false`.
+
+## P1 preview.50-A — source dependency flow before any real migration
+
+The opt-in `PomFlowSourceInspector.Inspect(sourceDirectory, fixtureType,
+sourceMethod, exactSourceTreeHash)` follows an **exact, constrained C# source
+shape** from an NUnit test through its local `[SetUp]`, TestBase DI getter,
+Navigation generic page factory, Page Object member types, ComboBox input/
+filter/confirmation, bounded Loader retry/failure path and immediate indexed
+table assertions. Only SHA-bound method/source operation witnesses are
+returned; the output contains **no target statements, inferred selectors,
+navigation URLs or timing fixes**. Its target status is always `blocked`,
+even when source structure is `source_verified_requires_review`.
+
+A matching source chain is useful because it replaces opaque "unknown POM
+method" with specific source obligations: passed-in ComboBox values, deferred
+Open/click/confirmation, explicit setup alias lifetime, bounded retries and
+conditional reload, exact table indices and Be/Contain intent. It does not
+prove that a Selenium source factory can be used for Playwright or that
+Tabular DOM, application auth, external DI/ControlFactory, NUnit runtime,
+browser origin and timing are equivalent. Unknown/modified source and any
+shape outside this narrow domain return `blocked` with **no partial
+witnesses**. Existing migration preview paths and TODO counts are
+unmodified; `CanAutoApply=false` and runtime remains `not_run`.
+
+Core CI includes a public fictitious NUnit/POM flow with two table
+assertions and strict positive/negative/stale-source controls on Linux and
+Windows. Private project inputs must only be inspected on a trusted local
+machine, never uploaded to Actions. MCP presents only SHA and proof counts,
+not original source bytes or selectors. Source acceptance is a distinct
+gate from target-project build and Chromium equivalence.
