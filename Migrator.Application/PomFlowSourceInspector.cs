@@ -248,10 +248,27 @@ public sealed class PomFlowSourceInspector
                 .Select(x => x == null ? "" : NameOfCall(x))
                 .SequenceEqual(expectedCombo, StringComparer.Ordinal)
                 && Calls(input).Any(c => NameOfCall(c) == "Single")
-                && Calls(input).Any(c => NameOfCall(c) == "Substring"),
+                && Calls(input).Any(c => NameOfCall(c) == "Substring")
+                && Calls(input).Any(c => NameOfCall(c) == "ClearAndInputText"
+                    && c.ArgumentList.Arguments.Count == 1
+                    && c.ArgumentList.Arguments[0].Expression
+                        is IdentifierNameSyntax typedValue
+                    && typedValue.Identifier.ValueText ==
+                        input.ParameterList.Parameters[0].Identifier.ValueText)
+                && Calls(input).Any(c => NameOfCall(c) == "Substring"
+                    && c.ArgumentList.Arguments.Count == 1
+                    && c.ArgumentList.Arguments[0].Expression
+                        is IdentifierNameSyntax filteredValue
+                    && filteredValue.Identifier.ValueText ==
+                        input.ParameterList.Parameters[0].Identifier.ValueText),
                 "P50_COMBO_ORDER_OR_FILTER_UNPROVEN");
             // The Open() helper may have additional effects, never erase it.
             var comboOpen = Method(combo, "Open");
+            Require(comboOpen.ParameterList.Parameters.Count == 0
+                && comboOpen.Body!.Statements.Count == 1
+                && Inv(comboOpen.Body.Statements[0]) is InvocationExpressionSyntax openCall
+                && NameOfCall(openCall) == "Click",
+                "P50_COMBO_OPEN_EFFECTS_UNPROVEN");
             Add("combo_order_filter_confirmation", input, 5);
             Add("combo_open_helper_not_inlined", comboOpen, comboOpen.Body!.Statements.Count);
 
@@ -266,17 +283,53 @@ public sealed class PomFlowSourceInspector
             var loaderMethod = Method(loader, "ValidateLoading");
             var whiles = loaderMethod.DescendantNodes()
                 .OfType<WhileStatementSyntax>().ToArray();
+            var numeric = loaderMethod.Body!.Statements
+                .OfType<LocalDeclarationStatementSyntax>()
+                .Select(x => x.Declaration).ToArray();
+            Require(numeric.Length == 2
+                && numeric.All(x => x.Variables.Count == 1)
+                && numeric[0].Variables[0].Identifier.ValueText == "maxAttempts"
+                && numeric[0].Variables[0].Initializer?.Value
+                    is LiteralExpressionSyntax bound
+                && bound.Token.Value is int limit && limit >= 1 && limit <= 10
+                && numeric[1].Variables[0].Identifier.ValueText == "attempts"
+                && numeric[1].Variables[0].Initializer?.Value
+                    is LiteralExpressionSyntax initial
+                && initial.Token.Value is int initialCount && initialCount == 0,
+                "P50_LOADER_BOUND_NOT_STATIC");
             Require(whiles.Length == 1
                 && whiles[0].Condition is BinaryExpressionSyntax guard
                 && guard.IsKind(SyntaxKind.LessThanExpression)
+                && guard.Left is IdentifierNameSyntax counter
+                && counter.Identifier.ValueText == "attempts"
+                && guard.Right is IdentifierNameSyntax max
+                && max.Identifier.ValueText == "maxAttempts"
                 && whiles[0].Statement is TryStatementSyntax retry
                 && retry.Catches.Count == 1
                 && retry.Catches[0].Declaration?.Type.ToString()
                     == "WebDriverTimeoutException"
-                && retry.Block.Statements.Any(s => s is IfStatementSyntax)
+                && retry.Block.Statements.OfType<IfStatementSyntax>()
+                    .Any(i => Calls(i.Statement).Any(c =>
+                        NameOfCall(c) == "ExecuteJs"
+                        && c.ArgumentList.Arguments.Count == 1
+                        && c.ArgumentList.Arguments[0].Expression
+                            is LiteralExpressionSyntax script
+                        && script.IsKind(SyntaxKind.StringLiteralExpression)))
                 && retry.Block.DescendantNodes().OfType<BreakStatementSyntax>().Any()
-                && Calls(retry.Block).Any(c => NameOfCall(c) == "ExecuteJs")
-                && Calls(retry.Catches[0]).Any(c => NameOfCall(c) == "Fail"),
+                && retry.Catches[0].Block.Statements.Count == 2
+                && retry.Catches[0].Block.Statements[0] is ExpressionStatementSyntax
+                    { Expression: PostfixUnaryExpressionSyntax inc }
+                && inc.IsKind(SyntaxKind.PostIncrementExpression)
+                && inc.Operand is IdentifierNameSyntax incremented
+                && incremented.Identifier.ValueText == "attempts"
+                && retry.Catches[0].Block.Statements[1] is IfStatementSyntax failure
+                && failure.Condition is BinaryExpressionSyntax equal
+                && equal.IsKind(SyntaxKind.EqualsExpression)
+                && equal.Left is IdentifierNameSyntax leftCount
+                && leftCount.Identifier.ValueText == "attempts"
+                && equal.Right is IdentifierNameSyntax rightBound
+                && rightBound.Identifier.ValueText == "maxAttempts"
+                && Calls(failure.Statement).Any(c => NameOfCall(c) == "Fail"),
                 "P50_LOADER_RETRY_OR_FAILURE_UNPROVEN");
             Add("loader_bounded_retry_conditional_reload_failure", loaderMethod, 1);
 
