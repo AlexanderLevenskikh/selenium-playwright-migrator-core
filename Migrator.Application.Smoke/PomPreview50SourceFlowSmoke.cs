@@ -182,6 +182,11 @@ internal static class PomPreview50SourceFlowSmoke
             Negative("extra test effect",
                 "page.Filter.InputAndSelect(\"sample\");",
                 "page.Filter.InputAndSelect(\"sample\"); UnverifiedEffect();");
+            Negative("unbound control factory",
+                "Filter = factory.CreateControl<ComboInput>(selector);",
+                "Filter = factory.CreateControl<OtherControl>(selector);");
+            Negative("duplicate page assignment",
+                "page = selected;","page = selected; page = selected;");
             Write(Source);
             Must(Hash()==original,"source not restored");
             var badUnknown=Plan(original,"MissingTest");
@@ -209,7 +214,7 @@ internal static class PomPreview50SourceFlowSmoke
                     roleHashes=plan.Witnesses.Select(w=>new {
                         w.Role,w.Sha256,w.SourceLine,w.SourceOperations
                     }).ToArray(),
-                    negativeControlsPassed=12,
+                    negativeControlsPassed=14,
                     unknownMethodBlocked=true,
                     staleShaRejected=true,
                     sourceBytesUnchanged=true,
