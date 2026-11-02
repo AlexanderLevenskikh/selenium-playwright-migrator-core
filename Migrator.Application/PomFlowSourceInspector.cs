@@ -182,8 +182,9 @@ public sealed class PomFlowSourceInspector
             Require(field.Length == 1 && field[0].Declaration.Variables.Count == 1,
                 "P50_FIXTURE_PAGE_FIELD_UNPROVEN");
             var pageType = Name(field[0].Declaration.Type);
-            var returnStmt = openPage.Body!.Statements.SingleOrDefault()
-                as ReturnStatementSyntax;
+            Require(openPage.Body!.Statements.Count == 1,
+                "P50_NAVIGATION_RETURN_SHAPE_UNPROVEN");
+            var returnStmt = openPage.Body.Statements[0] as ReturnStatementSyntax;
             Require(returnStmt?.Expression is InvocationExpressionSyntax navReturn
                 && navReturn.Expression is GenericNameSyntax
                     { Identifier.ValueText: "OpenPage" } genericCall
@@ -217,8 +218,13 @@ public sealed class PomFlowSourceInspector
                 && rhs.Identifier.ValueText == localName,
                 "P50_SETUP_PAGE_ALIAS_UNPROVEN");
             var page = Unique(pageType);
-            Require(page.Members.OfType<ConstructorDeclarationSyntax>().Count() == 1,
+            var constructors=page.Members.OfType<ConstructorDeclarationSyntax>().ToArray();
+            Require(constructors.Length == 1 && constructors[0].Body != null,
                 "P50_PAGE_OBJECT_CONSTRUCTOR_UNPROVEN");
+            Require(fixture.DescendantNodes().OfType<AssignmentExpressionSyntax>()
+                .Count(a => a.Left is IdentifierNameSyntax left
+                    && left.Identifier.ValueText == "page") == 1,
+                "P50_FIXTURE_PAGE_WRITES_UNPROVEN");
             Add("navigation_di_factory_and_page_alias", hook, 3);
 
             var steps = test.Body!.Statements.Select(Inv).ToArray();
@@ -237,6 +243,27 @@ public sealed class PomFlowSourceInspector
                 ((MemberAccessExpressionSyntax)steps[0]!.Expression).Expression)
                 .Name.Identifier.ValueText;
             var comboProp = Property(page, comboPropertyName);
+            // Verify the Page Object actually binds all three source control
+            // properties from its factory, without translating their selectors.
+            foreach (var member in new[] {
+                comboPropertyName, "Loader", "Table"
+            })
+            {
+                var declared=Property(page,member);
+                var bindings=constructors[0].Body!.DescendantNodes()
+                    .OfType<AssignmentExpressionSyntax>()
+                    .Where(a => a.Left is IdentifierNameSyntax lhs
+                        && lhs.Identifier.ValueText == member).ToArray();
+                Require(bindings.Length==1
+                    && bindings[0].Right is InvocationExpressionSyntax make
+                    && make.Expression is MemberAccessExpressionSyntax
+                        { Name: GenericNameSyntax genericControl }
+                    && genericControl.Identifier.ValueText == "CreateControl"
+                    && genericControl.TypeArgumentList.Arguments.Count == 1
+                    && genericControl.TypeArgumentList.Arguments[0].ToString()
+                        == Name(declared.Type),
+                    "P50_PAGE_CONTROL_FACTORY_BINDING_UNPROVEN");
+            }
             var combo = Unique(Name(comboProp.Type));
             var input = Method(combo, "InputAndSelect");
             Require(input.ParameterList.Parameters.Count == 1
