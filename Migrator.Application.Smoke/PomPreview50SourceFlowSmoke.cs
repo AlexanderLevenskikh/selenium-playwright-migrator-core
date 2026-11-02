@@ -197,6 +197,26 @@ internal static class PomPreview50SourceFlowSmoke
                 e.Message.StartsWith("P50_STALE_SOURCE_TREE_HASH",StringComparison.Ordinal)){}
             Write(Source);
             Must(Hash()==original,"source mutated by planner");
+            var output=Path.Combine("artifacts","pom-preview50");
+            Directory.CreateDirectory(output);
+            File.WriteAllText(Path.Combine(output,"receipt.json"),
+                System.Text.Json.JsonSerializer.Serialize(new {
+                    schema="migrator-preview50-public-source-flow-evidence/v1",
+                    sourceTreeHash=original,
+                    sourceStatus=plan.Status,
+                    targetStatus=plan.TargetStatus,
+                    witnessCount=plan.Witnesses.Count,
+                    roleHashes=plan.Witnesses.Select(w=>new {
+                        w.Role,w.Sha256,w.SourceLine,w.SourceOperations
+                    }).ToArray(),
+                    negativeControlsPassed=12,
+                    unknownMethodBlocked=true,
+                    staleShaRejected=true,
+                    sourceBytesUnchanged=true,
+                    canAutoApply=false,
+                    runtime="not_run",
+                    privateUserSource="not_used"
+                },new System.Text.Json.JsonSerializerOptions { WriteIndented=true })+"\n");
         }
         finally { Directory.Delete(dir,true); }
     }
