@@ -207,6 +207,13 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview47-only
       - name: preview.50 full-graph source-only navigation DI ComboBox Loader table AST and 12 negatives
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview50-only
+      - name: Retain preview.50 public synthetic source-only SHA witness
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview50-source-flow-${{ matrix.os }}
+          path: artifacts/pom-preview50/receipt.json
+          if-no-files-found: warn
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})
