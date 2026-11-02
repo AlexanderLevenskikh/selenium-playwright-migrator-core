@@ -114,6 +114,10 @@ internal static class PomPreview50SourceFlowSmoke
         Directory.CreateDirectory(dir);
         try
         {
+            // The public fixture is intentionally byte-identical across
+            // checkout core.autocrlf settings on Windows and Linux.
+            var canonical=Source.Replace("\r\n","\n",StringComparison.Ordinal)
+                .Replace("\r","\n",StringComparison.Ordinal);
             var path = Path.Combine(dir,"PublicFixture.cs");
             void Write(string text) => File.WriteAllText(path, text);
             string Hash()=>new PomSourceInspector().Inspect(dir).SourceTreeHash;
@@ -124,7 +128,7 @@ internal static class PomPreview50SourceFlowSmoke
             {
                 if(!actual)throw new InvalidOperationException("P50_SOURCE_FLOW: "+reason);
             }
-            Write(Source);
+            Write(canonical);
             var original=Hash();
             var plan=Plan(original);
             Must(plan.Status=="source_verified_requires_review"
@@ -147,10 +151,10 @@ internal static class PomPreview50SourceFlowSmoke
 
             void Negative(string label, string old, string changed)
             {
-                Must(Source.Contains(old,StringComparison.Ordinal),
+                Must(canonical.Contains(old,StringComparison.Ordinal),
                     "missing fixture control "+label);
-                var mutated=Source.Replace(old,changed,StringComparison.Ordinal);
-                Must(mutated!=Source,"ineffective control "+label);
+                var mutated=canonical.Replace(old,changed,StringComparison.Ordinal);
+                Must(mutated!=canonical,"ineffective control "+label);
                 Write(mutated);
                 var bad=Plan(Hash());
                 Must(bad.Status=="blocked" && bad.TargetStatus=="blocked"
@@ -187,7 +191,7 @@ internal static class PomPreview50SourceFlowSmoke
                 "Filter = factory.CreateControl<OtherControl>(selector);");
             Negative("duplicate page assignment",
                 "page = selected;","page = selected; page = selected;");
-            Write(Source);
+            Write(canonical);
             Must(Hash()==original,"source not restored");
             var badUnknown=Plan(original,"MissingTest");
             Must(badUnknown.Status=="blocked" && badUnknown.Witnesses.Count==0,
@@ -200,7 +204,7 @@ internal static class PomPreview50SourceFlowSmoke
             }
             catch (InvalidOperationException e) when(
                 e.Message.StartsWith("P50_STALE_SOURCE_TREE_HASH",StringComparison.Ordinal)){}
-            Write(Source);
+            Write(canonical);
             Must(Hash()==original,"source mutated by planner");
             var output=Path.Combine("artifacts","pom-preview50");
             Directory.CreateDirectory(output);
