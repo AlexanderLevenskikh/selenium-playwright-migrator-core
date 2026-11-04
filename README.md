@@ -82,6 +82,32 @@ keeps the original failing release under the same Linux/Windows gate; the
 failed run did not retain a browser binary hash, so this is a historical
 release replay, not a byte-for-byte reconstruction of its environment.
 
+
+### P1 Windows host-owned Job Object feasibility — separate from P47
+
+After the **unchanged** real Chromium P47 gate, the Windows workflow runs
+\`scripts/p2_preview47_windows_job_object_probe.py\` as an independent
+**synthetic** process-control experiment, including when P47 fails. The test
+creates an unnamed Job Object with verified \`KILL_ON_JOB_CLOSE\`, disallows
+breakaway, attaches a gate-blocked test parent *before* it creates a child,
+verifies the grandchild's real Win32 job membership, proves the grandchild
+remains alive after its parent dies, then confirms termination on closing the
+last job handle by checking the exact original native process identity and
+signaled wait state. It reports \`job-object-probe.json\` with SHA256 manifest.
+If assignment fails because the runner has incompatible job constraints,
+the experiment fails explicitly; it never assumes Windows job eligibility.
+
+This proves only a host-owned **mechanism for separately supervised trees**.
+It does not place Playwright/Chromium into that job, repair the original
+Browser.CloseAsync/Dispose sequence, or erase the historic Windows orphan
+survivors (PIDs 5936/9024 with their original start identities). A future
+production design must create a real supervised process without an assignment
+race (e.g. suspended process start + assign before resume), verify child
+membership, account for nested jobs and breakaway, and run the original
+12-second leak observation *before* last-handle close. Host termination must
+be reported as a separate post-gate cleanup, never as an unassisted PASS.
+Issue #59 and the draft release gate remain open pending real Chromium proof.
+
 After the original five stages, Windows CI runs a fixed diagnostic series of
 ten additional cycles of those same five stages on the pinned browser. Each
 cycle has separate ready/ack files, TRX, process observations and hashes. The

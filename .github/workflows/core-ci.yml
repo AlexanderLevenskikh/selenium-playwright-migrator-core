@@ -633,6 +633,9 @@ jobs:
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
           P47_DIAGNOSTIC_CYCLES: ${{ runner.os == 'Windows' && '10' || '0' }}
         run: python scripts/p2_preview47_one_time_real_chromium.py
+      - name: P1 independent Windows Job Object host-owned containment control
+        if: ${{ always() && matrix.os == 'windows-latest' }}
+        run: python scripts/p2_preview47_windows_job_object_probe.py
       - name: Retain original TRX, exception classification and owned OS ancestry
         if: always()
         uses: actions/upload-artifact@v4
