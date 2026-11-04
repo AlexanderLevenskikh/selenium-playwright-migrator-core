@@ -195,7 +195,10 @@ class OriginalGateIntegrationTests(unittest.TestCase):
         def table(chrome):
             calls["snapshot"] += 1
             data = baseline if calls["snapshot"] == 1 else active if calls["snapshot"] == 2 else after
-            return data, {pid: evidence.native_creation_utc(pid * 1000).isoformat() for pid in data}
+            return data, {pid: {"creationUtc": evidence.native_creation_utc(pid * 1000).isoformat(),
+                               "chromiumRole": "utility" if pid == 30 else "root",
+                               "chromiumUtilitySubtype": "network.mojom.NetworkService" if pid == 30 else None}
+                          for pid in data}
 
         def inspect(pid, expected=None):
             state = "live" if calls["snapshot"] <= 2 else native_state if pid == 30 else "absent"
@@ -252,6 +255,10 @@ class OriginalGateIntegrationTests(unittest.TestCase):
         self.assertEqual(report["status"], "failed")
         self.assertEqual(len(report["nativeClassificationOfOriginalPresence"]["live"]), 1)
         self.assertEqual({x["observedPid"] for x in report["observedOwnedAncestry"]}, {20, 30})
+        survivor = report["finalObservedProcesses"][1]
+        self.assertEqual(survivor["chromiumRole"], "utility")
+        self.assertEqual(survivor["chromiumUtilitySubtype"], "network.mojom.NetworkService")
+        self.assertTrue(survivor["executableMatchesConfiguredChrome"])
         self.assertTrue(report["primaryTestFailurePreserved"])
 
     def test_original_success_remains_success_without_host_browser_cleanup(self):
@@ -260,6 +267,80 @@ class OriginalGateIntegrationTests(unittest.TestCase):
         self.assertEqual(report["originalPresenceGate"], "passed")
         self.assertEqual(report["hostOwnedBrowserCleanup"], "not_attempted")
         self.assertLess(calls["time"], 1)
+
+
+class FixedDiagnosticSeriesTests(unittest.TestCase):
+    def test_default_zero_and_explicit_limit_prevent_unbounded_runs(self):
+        with mock.patch.dict(p47.os.environ, {}, clear=True):
+            self.assertEqual(p47.diagnostic_cycle_count(), 0)
+        for raw in ("-1", "11", "invalid", "1.5"):
+            with self.subTest(raw=raw), mock.patch.dict(p47.os.environ, {"P47_DIAGNOSTIC_CYCLES": raw}):
+                with self.assertRaisesRegex(AssertionError, "MUST_BE_0_TO_10"):
+                    p47.diagnostic_cycle_count()
+        with mock.patch.dict(p47.os.environ, {"P47_DIAGNOSTIC_CYCLES": "10"}):
+            self.assertEqual(p47.diagnostic_cycle_count(), 10)
+
+    def test_fixed_series_isolated_and_first_failure_preserves_primary_and_hashes(self):
+        for fail_at in (None, 8):
+            with self.subTest(fail_at=fail_at), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary)
+                primary = b'{"originalFiveStages":"passed"}\n'
+                (directory / "summary.json").write_bytes(primary)
+                calls = []
+                failure = RuntimeError("P47_TEST_FIRST_DIAGNOSTIC_FAILURE")
+
+                def probe(stage, expected, disconnect, project, folder, chrome, url):
+                    # The fixed sample plan and primary evidence exist before
+                    # the first additional invocation, including on failure.
+                    plan = json.loads((directory / "diagnostic-summary.json").read_text())
+                    self.assertEqual(plan["requestedCycles"], 10)
+                    self.assertEqual(plan["plannedProbes"], 50)
+                    self.assertEqual((directory / "summary.json").read_bytes(), primary)
+                    for name in ("ready-" + stage, "ack-" + stage, stage + ".trx"):
+                        path = folder / name
+                        self.assertFalse(path.exists(), "stale ready/ack/TRX reused")
+                        path.write_text(folder.name + ":" + stage)
+                    calls.append((folder.name, stage))
+                    audit = evidence.StageEvidence(folder, stage, expected, disconnect)
+                    if len(calls) == fail_at:
+                        audit.fail(str(failure))
+                        raise failure
+                    result = {"actual": expected, "originalPresenceGate": "passed",
+                              "survivingObservedProcessCount": 0}
+                    audit.finish(result)
+                    return result
+
+                with mock.patch.object(p47, "run_probe", side_effect=probe):
+                    if fail_at is not None:
+                        with self.assertRaises(RuntimeError) as caught:
+                            p47.run_diagnostic_cycles(10, directory, directory, "chrome", "local")
+                        self.assertIs(caught.exception, failure)
+                    else:
+                        p47.run_diagnostic_cycles(10, directory, directory, "chrome", "local")
+                planned = [("cycle-" + str(index).zfill(3), stage)
+                           for index in range(1, 11) for stage, _, _ in p47.STAGES]
+                expected_calls = fail_at or 50
+                self.assertEqual(calls, planned[:expected_calls])
+                self.assertEqual((directory / "summary.json").read_bytes(), primary)
+                result = json.loads((directory / "diagnostic-summary.json").read_text())
+                self.assertEqual(result["attemptedProbes"], expected_calls)
+                self.assertEqual(result["completedProbes"], 7 if fail_at else 50)
+                self.assertEqual(result["completedCycles"], 1 if fail_at else 10)
+                self.assertEqual(result["status"], "failed" if fail_at else "passed")
+                self.assertEqual(result["primarySummarySha256"], hashlib.sha256(primary).hexdigest())
+                if fail_at:
+                    self.assertEqual(result["failureCycle"], 2)
+                    self.assertEqual(result["failureStage"], "disconnect_primary")
+                    self.assertFalse((directory / "diagnostic-cycles/cycle-003").exists())
+                    root_failure = json.loads((directory / "failure-summary.json").read_text())
+                    self.assertEqual(root_failure["failureScope"], "diagnostic_cycles")
+                    self.assertTrue((directory / "diagnostic-cycles/cycle-002/failure-summary.json").is_file())
+                manifest = json.loads((directory / "SHA256SUMS.json").read_text())
+                self.assertNotIn("SHA256SUMS.json", manifest)
+                self.assertIn("diagnostic-cycles/cycle-001/SHA256SUMS.json", manifest)
+                self.assertIn("diagnostic-cycles/cycle-002/ready-disconnect_primary", manifest)
+                for name, digest in manifest.items():
+                    self.assertEqual(hashlib.sha256((directory / name).read_bytes()).hexdigest(), digest)
 
 
 if __name__ == "__main__":

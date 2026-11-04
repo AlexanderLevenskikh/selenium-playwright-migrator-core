@@ -631,6 +631,7 @@ jobs:
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+          P47_DIAGNOSTIC_CYCLES: ${{ runner.os == 'Windows' && '10' || '0' }}
         run: python scripts/p2_preview47_one_time_real_chromium.py
       - name: Retain original TRX, exception classification and owned OS ancestry
         if: always()

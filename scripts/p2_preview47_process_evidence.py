@@ -35,11 +35,14 @@ def atomic_json(path, value):
 
 def write_manifest(evidence):
     evidence = Path(evidence)
-    files = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-             for p in sorted(evidence.iterdir())
-             if p.is_file() and p.name != "SHA256SUMS.json"
+    manifest_path = evidence / "SHA256SUMS.json"
+    # Child manifests contain only their own subtree, so including them in the
+    # root manifest has no self-reference. Paths remain portable on Windows.
+    files = {p.relative_to(evidence).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in sorted(evidence.rglob("*"))
+             if p.is_file() and p != manifest_path
              and not p.name.endswith(".tmp")}
-    atomic_json(evidence / "SHA256SUMS.json", files)
+    atomic_json(manifest_path, files)
 
 
 def utc_now():
@@ -133,7 +136,7 @@ class NativeWindowsProbe:
 
 
 def snapshot(chrome):
-    """Preserve P45's original identity and add unrounded CIM creation time."""
+    """Original identity plus unrounded time and sanitized role from one CIM read."""
     if os.name != "nt":
         return p45.snapshot(chrome), {}
     ps = r"""
@@ -152,7 +155,25 @@ def snapshot(chrome):
       if($null -ne $created) {
         $precise=$created.ToUniversalTime().ToString('o',[System.Globalization.CultureInfo]::InvariantCulture)
       }
-      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise"
+      $role=''
+      $subtype=''
+      if($kind -eq 'chrome') {
+        $role='unknown'
+        if($p.CommandLine) {
+          if($p.CommandLine -match '(?:^|\s)"?--type="?([A-Za-z0-9_.-]{1,96})"?(?=\s|$)') {
+            $role=$Matches[1]
+          } elseif($p.CommandLine -notmatch '(?:^|\s)"?--type(?:=|\s|"|$)') {
+            $role='root'
+          }
+          if($p.CommandLine -match '(?:^|\s)"?--utility-sub-type="?([A-Za-z0-9_.-]{1,96})"?(?=\s|$)') {
+            $subtype=$Matches[1]
+          } elseif($p.CommandLine -match '(?:^|\s)"?--utility-sub-type(?:=|\s|"|$)') {
+            $subtype='unknown'
+          }
+        }
+      }
+      # Never return raw command lines, URLs, profile directories or full paths.
+      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype"
     }
     """
     result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
@@ -162,11 +183,12 @@ def snapshot(chrome):
     data, precise = {}, {}
     for line in result.stdout.splitlines():
         fields = line.strip().split("|")
-        if len(fields) != 5 or not fields[0].isdigit() or not fields[1].isdigit():
+        if len(fields) != 7 or not fields[0].isdigit() or not fields[1].isdigit():
             continue
         pid = int(fields[0])
         data[pid] = (int(fields[1]), fields[2], fields[3])
-        precise[pid] = fields[4]
+        precise[pid] = {"creationUtc": fields[4], "chromiumRole": fields[5] or None,
+                        "chromiumUtilitySubtype": fields[6] or None}
     if not data:
         raise RuntimeError("P47_WINDOWS_CIM_RETURNED_EMPTY_PROCESS_TABLE")
     return data, precise
@@ -235,12 +257,18 @@ class StageEvidence:
     def records(self, data, precise, keys, bind=False):
         records = []
         for pid, start in sorted(keys):
+            metadata = precise.get(pid, {})
             row = {"pid": pid, "startIdentity": start,
                    "presentWithOriginalIdentity": pid in data and str(data[pid][1]) == start,
-                   "native": self.observe_native(pid, start, bind=bind, cim_creation_utc=precise.get(pid))}
+                   "native": self.observe_native(pid, start, bind=bind,
+                                                 cim_creation_utc=metadata.get("creationUtc"))}
             if pid in data:
                 row.update(parentPid=data[pid][0], currentStartIdentity=str(data[pid][1]),
-                           creationUtc=precise.get(pid), kind=data[pid][2])
+                           creationUtc=metadata.get("creationUtc"), kind=data[pid][2])
+                if data[pid][2] == "chrome":
+                    row.update(chromiumRole=metadata.get("chromiumRole") or "not_observed",
+                               chromiumUtilitySubtype=metadata.get("chromiumUtilitySubtype"),
+                               executableMatchesConfiguredChrome=True)
             records.append(row)
         return records
 
@@ -299,7 +327,7 @@ def run_windows_controls(evidence):
         row = before.get(process.pid)
         report["liveChildCim"] = {"present": row is not None,
             "startIdentity": str(row[1]) if row else None,
-            "creationUtc": before_precise.get(process.pid)}
+            "creationUtc": before_precise.get(process.pid, {}).get("creationUtc")}
         wrong = probe.inspect(process.pid, str(int(live["creationFileTime"]) + 1))
         report["identityMismatch"] = wrong
         atomic_json(path, report)
@@ -320,7 +348,7 @@ def run_windows_controls(evidence):
         same = row is not None and after_row is not None and str(row[1]) == str(after_row[1])
         report["exitedChildCim"] = {"present": after_row is not None,
             "startIdentity": str(after_row[1]) if after_row else None,
-            "creationUtc": after_precise.get(process.pid),
+            "creationUtc": after_precise.get(process.pid, {}).get("creationUtc"),
             "originalIdentityMatches": same,
             "oldPresenceGateWouldReject": same,
             "nativeWaitState": ended["state"]}

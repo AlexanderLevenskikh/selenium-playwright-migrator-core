@@ -82,6 +82,14 @@ keeps the original failing release under the same Linux/Windows gate; the
 failed run did not retain a browser binary hash, so this is a historical
 release replay, not a byte-for-byte reconstruction of its environment.
 
+After the original five stages, Windows CI runs a fixed diagnostic series of
+ten additional cycles of those same five stages on the pinned browser. Each
+cycle has separate ready/ack files, TRX, process observations and hashes. The
+first failure fails the job and retains all completed evidence; successes are
+never selected from retries. No cleanup, exception suppression or additional
+process-exit allowance is introduced. A clean bounded series establishes only
+the observations of that series, not the cause of the historical two-PID failure.
+
 ## Existing Playwright source guard (preview.3)
 
 This engine's production frontend migrates **Selenium C# NUnit inputs**. It must not re-migrate tests already written in Playwright .NET.

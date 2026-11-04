@@ -319,7 +319,103 @@ def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audi
         "P47_LIVE_OWNED_CHROME_DRIVER_NOT_OBSERVED")
     return result
 
+def diagnostic_cycle_count():
+    raw=os.environ.get("P47_DIAGNOSTIC_CYCLES","0")
+    try:
+        count=int(raw)
+    except (TypeError,ValueError):
+        raise AssertionError("P47_DIAGNOSTIC_CYCLES_MUST_BE_0_TO_10") from None
+    p37.check(0<=count<=10,"P47_DIAGNOSTIC_CYCLES_MUST_BE_0_TO_10")
+    return count
+
+def run_diagnostic_cycles(count,project,evidence,chrome,url):
+    """Fixed, predeclared observations; a failed probe is never retried."""
+    p37.check(isinstance(count,int) and 0<=count<=10,
+        "P47_DIAGNOSTIC_CYCLES_MUST_BE_0_TO_10")
+    primary=evidence/"summary.json"
+    p37.check(primary.is_file(),"P47_PRIMARY_SUMMARY_REQUIRED_BEFORE_DIAGNOSTIC")
+    report={
+        "schema":"migrator-preview47-fixed-diagnostic-cycles/v1",
+        "status":"running" if count else "not_requested",
+        "requestedCycles":count,"plannedProbes":count*len(STAGES),
+        "stagesPerCycle":[stage for stage,_,_ in STAGES],
+        "attemptedProbes":0,"completedProbes":0,"completedCycles":0,
+        "stopOnFirstFailure":True,"retryFailedProbes":False,
+        "primarySummary":"summary.json",
+        "primarySummarySha256":hashlib.sha256(primary.read_bytes()).hexdigest(),
+        "passiveWindowSeconds":p47e.PASSIVE_WINDOW_SECONDS,
+        "hostOwnedBrowserCleanup":"not_attempted",
+        "historicalWindowsFailureRootCause":"not_proven",
+        "startedAtUtc":p47e.utc_now(),"cycles":[]
+    }
+    path=evidence/"diagnostic-summary.json"
+
+    def persist():
+        p47e.atomic_json(path,report)
+        p47e.write_manifest(evidence)
+
+    # Persist the fixed sample size before any additional probe runs.
+    persist()
+    cycle_entry=None
+    stage_entry=None
+    try:
+        for index in range(1,count+1):
+            folder=evidence/"diagnostic-cycles"/("cycle-"+str(index).zfill(3))
+            relative=folder.relative_to(evidence).as_posix()
+            cycle_entry={"cycle":index,"status":"running",
+                "evidenceDirectory":relative,"stages":[]}
+            stage_entry=None
+            report["cycles"].append(cycle_entry)
+            # Existing ready/ack/TRX evidence must never authorize a new probe.
+            try:
+                folder.mkdir(parents=True,exist_ok=False)
+            except FileExistsError:
+                raise AssertionError("P47_DIAGNOSTIC_EVIDENCE_NOT_FRESH: "+relative) from None
+            persist()
+            for stage,expected,disconnect in STAGES:
+                stage_entry={"run":stage,"expected":expected,"status":"running",
+                    "processEvidence":relative+"/process-"+stage+".json"}
+                cycle_entry["stages"].append(stage_entry)
+                report["attemptedProbes"]+=1
+                persist()
+                # Same source fixture, HTTP endpoint, stages, fault and gate.
+                result=run_probe(stage,expected,disconnect,project,folder,chrome,url)
+                stage_entry.update(status="passed",actual=result["actual"],
+                    originalPresenceGate=result["originalPresenceGate"],
+                    survivingObservedProcessCount=result["survivingObservedProcessCount"])
+                report["completedProbes"]+=1
+                persist()
+            cycle_entry["status"]="passed"
+            report["completedCycles"]+=1
+            persist()
+        report["status"]="passed" if count else "not_requested"
+        report["finishedAtUtc"]=p47e.utc_now()
+        persist()
+        return report
+    except BaseException as error:
+        report.update(status="failed",failure=str(error),
+            finishedAtUtc=p47e.utc_now())
+        if cycle_entry is not None:
+            cycle_entry.update(status="failed",failure=str(error))
+            report["failureCycle"]=cycle_entry["cycle"]
+        if stage_entry is not None:
+            stage_entry.update(status="failed",failure=str(error))
+            report["failureStage"]=stage_entry["run"]
+        p47e.atomic_json(evidence/"failure-summary.json",{
+            "schema":report["schema"],"status":"failed",
+            "failureScope":"diagnostic_cycles","failure":str(error),
+            "failureCycle":report.get("failureCycle"),
+            "failureStage":report.get("failureStage"),
+            "diagnosticSummary":"diagnostic-summary.json",
+            "primarySummary":"summary.json",
+            "primarySummarySha256":report["primarySummarySha256"],
+            "rootCause":"not_proven_by_this_diagnostic",
+            "autoApply":False,"ArBilling":"not_run"})
+        persist()
+        raise
+
 def main():
+    diagnostic_cycles=diagnostic_cycle_count()
     repo=Path(__file__).resolve().parent.parent
     chrome=Path(os.environ["MIGRATOR_CHROME_BIN"])
     driver=Path(os.environ["MIGRATOR_CHROMEDRIVER_BIN"])
@@ -463,54 +559,60 @@ def main():
                     outcomes[stage]=run_probe(stage,expected,disconnect,
                         runtime,evidence,str(chrome),
                         "http://127.0.0.1:"+str(server.server_port)+"/")
+                # OS-specific observation must not be magically invented.
+                positives=[name for name,info in outcomes.items()
+                    if name.startswith("disconnect") and
+                        info["oneTimeCatchObserved"]]
+                # Browser.CloseAsync and IPlaywright.Dispose may simply not throw.
+                # Neither a test-only injection nor a generic failure is promoted
+                # to an observed Playwright API exception on either OS.
+                # Do not impose the PREVIOUS preview.45 Linux outcome on
+                # a newly observed preview.46 trial. A real exact-code handler
+                # invocation is a positive on either OS; report it as observed.
+                # The historical Linux not_observed receipt remains unchanged.
+                summary={
+                    "schema":"migrator-preview47-onetime-source-owned-nunit/v1",
+                    "sourceTreeHash":tree,"sourceFilesSha256":file_hash,
+                    "sourceContracts":verified,
+                    "chromeVersion":os.environ.get("MIGRATOR_CHROME_VERSION"),
+                    "driverVersion":os.environ.get("MIGRATOR_CHROMEDRIVER_VERSION"),
+                    "chromeSha256":hashlib.sha256(chrome.read_bytes()).hexdigest(),
+                    "outcomes":outcomes,
+                    "processObserverControls":process_controls,
+                    "originalPresenceGateUnchanged":True,
+                    "nativeLivenessIsDiagnosticOnly":True,
+                    "historicalWindowsFailureRootCause":"not_proven",
+                    "platformOneTimeTargetClosedObservation":
+                        "observed" if positives else "not_observed",
+                    "positiveStages":positives,
+                    "linuxHistoricalPreview45":"not_observed" if os.name!="nt" else "not_applicable",
+                    "osObservationIsMeasuredNotAssumed":True,
+                    "runtimeTargetAssemblyHasSelenium":False,
+                    "driverDisconnect":"actual observed node process killed",
+                    "sourceTearDownExactlyInserted":True,
+                    "primaryExceptionPrecedenceForTargetClosedOnly":True,
+                    "realBrowserCloseTargetClosed":
+                        "observed" if any(x["observedTargetClosedBrowser"]
+                            for x in outcomes.values()) else "not_observed",
+                    "realPlaywrightDisposeTargetClosed":
+                        "observed" if any(x["observedTargetClosedDispose"]
+                            for x in outcomes.values()) else "not_observed",
+                    "unrelatedCleanupErrors":"blocked_not_proven",
+                    "oneTimeTearDownFailures":"only_exact_targetclosed_source_admitted_other_blocked",
+                    "otherUnobservedOsProcesses":"not_verified",
+                    "autoApply":False,"ArBilling":"not_run"
+                }
+                p47e.atomic_json(evidence/"summary.json",summary)
+                p47e.write_manifest(evidence)
+                diagnostic=run_diagnostic_cycles(diagnostic_cycles,runtime,
+                    evidence,str(chrome),
+                    "http://127.0.0.1:"+str(server.server_port)+"/")
             finally:server.shutdown()
-        # OS-specific observation must not be magically invented.
-        positives=[name for name,info in outcomes.items()
-            if name.startswith("disconnect") and
-                info["oneTimeCatchObserved"]]
-        # Browser.CloseAsync and IPlaywright.Dispose may simply not throw.
-        # Neither a test-only injection nor a generic failure is promoted
-        # to an observed Playwright API exception on either OS.
-        # Do not impose the PREVIOUS preview.45 Linux outcome on
-        # a newly observed preview.46 trial. A real exact-code handler
-        # invocation is a positive on either OS; report it as observed.
-        # The historical Linux not_observed receipt remains unchanged.
-        summary={
-            "schema":"migrator-preview47-onetime-source-owned-nunit/v1",
-            "sourceTreeHash":tree,"sourceFilesSha256":file_hash,
-            "sourceContracts":verified,
-            "chromeVersion":os.environ.get("MIGRATOR_CHROME_VERSION"),
-            "driverVersion":os.environ.get("MIGRATOR_CHROMEDRIVER_VERSION"),
-            "chromeSha256":hashlib.sha256(chrome.read_bytes()).hexdigest(),
-            "outcomes":outcomes,
-            "processObserverControls":process_controls,
-            "originalPresenceGateUnchanged":True,
-            "nativeLivenessIsDiagnosticOnly":True,
-            "historicalWindowsFailureRootCause":"not_proven",
-            "platformOneTimeTargetClosedObservation":
-                "observed" if positives else "not_observed",
-            "positiveStages":positives,
-            "linuxHistoricalPreview45":"not_observed" if os.name!="nt" else "not_applicable",
-            "osObservationIsMeasuredNotAssumed":True,
-            "runtimeTargetAssemblyHasSelenium":False,
-            "driverDisconnect":"actual observed node process killed",
-            "sourceTearDownExactlyInserted":True,
-            "primaryExceptionPrecedenceForTargetClosedOnly":True,
-            "realBrowserCloseTargetClosed":
-                "observed" if any(x["observedTargetClosedBrowser"]
-                    for x in outcomes.values()) else "not_observed",
-            "realPlaywrightDisposeTargetClosed":
-                "observed" if any(x["observedTargetClosedDispose"]
-                    for x in outcomes.values()) else "not_observed",
-            "unrelatedCleanupErrors":"blocked_not_proven",
-            "oneTimeTearDownFailures":"only_exact_targetclosed_source_admitted_other_blocked",
-            "otherUnobservedOsProcesses":"not_verified",
-            "autoApply":False,"ArBilling":"not_run"
-        }
-        p47e.atomic_json(evidence/"summary.json",summary)
-        p47e.write_manifest(evidence)
         print("POM_PREVIEW47_REAL_ONE_TIME_CLEANUP_OBSERVATION_PASSED")
         print(json.dumps(summary,sort_keys=True))
+        print(json.dumps({"diagnosticCycles":diagnostic["requestedCycles"],
+            "diagnosticStatus":diagnostic["status"],
+            "completedDiagnosticProbes":diagnostic["completedProbes"]},sort_keys=True))
 if __name__=="__main__":
     try:
         main()
