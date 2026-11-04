@@ -171,6 +171,15 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build P2 AST/Core smoke
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: P1 single-file and subdirectory semantic dependency freshness
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --analysis-identity-only
+      - name: Retain semantic dependency identity regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-analysis-identity-${{ matrix.os }}
+          path: artifacts/analysis-identity/receipt.json
+          if-no-files-found: error
       - name: Roslyn semantic source-backed POM action regression
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
       - name: preview.31 source-backed structured POM AST success/failure
@@ -205,6 +214,15 @@ jobs:
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview46-only
       - name: preview.47 source-owned OneTimeTearDown Browser CloseAsync/Dispose AST
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview47-only
+      - name: preview.50 full-graph source-only navigation DI ComboBox Loader table AST and 14 negatives
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-preview50-only
+      - name: Retain preview.50 public synthetic source-only SHA witness
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview50-source-flow-${{ matrix.os }}
+          path: artifacts/pom-preview50/receipt.json
+          if-no-files-found: warn
 
   p2-preview34-real-selenium-vs-playwright:
     name: Preview.37 rendered Text Unicode Selenium + Playwright (${{ matrix.os }})
@@ -596,14 +614,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Install pinned Chrome for Testing and matching ChromeDriver
+      - name: Install historical P47 Chrome 156.0.8078.80 and matching ChromeDriver
         id: chrome
         uses: browser-actions/setup-chrome@v2.2.0
         with:
-          chrome-version: stable
+          chrome-version: '156.0.8078.80'
           install-chromedriver: true
       - name: Build exact Core CLI for source-bound OneTimeTearDown proof
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: P1 process diagnostic failure persistence and observer controls
+        run: python scripts/test_p2_preview47_process_evidence.py
       - name: Actual driver loss, source-bound NUnit cleanup and primary failure witness
         timeout-minutes: 24
         env:
@@ -611,7 +631,11 @@ jobs:
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+          P47_DIAGNOSTIC_CYCLES: ${{ runner.os == 'Windows' && '10' || '0' }}
         run: python scripts/p2_preview47_one_time_real_chromium.py
+      - name: P1 independent Windows Job Object host-owned containment control
+        if: ${{ always() && matrix.os == 'windows-latest' }}
+        run: python scripts/p2_preview47_windows_job_object_probe.py
       - name: Retain original TRX, exception classification and owned OS ancestry
         if: always()
         uses: actions/upload-artifact@v4
