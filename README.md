@@ -74,6 +74,14 @@ pass. A retained exited process object and a live Python child exercise only
 the observer, never certify Playwright cleanup. The original failed Windows
 artifact and its unresolved historical cause remain unchanged.
 
+This job pins Chrome and ChromeDriver `156.0.8078.80`, the release recorded in
+the original failed job. The earlier `stable` input had advanced to
+`157.0.8103.38` for the first diagnostic run, which passed all five stages.
+That browser change confounds any claim of a cleanup fix. The explicit pin
+keeps the original failing release under the same Linux/Windows gate; the
+failed run did not retain a browser binary hash, so this is a historical
+release replay, not a byte-for-byte reconstruction of its environment.
+
 ## Existing Playwright source guard (preview.3)
 
 This engine's production frontend migrates **Selenium C# NUnit inputs**. It must not re-migrate tests already written in Playwright .NET.

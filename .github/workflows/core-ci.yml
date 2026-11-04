@@ -614,11 +614,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Install pinned Chrome for Testing and matching ChromeDriver
+      - name: Install historical P47 Chrome 156.0.8078.80 and matching ChromeDriver
         id: chrome
         uses: browser-actions/setup-chrome@v2.2.0
         with:
-          chrome-version: stable
+          chrome-version: '156.0.8078.80'
           install-chromedriver: true
       - name: Build exact Core CLI for source-bound OneTimeTearDown proof
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
