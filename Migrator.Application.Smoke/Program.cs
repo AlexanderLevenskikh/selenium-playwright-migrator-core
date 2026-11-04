@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--analysis-identity-only", StringComparer.Ordinal))
+{
+    AnalysisSemanticIdentitySmoke.Run();
+    Console.WriteLine("ANALYSIS_SEMANTIC_DEPENDENCY_IDENTITY_PASSED");
+    return;
+}
 if(args.Contains("--p2-preview50-only",StringComparer.Ordinal))
 {
     PomPreview50SourceFlowSmoke.Run();

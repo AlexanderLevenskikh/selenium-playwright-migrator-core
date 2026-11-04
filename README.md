@@ -47,6 +47,33 @@ Five packages are built together at version `0.1.0-preview.1`: `Migrator.Core`, 
 
 Preview.2 is a pre-release contract; the Core CI builds version-matched NuGet packages but does not publish them publicly.
 
+### Analysis freshness for a selected file or subdirectory
+
+`AnalysisId` includes the semantic inputs selected by the lightweight Roslyn
+project resolver: owning project selection, project XML, transitive
+`ProjectReference` source files, explicit linked `Compile` inputs and existing
+`HintPath` assembly bytes. A dependency edit invalidates the old analysis even
+when the selected fixture bytes are unchanged. Preview, explanation and
+artifact verification reject that old ID with `STALE_ANALYSIS`; callers must
+analyze again. Rewriting identical bytes preserves the content identity.
+
+`SourceTreeHash` still describes the explicitly selected source scope. The
+additional semantic fingerprint is checked before and after analysis; it does
+not claim full MSBuild evaluation, package restore, or runtime equivalence.
+The Linux/Windows CI regression records actual stale-input rejection and
+unchanged-input controls in `artifacts/analysis-identity/receipt.json`.
+
+### Windows cleanup diagnostic boundary
+
+The P47 driver-loss probe retains its original five NUnit stages and 12-second
+unassisted process-presence gate. Per-stage ancestry, native Windows process
+creation identity, zero-time wait state and failure summaries are now persisted
+before a failed gate can abort the run. Native liveness is diagnostic evidence,
+separate from CIM membership; no browser descendant is killed to make the gate
+pass. A retained exited process object and a live Python child exercise only
+the observer, never certify Playwright cleanup. The original failed Windows
+artifact and its unresolved historical cause remain unchanged.
+
 ## Existing Playwright source guard (preview.3)
 
 This engine's production frontend migrates **Selenium C# NUnit inputs**. It must not re-migrate tests already written in Playwright .NET.

@@ -171,6 +171,15 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build P2 AST/Core smoke
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: P1 single-file and subdirectory semantic dependency freshness
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --analysis-identity-only
+      - name: Retain semantic dependency identity regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-analysis-identity-${{ matrix.os }}
+          path: artifacts/analysis-identity/receipt.json
+          if-no-files-found: error
       - name: Roslyn semantic source-backed POM action regression
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
       - name: preview.31 source-backed structured POM AST success/failure
@@ -613,6 +622,8 @@ jobs:
           install-chromedriver: true
       - name: Build exact Core CLI for source-bound OneTimeTearDown proof
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: P1 process diagnostic failure persistence and observer controls
+        run: python scripts/test_p2_preview47_process_evidence.py
       - name: Actual driver loss, source-bound NUnit cleanup and primary failure witness
         timeout-minutes: 24
         env:

@@ -2,6 +2,7 @@ using System.Xml;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Migrator.Core;
 
 namespace Migrator.Application;
 
@@ -65,8 +66,50 @@ internal static class SourceFrameworkGuard
             projectPlaywright ? "project-file+syntax" : "syntax");
     }
 
+    internal static string ComputeInputHash(
+        IEnumerable<string> sourceFiles, string sourceScope, CancellationToken cancellationToken)
+    {
+        var paths = sourceFiles.Select(file => FindNearestProjectWithinScope(file, sourceScope))
+            .Where(path => path != null).Select(path => path!)
+            .Distinct(StringComparer.Ordinal).OrderBy(path => path, StringComparer.Ordinal);
+        return ContentTreeHasher.ComputeBytes(paths.Select(path =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return (path, File.ReadAllBytes(path));
+        }));
+    }
+
     private static (bool Playwright, bool Selenium) ReadNearestProjectReferencesWithinScope(
         string filePath, string sourceScope)
+    {
+        var project = FindNearestProjectWithinScope(filePath, sourceScope);
+        if (project == null) return (false, false);
+        try
+        {
+            using var reader = XmlReader.Create(new StringReader(File.ReadAllText(project)),
+                new XmlReaderSettings { XmlResolver = null, DtdProcessing = DtdProcessing.Prohibit });
+            var xml = XDocument.Load(reader);
+            var references = xml.Descendants()
+                .Where(e => e.Name.LocalName is "PackageReference" or "Using")
+                .Select(e => (string?)e.Attribute("Include") ?? string.Empty)
+                .ToArray();
+            return (
+                references.Any(name => name.Equals("Microsoft.Playwright", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("Microsoft.Playwright.NUnit", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("Playwright.", StringComparison.OrdinalIgnoreCase)),
+                references.Any(name => name.Equals("Selenium.WebDriver", StringComparison.OrdinalIgnoreCase)
+                    || name.StartsWith("Selenium.", StringComparison.OrdinalIgnoreCase)));
+        }
+        catch (XmlException)
+        {
+            // Syntax evidence is still assessed; never claim full project semantics.
+            return (false, false);
+        }
+    }
+
+    // Share this selector with freshness capture. The framework guard also runs
+    // for standalone/generated-path inputs for which Roslyn selects no project.
+    private static string? FindNearestProjectWithinScope(string filePath, string sourceScope)
     {
         var boundary = Directory.Exists(sourceScope)
             ? Path.GetFullPath(sourceScope)
@@ -79,32 +122,9 @@ internal static class SourceFrameworkGuard
                directory.StartsWith(boundary.TrimEnd(Path.DirectorySeparatorChar)
                    + Path.DirectorySeparatorChar, comparison))
         {
-            foreach (var project in Directory.EnumerateFiles(directory, "*.csproj",
-                         SearchOption.TopDirectoryOnly).OrderBy(p => p, StringComparer.Ordinal))
-            {
-                try
-                {
-                    using var reader = XmlReader.Create(new StringReader(File.ReadAllText(project)),
-                        new XmlReaderSettings { XmlResolver = null, DtdProcessing = DtdProcessing.Prohibit });
-                    var xml = XDocument.Load(reader);
-                    var references = xml.Descendants()
-                        .Where(e => e.Name.LocalName is "PackageReference" or "Using")
-                        .Select(e => (string?)e.Attribute("Include") ?? string.Empty)
-                        .ToArray();
-                    return (
-                        references.Any(name => name.Equals("Microsoft.Playwright", StringComparison.OrdinalIgnoreCase)
-                            || name.Equals("Microsoft.Playwright.NUnit", StringComparison.OrdinalIgnoreCase)
-                            || name.StartsWith("Playwright.", StringComparison.OrdinalIgnoreCase)),
-                        references.Any(name => name.Equals("Selenium.WebDriver", StringComparison.OrdinalIgnoreCase)
-                            || name.StartsWith("Selenium.", StringComparison.OrdinalIgnoreCase)));
-                }
-                catch (XmlException)
-                {
-                    // Syntax evidence is still assessed; never claim full project semantics.
-                    return (false, false);
-                }
-            }
-
+            var project = Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly)
+                .OrderBy(path => path, StringComparer.Ordinal).FirstOrDefault();
+            if (project != null) return project;
             if (directory.Equals(boundary, comparison))
                 break;
             var parent = Path.GetDirectoryName(directory);
@@ -112,6 +132,6 @@ internal static class SourceFrameworkGuard
                 break;
             directory = parent;
         }
-        return (false, false);
+        return null;
     }
 }

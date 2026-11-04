@@ -25,6 +25,7 @@ import p2_preview37_rendered_text_unicode_real_chromium as p37
 import p2_preview39_external_exception_real_chromium as p39
 import p2_preview42_fixture_lifecycle_real_chromium as p42
 import p2_preview45_sink_close_process_ancestry as p45
+import p2_preview47_process_evidence as p47e
 
 TEMPLATE=r"""
 using System;
@@ -126,6 +127,16 @@ def runtime_canonical(source):
     return p42.synthetic("OneTimeTearDown",source)
 
 def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
+    audit=p47e.StageEvidence(evidence,stage,outcome,disconnect)
+    try:
+        result=run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audit)
+        audit.finish(result)
+        return result
+    except BaseException as error:
+        if audit.report["status"]!="failed":audit.fail(str(error))
+        raise
+
+def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audit):
     run_name=stage
     env=dict(os.environ,P47_STAGE=stage,P47_RUN=run_name,
              P47_EVIDENCE=str(evidence),P47_URL=url)
@@ -134,11 +145,16 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
         "--logger","trx;LogFileName="+run_name+".trx",
         "--results-directory",str(evidence),
         "--filter","FullyQualifiedName~RealNUnitFixture&Name~Operation"]
-    baseline=p45.snapshot(chrome)
+    baseline,precise=p47e.snapshot(chrome)
+    baseline_keys={(pid,str(row[1])) for pid,row in baseline.items()
+        if row[2] in ("chrome","driver")}
+    audit.event("baseline",processes=audit.records(baseline,precise,baseline_keys))
     started=time.monotonic()
     process=subprocess.Popen(command,cwd=project,env=env,
         stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
         encoding="utf-8",errors="replace")
+    audit.report["testProcessPid"]=process.pid
+    audit.persist()
     observed={}
     observed_paths={}
     driver_pid=None
@@ -148,77 +164,122 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
     ready=evidence/("ready-"+run_name)
     ack=evidence/("ack-"+run_name)
     while process.poll() is None:
-        data=p45.snapshot(chrome)
+        data,precise=p47e.snapshot(chrome)
+        ancestor_keys=set()
         for pid,(parent,start,kind) in data.items():
             if kind not in ("chrome","driver"): continue
             chain=p45.ancestry(data,pid,process.pid)
             if chain is None: continue
             key=(pid,str(start))
             observed[key]=kind
-            observed_paths[key]=[
-                {"pid":member,"parentPid":data[member][0],
-                 "startIdentity":str(data[member][1]),
-                 "kind":data[member][2]}
-                for member in chain if member in data]
+            path=audit.records(data,precise,
+                {(member,str(data[member][1])) for member in chain},bind=True)
+            by_pid={item["pid"]:item for item in path}
+            observed_paths.setdefault(key,[by_pid[member] for member in chain])
+            ancestor_keys.update((member,str(data[member][1])) for member in chain)
+        audit.event("runner_active",processes=audit.records(data,precise,
+            ancestor_keys|set(observed)),ready=ready.is_file(),ack=ack.exists())
+        # Keep source ownership evidence durable while the test is still alive.
+        audit.report["observedOwnedAncestry"]=[
+            {"observedPid":pid,"startIdentity":start,"kind":kind,
+             "creationFileTime":audit.native_starts.get((pid,start)),
+             "wasInBaselineWithOriginalIdentity":(pid,start) in baseline_keys,
+             "pathToTestProcess":observed_paths[(pid,start)]}
+            for (pid,start),kind in sorted(observed.items())]
+        audit.report["nativeIdentityBinding"]={
+            "observedProcessCount":len(observed),
+            "boundProcessCount":sum(key in audit.native_starts for key in observed),
+            "unboundProcesses":[dict(pid=pid,startIdentity=start)
+                for pid,start in sorted(observed) if (pid,start) not in audit.native_starts],
+            "initialJoinPrecision":"cim_microseconds_then_exact_native_100ns",
+            "platformApplicable":audit.native is not None}
+        audit.persist()
         if disconnect and ready.is_file() and not ack.exists():
             candidates=sorted((pid,start) for (pid,start),kind in observed.items()
                 if kind=="driver" and pid in data
                 and str(data[pid][1])==start)
             if not candidates:
                 process.kill()
-                raise AssertionError("P47_NO_OWNED_REAL_DRIVER_PROCESS: "+stage)
+                audit.check(False,"P47_NO_OWNED_REAL_DRIVER_PROCESS: "+stage)
             driver_pid,driver_start=candidates[0]
+            before=audit.observe_native(driver_pid,driver_start)
+            audit.report["driverTermination"]={"pid":driver_pid,
+                "startIdentity":driver_start,"beforeSignal":before,
+                "mechanism":"os.kill(SIGTERM)","signalSent":False,
+                "hostOwnedBrowserCleanup":"not_attempted"}
+            audit.event("driver_termination_before_signal",**audit.report["driverTermination"])
+            audit.persist()
+            # Observation only: retain the original fault mechanism and handshake.
+            # No descendant kill, API retry, or additional cleanup window is added.
+            if audit.native is not None and before["state"]!="live":
+                process.kill()
+                audit.check(False,"P47_DRIVER_NATIVE_IDENTITY_UNVERIFIED: "+stage)
             os.kill(driver_pid,signal.SIGTERM)
             driver_terminated=True
+            after=audit.observe_native(driver_pid,driver_start)
+            audit.report["driverTermination"].update(signalSent=True,afterSignal=after)
+            audit.event("driver_termination_after_signal",**audit.report["driverTermination"])
+            audit.persist()
             ack.write_text("driver_killed",encoding="utf-8")
         if time.monotonic()>exceeded:
             process.kill()
-            raise AssertionError("P47_NUNIT_TIMEOUT: "+stage)
+            audit.check(False,"P47_NUNIT_TIMEOUT: "+stage)
         time.sleep(.25 if os.name!="nt" else .4)
     stdout,stderr=process.communicate(timeout=30)
-    last=p45.snapshot(chrome)
+    last,precise=p47e.snapshot(chrome)
+    # Anchor at the original point, before native probes or durable I/O. Their
+    # time consumes the existing observation window rather than adding to it.
+    limit=time.monotonic()+p47e.PASSIVE_WINDOW_SECONDS
+    audit.event("runner_exited",testProcessExitCode=process.returncode,
+        processes=audit.records(last,precise,set(observed)))
     survivors=set()
-    limit=time.monotonic()+12
     while True:
-        last=p45.snapshot(chrome)
+        last,precise=p47e.snapshot(chrome)
+        # The original 12s unassisted presence gate is deliberately preserved.
         survivors={(pid,start) for pid,start in observed
             if pid in last and str(last[pid][1])==start}
+        final_records=audit.records(last,precise,set(observed))
+        audit.event("passive_cleanup_observation",processes=final_records,
+            originalPresenceSurvivors=[dict(pid=pid,startIdentity=start)
+                for pid,start in sorted(survivors)])
         if not survivors or time.monotonic()>limit:break
         time.sleep(.4)
+    native={(row["pid"],row["startIdentity"]):row["native"] for row in final_records}
+    audit.report.update(originalPresenceGate="failed" if survivors else "passed",
+        survivingObservedProcessCount=len(survivors),
+        originalPresenceSurvivors=[dict(pid=pid,startIdentity=start)
+            for pid,start in sorted(survivors)],
+        nativeClassificationOfOriginalPresence=p47e.classify_presence(survivors,native),
+        finalObservedProcesses=final_records,testProcessExitCode=process.returncode)
+    audit.persist()
     trx=evidence/(run_name+".trx")
-    p37.check(trx.is_file(),"P47_REAL_NUNIT_TRX_ABSENT: "+stage+
+    audit.check(trx.is_file(),"P47_REAL_NUNIT_TRX_ABSENT: "+stage+
         stdout[-1200:]+stderr[-800:])
     values=p37.read_trx(trx)
-    p37.check(values=={"Operation":outcome}
+    audit.report["actual"]=values.get("Operation","not_observed")
+    audit.report["trxSha256"]=hashlib.sha256(trx.read_bytes()).hexdigest()
+    audit.persist()
+    audit.check(values=={"Operation":outcome}
         and (process.returncode==0)==(outcome=="Passed"),
         "P47_NUNIT_OUTCOME_MISMATCH: "+stage+" "+str(values)+
         stdout[-1300:])
     if disconnect:
-        p37.check(driver_terminated and ack.read_text(encoding="utf-8")
+        audit.check(driver_terminated and ack.read_text(encoding="utf-8")
             =="driver_killed" and driver_pid is not None,
             "P47_DRIVER_KILL_NOT_REAL")
     message=trx_error(trx)
     if outcome=="Failed":
-        p37.check("P47_PRIMARY_ASSERTION_MUST_SURVIVE" in message,
+        audit.check("P47_PRIMARY_ASSERTION_MUST_SURVIVE" in message,
             "P47_NUNIT_PRIMARY_EXCEPTION_REPLACED: "+stage+" "+message)
     else:
-        p37.check("P47_PRIMARY_ASSERTION_MUST_SURVIVE" not in message,
+        audit.check("P47_PRIMARY_ASSERTION_MUST_SURVIVE" not in message,
             "P47_FALSE_PRIMARY_FAILURE")
     codes=trx.read_text(encoding="utf-8")
     page_caught=LOG_PAGE in codes
     context_caught=LOG_CONTEXT in codes
     browser_caught=LOG_BROWSER in codes
     dispose_caught=LOG_DISPOSE in codes
-    if not disconnect:
-        p37.check(not page_caught and not context_caught
-            and not browser_caught and not dispose_caught,
-            "P47_UNEXPECTED_TARGET_CLOSED_ON_HEALTHY_BROWSER")
-    p37.check(not survivors,"P47_OWNED_OBSERVED_CHILD_PIDS_SURVIVED: "+
-        str(sorted(survivors)))
-    p37.check(any(v=="chrome" for v in observed.values())
-        and any(v=="driver" for v in observed.values()),
-        "P47_LIVE_OWNED_CHROME_DRIVER_NOT_OBSERVED")
-    return {
+    result={
         "run":stage, "expected":outcome, "actual":values["Operation"],
         "realDriverKilled":driver_terminated,
         "observedTargetClosedPage":page_caught,
@@ -235,14 +296,28 @@ def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
              else "not_observed",
         "observedChrome":sum(x=="chrome" for x in observed.values()),
         "observedDriver":sum(x=="driver" for x in observed.values()),
-        "observedOwnedAncestry":[
-            {"observedPid":pid,"startIdentity":start,
-             "kind":kind,"pathToTestProcess":observed_paths[(pid,start)]}
-            for (pid,start),kind in sorted(observed.items())
-        ],
+        "observedOwnedAncestry":audit.report["observedOwnedAncestry"],
+        "originalPresenceGate":audit.report["originalPresenceGate"],
+        "nativeClassificationOfOriginalPresence":audit.report["nativeClassificationOfOriginalPresence"],
+        "hostOwnedBrowserCleanup":"not_attempted",
+        "processEvidence":"process-"+stage+".json",
+        "processTimeline":"process-"+stage+".jsonl",
         "survivingObservedProcessCount":len(survivors),
         "elapsedSec":round(time.monotonic()-started,2)
     }
+    # Persist API outcomes and process observations before either assertion.
+    audit.report.update(result)
+    audit.persist()
+    if not disconnect:
+        audit.check(not page_caught and not context_caught
+            and not browser_caught and not dispose_caught,
+            "P47_UNEXPECTED_TARGET_CLOSED_ON_HEALTHY_BROWSER")
+    audit.check(not survivors,"P47_OWNED_OBSERVED_CHILD_PIDS_SURVIVED: "+
+        str(sorted(survivors)))
+    audit.check(any(v=="chrome" for v in observed.values())
+        and any(v=="driver" for v in observed.values()),
+        "P47_LIVE_OWNED_CHROME_DRIVER_NOT_OBSERVED")
+    return result
 
 def main():
     repo=Path(__file__).resolve().parent.parent
@@ -254,6 +329,7 @@ def main():
     p37.check(dll.is_file(),"P47_TYPED_SOURCE_CLI_UNAVAILABLE")
     evidence=repo/"artifacts/pom-preview47"
     evidence.mkdir(parents=True,exist_ok=True)
+    process_controls=p47e.run_windows_controls(evidence)
     fixture_file=(repo/"Migrator.Application.Smoke/PomPreview47OneTimeCleanupSmoke.cs")
     source=fixture_file.read_text(encoding="utf-8")
     one_time=p42.synthetic("OneTimeTearDown",source)
@@ -407,6 +483,10 @@ def main():
             "driverVersion":os.environ.get("MIGRATOR_CHROMEDRIVER_VERSION"),
             "chromeSha256":hashlib.sha256(chrome.read_bytes()).hexdigest(),
             "outcomes":outcomes,
+            "processObserverControls":process_controls,
+            "originalPresenceGateUnchanged":True,
+            "nativeLivenessIsDiagnosticOnly":True,
+            "historicalWindowsFailureRootCause":"not_proven",
             "platformOneTimeTargetClosedObservation":
                 "observed" if positives else "not_observed",
             "positiveStages":positives,
@@ -427,13 +507,20 @@ def main():
             "otherUnobservedOsProcesses":"not_verified",
             "autoApply":False,"ArBilling":"not_run"
         }
-        (evidence/"summary.json").write_text(
-            json.dumps(summary,sort_keys=True,indent=2)+"\n",encoding="utf-8")
-        checksums={p.name:hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(evidence.iterdir())
-            if p.is_file() and p.name!="SHA256SUMS.json"}
-        (evidence/"SHA256SUMS.json").write_text(
-            json.dumps(checksums,sort_keys=True,indent=2)+"\n",encoding="utf-8")
+        p47e.atomic_json(evidence/"summary.json",summary)
+        p47e.write_manifest(evidence)
         print("POM_PREVIEW47_REAL_ONE_TIME_CLEANUP_OBSERVATION_PASSED")
         print(json.dumps(summary,sort_keys=True))
-if __name__=="__main__":main()
+if __name__=="__main__":
+    try:
+        main()
+    except BaseException as error:
+        evidence=Path(__file__).resolve().parent.parent/"artifacts/pom-preview47"
+        evidence.mkdir(parents=True,exist_ok=True)
+        if not (evidence/"failure-summary.json").exists():
+            p47e.atomic_json(evidence/"failure-summary.json",{
+                "schema":p47e.SCHEMA,"status":"failed","failure":str(error),
+                "rootCause":"not_proven_by_this_diagnostic", "autoApply":False,
+                "ArBilling":"not_run"})
+        p47e.write_manifest(evidence)
+        raise
