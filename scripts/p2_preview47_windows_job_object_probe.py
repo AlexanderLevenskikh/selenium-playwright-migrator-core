@@ -177,7 +177,9 @@ def main():
             report["childPid"] = child_pid
             # This handle and all cleanup calls concern our own synthetic
             # subprocess only, not Chromium, Node or another user's process.
-            child_handle = api.OpenProcess(0x00100000 | 0x1000, False, child_pid)
+            # PROCESS_TERMINATE is limited to our own synthetic child, so even
+            # if closing the Job handle fails we can fail safely without leaks.
+            child_handle = api.OpenProcess(0x00100000 | 0x1000 | 0x0001, False, child_pid)
             require(bool(child_handle), "P47_JOB_CHILD_HANDLE_UNAVAILABLE")
             require(member(api, child_handle, job), "P47_JOB_CHILD_NOT_IN_JOB")
             before = probe.inspect_handle(child_handle, child_pid)
