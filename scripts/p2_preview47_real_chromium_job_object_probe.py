@@ -25,6 +25,7 @@ import p2_preview37_rendered_text_unicode_real_chromium as p37
 import p2_preview45_sink_close_process_ancestry as p45
 import p2_preview47_process_evidence as p47e
 import p2_preview47_windows_job_object_probe as jobs
+import p1_preview47_job_postgate_proof as postgate
 
 SCHEMA = "migrator-preview47-real-playwright-job/v1"
 CHILD_RIGHTS = 0x00100000 | 0x1000
@@ -142,6 +143,7 @@ def main():
     p47e.atomic_json(receipt, report)
     api = jobs.win32()
     native = p47e.NativeWindowsProbe()
+    job_ref = {"handle": None}
     job = None
     host_handle = None
     process = None
@@ -150,6 +152,7 @@ def main():
                 "P47_REAL_JOB_WIN32_LAYOUT_NOT_PROVEN")
         job = api.CreateJobObjectW(None, None)
         require(bool(job), "P47_REAL_JOB_CREATE_FAILED")
+        job_ref["handle"] = job  # host owns the only non-inheritable Job handle
         limits = jobs.ExtendedLimits()
         limits.BasicLimitInformation.LimitFlags = jobs.KILL_ON_JOB_CLOSE
         require(api.SetInformationJobObject(job, 9, ctypes.byref(limits),
@@ -263,19 +266,20 @@ def main():
                         encoding="utf-8"),
                     "P47_REAL_JOB_PRIMARY_NUNIT_FAILURE_OVERRIDDEN")
             survivors = unassisted_gate(chrome, observed, report, out)
-            # Keep this failure receipt before ANY host-owned process cleanup.
+            # The 12-second unassisted result is already durable. From here on,
+            # all actions are SEPARATE, post-gate host cleanup; they cannot
+            # change a failed original observation into PASS.
             report["hostCleanup"] = "pending_after_unassisted_gate"
             p47e.atomic_json(receipt, report)
-            require(api.CloseHandle(job), "P47_REAL_JOB_CLOSE_JOB_FAILED")
-            job = None
-            report["hostCleanup"] = "job_handle_closed_after_unassisted_gate"
-            report["afterCloseNativeStates"] = [
-                {"pid": r["pid"], "creationFileTime": r["creationFileTime"],
-                 "kind": r["kind"],
-                 "native": native.inspect(r["pid"], r["creationFileTime"])}
-                for r in members]
-            report["status"] = ("observed_unassisted_failure" if survivors
-                                else "membership_proven_no_leak_reproduced")
+            postgate.prove_after_gate(
+                api, native, job_ref, members, survivors, report,
+                lambda: p47e.atomic_json(receipt, report), jobs.member)
+            report["hostCleanup"] = "job_handle_closed_after_original_gate"
+            report["status"] = ("observed_unassisted_failure_host_cleanup_separate"
+                                if survivors else "membership_proven_no_leak_reproduced")
+            p47e.atomic_json(receipt, report)
+            # Even a PROVEN host termination of native-live Chrome survivors is
+            # not proof of automatic Playwright cleanup. Keep CI FAILED.
             require(not survivors,
                     "P47_REAL_JOB_ORPHAN_CHROMIUM_PRESENCE_AFTER_12S")
             print("P47_ACTUAL_PLAYWRIGHT_NODE_CHROME_HOST_JOB_MEMBERSHIP_PASSED")
@@ -284,9 +288,10 @@ def main():
         report["error"] = str(ex) if isinstance(ex, AssertionError) else type(ex).__name__
         raise
     finally:
-        if job is not None:
+        if job_ref["handle"] is not None:
             report["hostCleanup"] = "emergency_close_not_unassisted_pass"
-            api.CloseHandle(job)
+            api.CloseHandle(job_ref["handle"])
+            job_ref["handle"] = None
         if host_handle is not None:
             api.CloseHandle(host_handle)
         if process is not None:
