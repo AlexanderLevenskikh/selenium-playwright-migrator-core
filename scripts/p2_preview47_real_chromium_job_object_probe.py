@@ -126,12 +126,18 @@ def main():
     require(os.name == "nt" and ctypes.sizeof(ctypes.c_void_p) == 8,
             "P47_REAL_JOB_WINDOWS_X64_REQUIRED")
     repo = Path(__file__).resolve().parent.parent
-    out = repo / "artifacts/pom-preview47-real-job"
+    cycle = os.environ.get("P47_HOST_JOB_PROBE_INDEX", "001")
+    require(len(cycle) == 3 and cycle.isascii() and cycle.isdigit()
+            and 1 <= int(cycle) <= 6, "P47_HOST_JOB_CYCLE_INDEX_INVALID")
+    out = repo / "artifacts/pom-preview47-real-job" / ("cycle-" + cycle)
     out.mkdir(parents=True, exist_ok=True)
     chrome = str(Path(os.environ["MIGRATOR_CHROME_BIN"]).resolve())
     require(Path(chrome).is_file(), "P47_REAL_JOB_CHROME_NOT_INSTALLED")
     report = {"schema": SCHEMA, "status": "running",
               "actualPlaywrightNodeAndChromium": True,
+              "cycle": int(cycle),
+              "fixtureKind": "public_synthetic_NUnit_real_Playwright_not_original_P47_fixture",
+              "sourcePlaywrightVersion": "1.63.0",
               "originalP47StageModified": False,
               "canRepairHistoricalFailure": False,
               "originalHistoricalFailure": "preserved_not_reclassified",
