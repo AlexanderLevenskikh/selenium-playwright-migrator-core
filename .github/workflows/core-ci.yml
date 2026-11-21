@@ -638,19 +638,20 @@ jobs:
       - name: P1 independent Windows Job Object host-owned containment control
         if: ${{ always() && matrix.os == 'windows-latest' }}
         run: python scripts/p2_preview47_windows_job_object_probe.py
-      - name: P1 independent real Node and Chromium Win32 Job ownership probe (not a P47 fix)
+      - name: P1-A six fixed real Node Chromium Job trials; fail first unassisted survivor
         if: ${{ always() && matrix.os == 'windows-latest' }}
-        timeout-minutes: 10
+        timeout-minutes: 16
         env:
           MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
-        run: python scripts/p2_preview47_real_chromium_job_object_probe.py
+          P47_HOST_JOB_SERIES_CYCLES: '6'
+        run: python scripts/p1_preview47_real_host_job_series.py
       - name: Retain independent real host-owned Chromium evidence
         if: ${{ always() && matrix.os == 'windows-latest' }}
         uses: actions/upload-artifact@v4
         with:
           name: migrator-preview47-real-host-job-windows
-          path: artifacts/pom-preview47-real-job/*
+          path: artifacts/pom-preview47-real-job/
           if-no-files-found: warn
       - name: Retain original TRX, exception classification and owned OS ancestry
         if: always()
