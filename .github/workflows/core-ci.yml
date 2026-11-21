@@ -624,6 +624,8 @@ jobs:
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: P1 process diagnostic failure persistence and observer controls
         run: python scripts/test_p2_preview47_process_evidence.py
+      - name: P1-A post-gate real Job containment oracle (pure fail-closed tests)
+        run: python scripts/test_p1_preview47_job_postgate_proof.py
       - name: Actual driver loss, source-bound NUnit cleanup and primary failure witness
         timeout-minutes: 24
         env:
