@@ -63,7 +63,8 @@ namespace Fictional.P47RealJob;
             await Task.Delay(100);
         Assert.That(File.Exists(Marker("driver-killed")), Is.True,
             "P47_REAL_JOB_DRIVER_ACK_MISSING");
-        Assert.Fail("P47_JOB_PRIMARY_FAILURE_MUST_SURVIVE");
+        if(Environment.GetEnvironmentVariable("P47_HOST_JOB_EXPECTED_NUNIT") == "Failed")
+            Assert.Fail("P47_JOB_PRIMARY_FAILURE_MUST_SURVIVE");
     }
 }
 """
@@ -133,9 +134,12 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     chrome = str(Path(os.environ["MIGRATOR_CHROME_BIN"]).resolve())
     require(Path(chrome).is_file(), "P47_REAL_JOB_CHROME_NOT_INSTALLED")
+    expected = os.environ.get("P47_HOST_JOB_EXPECTED_NUNIT", "Failed")
+    require(expected in ("Passed", "Failed"), "P47_REAL_JOB_NUNIT_EXPECTATION_INVALID")
     report = {"schema": SCHEMA, "status": "running",
               "actualPlaywrightNodeAndChromium": True,
               "cycle": int(cycle),
+              "expectedNUnitOutcome": expected,
               "fixtureKind": "public_synthetic_NUnit_real_Playwright_not_original_P47_fixture",
               "sourcePlaywrightVersion": "1.63.0",
               "originalP47StageModified": False,
@@ -186,7 +190,8 @@ def main():
             before, _ = p47e.snapshot(chrome)
             baseline = {(pid, str(row[1])) for pid, row in before.items()
                         if row[2] in ("chrome", "driver")}
-            env = dict(os.environ, P47_REAL_JOB_EVIDENCE=str(out))
+            env = dict(os.environ, P47_REAL_JOB_EVIDENCE=str(out),
+                       P47_HOST_JOB_EXPECTED_NUNIT=expected)
             command = ["dotnet", "test", "-c", "Release", "--no-build",
                        "--no-restore", "--nologo", "--logger",
                        "trx;LogFileName=real-job.trx", "--results-directory",
@@ -265,12 +270,17 @@ def main():
             stdout, stderr = process.communicate(timeout=90)
             report["testRunnerExitCode"] = process.returncode
             trx = out / "real-job.trx"
-            require(process.returncode != 0 and trx.is_file(),
-                    "P47_REAL_JOB_EXPECTED_FAILED_NUNIT_TRX_MISSING")
+            require(trx.is_file(), "P47_REAL_JOB_NUNIT_TRX_MISSING")
             report["trxSha256"] = hashlib.sha256(trx.read_bytes()).hexdigest()
-            require("P47_JOB_PRIMARY_FAILURE_MUST_SURVIVE" in trx.read_text(
-                        encoding="utf-8"),
-                    "P47_REAL_JOB_PRIMARY_NUNIT_FAILURE_OVERRIDDEN")
+            actual = p37.read_trx(trx).get("RealNodeAndChromium", "not_observed")
+            report["actualNUnitOutcome"] = actual
+            require(actual == expected and
+                    ((process.returncode == 0) == (expected == "Passed")),
+                    "P47_REAL_JOB_NUNIT_OUTCOME_MISMATCH")
+            primary_in_trx = "P47_JOB_PRIMARY_FAILURE_MUST_SURVIVE" in trx.read_text(
+                encoding="utf-8")
+            require(primary_in_trx == (expected == "Failed"),
+                    "P47_REAL_JOB_PRIMARY_NUNIT_EXCEPTION_NOT_PRESERVED")
             survivors = unassisted_gate(chrome, observed, report, out)
             # The 12-second unassisted result is already durable. From here on,
             # all actions are SEPARATE, post-gate host cleanup; they cannot

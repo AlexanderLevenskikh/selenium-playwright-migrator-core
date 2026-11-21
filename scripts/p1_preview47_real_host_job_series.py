@@ -37,7 +37,11 @@ def main():
     try:
         for ordinal in range(1, count + 1):
             index = f"{ordinal:03d}"
-            env = dict(os.environ, P47_HOST_JOB_PROBE_INDEX=index)
+            # Immutable AB-style outcome pattern: FAIL/PASS/FAIL/PASS/FAIL/PASS.
+            # Historical Nov 21 orphan was disconnect_pass with NUnit PASS.
+            expected = "Failed" if ordinal % 2 else "Passed"
+            env = dict(os.environ, P47_HOST_JOB_PROBE_INDEX=index,
+                       P47_HOST_JOB_EXPECTED_NUNIT=expected)
             result = subprocess.run(
                 [sys.executable,
                  str(repo / "scripts/p2_preview47_real_chromium_job_object_probe.py")],
@@ -50,7 +54,8 @@ def main():
                 except (ValueError, OSError):
                     cycle = {"status": "unreadable"}
             report["results"].append({
-                "cycle": ordinal, "exitCode": result.returncode,
+                "cycle": ordinal, "expectedNUnit": expected,
+                "exitCode": result.returncode,
                 "receiptExists": bool(cycle),
                 "unassistedGate": cycle.get("unassistedGateBeforeHostClose")
                     if cycle else "not_observed",
