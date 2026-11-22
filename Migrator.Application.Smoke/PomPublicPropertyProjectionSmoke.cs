@@ -57,7 +57,7 @@ internal static class PomPublicPropertyProjectionSmoke
             var expected = new[]
             {
                 ("EnterText", 2, "input_sendkeys", "PressSequentiallyAsync(text)"),
-                ("ClickButton", 1, "click", "[id=\\\"updatingButton\\\"]"),
+                ("ClickButton", 1, "click", "ClickAsync()"),
                 ("GetButtonText", 1, "rendered_text_return", "InnerTextAsync()"),
                 ("GetButtonTextBlock", 1, "rendered_text_return", "return await"),
                 ("GoToTextInput", 1, "click", "AriaRole.Link")
@@ -85,17 +85,33 @@ internal static class PomPublicPropertyProjectionSmoke
                     method + " " + string.Join(", ", result.Blockers.Select(x => x.Code)));
             }
 
+            // Compare the selector's AST literal VALUE, not the C# string
+            // escape spelling (JSON serializer may use \\u0022 vs \\" ).
+            // This is STRICTER than matching a rendered source substring.
             var input = engine.PlanPomActions(root, "TextInputPage", "EnterText", hash);
             Check(input.TargetStatements.Count == 2 &&
-                  input.TargetStatements[0].Contains(
-                      "Page.Locator(\"[id=\\\"newButtonName\\\"]\").ClearAsync()", 
-                      StringComparison.Ordinal) &&
+                  HasExactLocator(input.TargetStatements[0],
+                      "[id=\"newButtonName\"]") &&
+                  HasExactLocator(input.TargetStatements[1],
+                      "[id=\"newButtonName\"]") &&
+                  input.TargetStatements[0].Contains(".ClearAsync()", StringComparison.Ordinal) &&
                   input.TargetStatements[1].Contains(
-                      "Page.Locator(\"[id=\\\"newButtonName\\\"]\").PressSequentiallyAsync(text)",
-                      StringComparison.Ordinal) &&
+                      ".PressSequentiallyAsync(text)", StringComparison.Ordinal) &&
                   input.AdapterCandidate!.TargetStatementTemplates[1]
                       .Contains("PressSequentiallyAsync({text})", StringComparison.Ordinal),
-                  "read-only property getter lost source selector or original text argument");
+                  "property source selector/clear/sendkeys/argument was not preserved");
+
+            var clickPlan = engine.PlanPomActions(root, "TextInputPage", "ClickButton", hash);
+            var textPlan = engine.PlanPomActions(root, "TextInputPage", "GetButtonText", hash);
+            Check(HasExactLocator(clickPlan.TargetStatements.Single(),
+                      "[id=\"updatingButton\"]") &&
+                  HasExactLocator(textPlan.TargetStatements.Single(),
+                      "[id=\"updatingButton\"]") &&
+                  textPlan.TargetStatements.Single().Contains(
+                      "return await", StringComparison.Ordinal) &&
+                  textPlan.TargetStatements.Single().Contains(
+                      ".InnerTextAsync()", StringComparison.Ordinal),
+                  "source property getter lost exact Button selector or rendered Text return");
 
             var nav = engine.PlanPomActions(root, "TextInputPage", "GoToTextInput", hash);
             Check(nav.TargetStatements.Single().Contains(
@@ -124,7 +140,7 @@ internal static class PomPublicPropertyProjectionSmoke
             // cannot infer which receiver the projected property belongs to.
             File.WriteAllText(sourcePath, Source.Replace(
                 "private readonly IWebDriver driver;",
-                "private readonly IWebDriver driver;\n            private IWebDriver? secondDriver;"));
+                "private readonly IWebDriver driver;\n            private IWebDriver secondDriver;"));
             var ambiguousHash = new PomSourceInspector().Inspect(root).SourceTreeHash;
             var ambiguous = engine.PlanPomActions(root, "TextInputPage",
                 "EnterText", ambiguousHash);
@@ -146,6 +162,21 @@ internal static class PomPublicPropertyProjectionSmoke
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static bool HasExactLocator(string statement, string selector)
+    {
+        var syntax = Microsoft.CodeAnalysis.CSharp.SyntaxFactory.ParseStatement(statement);
+        return !syntax.ContainsDiagnostics &&
+            syntax.DescendantNodesAndSelf()
+                .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>()
+                .Any(call =>
+                    call.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.MemberAccessExpressionSyntax access &&
+                    access.Name.Identifier.ValueText == "Locator" &&
+                    call.ArgumentList.Arguments.Count == 1 &&
+                    call.ArgumentList.Arguments[0].Expression is
+                        Microsoft.CodeAnalysis.CSharp.Syntax.LiteralExpressionSyntax literal &&
+                    literal.Token.ValueText == selector);
     }
 
     private static void Check(bool ok, string detail)
