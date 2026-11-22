@@ -108,3 +108,22 @@ AnalysisId/CandidateId and current source/target hashes, independently of
 the `ready_for_build` structural assembly plan. On its own this does not
 certify the original test fixture execution or a complete Playwright
 runtime migration.
+
+## Real original-project -> Core-generated target build attempt
+
+A separate bounded opt-in CI stage now invokes the **actual**
+`Migrator.AssemblyCli generate <original-project-root> <empty-temp-target> --build`,
+using the original SDK project with 10 discovered tests at the pinned public
+commit. The exact parent AnalysisId/CandidateId from the full assembly plan
+and the separate `rejected_incomplete`/blocked static acceptance must
+match. The generated project is never placed inside original source and
+is never autoapplied. It is removed from the ephemeral runtime after
+archiving generated C#, fixed .csproj and target manifest with SHA256.
+
+A real `dotnet build` is attempted; if it succeeds, `dotnet test
+--list-tests --no-build --no-restore` may enumerate **target** NUnit cases.
+No source or generated NUnit test, external-site URL or Playwright browser
+action is executed by this stage. Any build/discovery issue stays an exact
+BLOCKED/UNKNOWN stage; a successful compile/test discovery cannot override
+the static rejected_incomplete completeness report or independent missing
+behavioral oracle.

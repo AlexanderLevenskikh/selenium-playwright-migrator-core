@@ -300,6 +300,16 @@ jobs:
           name: migrator-p2p3-public-original-acceptance-${{ matrix.os }}
           path: artifacts/p2p3-original-nunit-acceptance/*
           if-no-files-found: error
+      - name: Materialize actual whole original NUnit project as Core-generated Playwright and build (NO NUnit test execution)
+        timeout-minutes: 12
+        run: python scripts/p2_p3_full_public_generated_project.py public-portfolio/desh-full
+      - name: Preserve ACTUAL Core generated full target .cs/.csproj, source/target SHA and NUnit discovery status
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p2p3-original-full-generated-target-${{ matrix.os }}
+          path: artifacts/p2p3-public-full-generated-project/*
+          if-no-files-found: error
       - name: Execute original public Page Objects vs actual Core-projected Playwright source in same Chrome
         timeout-minutes: 15
         env:
