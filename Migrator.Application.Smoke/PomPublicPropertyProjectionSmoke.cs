@@ -40,6 +40,23 @@ internal static class PomPublicPropertyProjectionSmoke
             }
             public void BadPartialLink() =>
                 driver.FindElement(By.PartialLinkText("Text")).Click();
+
+            // Exact original public SampleAppPage Login and GetMessage shapes.
+            public void Login(string username, string password)
+            {
+                driver.FindElement(By.Name("UserName")).SendKeys(username);
+                driver.FindElement(By.Name("Password")).SendKeys(password);
+                driver.FindElement(By.Id("login")).Click();
+            }
+            public string GetMessage() =>
+                driver.FindElement(By.Id("loginstatus")).Text;
+            public void BadDynamicName(string name) =>
+                driver.FindElement(By.Name(name)).Click();
+            public void BadNamedAlias()
+            {
+                var alias = "UserName";
+                driver.FindElement(By.Name(alias)).Click();
+            }
         }
         """;
 
@@ -60,7 +77,9 @@ internal static class PomPublicPropertyProjectionSmoke
                 ("ClickButton", 1, "click", "ClickAsync()"),
                 ("GetButtonText", 1, "rendered_text_return", "InnerTextAsync()"),
                 ("GetButtonTextBlock", 1, "rendered_text_return", "return await"),
-                ("GoToTextInput", 1, "click", "AriaRole.Link")
+                ("GoToTextInput", 1, "click", "AriaRole.Link"),
+                ("Login", 3, "input_sendkeys", "PressSequentiallyAsync(username)"),
+                ("GetMessage", 1, "rendered_text_return", "InnerTextAsync()")
             };
             foreach (var (method, count, effect, expectedToken) in expected)
             {
@@ -122,10 +141,32 @@ internal static class PomPublicPropertyProjectionSmoke
                       "Microsoft.Playwright.AriaRole.Link", StringComparison.Ordinal),
                   "By.LinkText was rendered as a generic/sub-string selector");
 
+            var login = engine.PlanPomActions(root, "TextInputPage", "Login", hash);
+            Check(login.TargetStatements.Count == 3 &&
+                  HasExactLocator(login.TargetStatements[0], "[name=\"UserName\"]") &&
+                  HasExactLocator(login.TargetStatements[1], "[name=\"Password\"]") &&
+                  HasExactLocator(login.TargetStatements[2], "[id=\"login\"]") &&
+                  login.TargetStatements[0].Contains(
+                      "PressSequentiallyAsync(username)", StringComparison.Ordinal) &&
+                  login.TargetStatements[1].Contains(
+                      "PressSequentiallyAsync(password)", StringComparison.Ordinal) &&
+                  login.TargetStatements[2].Contains(
+                      ".ClickAsync()", StringComparison.Ordinal) &&
+                  login.Actions.Select(action => action.Effect).SequenceEqual(
+                      new[] { "input_sendkeys", "input_sendkeys", "click" }),
+                  "public SampleApp selector, argument binding or action order changed");
+            var message = engine.PlanPomActions(root, "TextInputPage",
+                "GetMessage", hash);
+            Check(message.TargetStatements.Count == 1 &&
+                  HasExactLocator(message.TargetStatements.Single(),
+                      "[id=\"loginstatus\"]"),
+                  "source-bound SampleApp string return lost its selector");
+
             foreach (var method in new[]
             {
                 "BadMutable", "BadDynamic", "BadHelper", "BadReturn",
-                "BadReturnSideEffects", "BadPartialLink"
+                "BadReturnSideEffects", "BadPartialLink",
+                "BadDynamicName", "BadNamedAlias"
             })
             {
                 var blocked = engine.PlanPomActions(root, "TextInputPage", method, hash);
