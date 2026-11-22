@@ -196,6 +196,7 @@ jobs:
           sparse-checkout: |
             AssignmentProject/Tests/TextInputTests.cs
             AssignmentProject/Pages/TextInputPage.cs
+            AssignmentProject/Pages/HomePage.cs
           sparse-checkout-cone-mode: false
       - name: Checkout pinned public inherited NUnit PageFactory source (read-only)
         uses: actions/checkout@v4
@@ -229,6 +230,25 @@ jobs:
         with:
           name: migrator-p2p3-public-source-portfolio-${{ matrix.os }}
           path: artifacts/p2p3-public-portfolio/*
+          if-no-files-found: warn
+      - name: Install same Chrome/Driver for bounded external source POM browser parity
+        id: public-pom-chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: SHA-bound original public POM vs handwritten Playwright reference in real Chrome
+        timeout-minutes: 15
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.public-pom-chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.public-pom-chrome.outputs.chromedriver-path }}
+        run: python scripts/p2_real_public_text_input_slice.py public-portfolio/desh
+      - name: Retain bounded public real-source POM browser receipts and both mutations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p2-real-public-pom-slice-${{ matrix.os }}
+          path: artifacts/p2-real-public-pom-slice/*
           if-no-files-found: warn
       - name: Roslyn semantic source-backed POM action regression
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
