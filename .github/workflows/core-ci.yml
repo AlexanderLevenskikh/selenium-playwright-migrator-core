@@ -626,6 +626,8 @@ jobs:
         run: python scripts/test_p2_preview47_process_evidence.py
       - name: P1-J safe Crashpad switch-presence and original SHA controls
         run: python scripts/test_p1j_crashpad_switches.py
+      - name: P1-K native CPU/handle/I-O accounting negative controls
+        run: python scripts/test_p1k_native_accounting.py
       - name: P1-A post-gate real Job containment oracle (pure fail-closed tests)
         run: python scripts/test_p1_preview47_job_postgate_proof.py
       - name: P1-A2 source-exact P47 fixture identity and omission negatives (both OS)
@@ -650,6 +652,16 @@ jobs:
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           P47_HOST_JOB_SERIES_CYCLES: '6'
         run: python scripts/p1_preview47_real_host_job_series.py
+      - name: P1-K offline summary of original native-live process counters
+        if: ${{ always() && matrix.os == 'windows-latest' }}
+        run: python scripts/p1k_preview47_activity_summary.py artifacts/pom-preview47 artifacts/p1k-native-accounting
+      - name: Preserve independent P1-K native accounting report
+        if: ${{ always() && matrix.os == 'windows-latest' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview47-p1k-native-accounting-windows
+          path: artifacts/p1k-native-accounting/
+          if-no-files-found: error
       - name: Retain independent real host-owned Chromium evidence
         if: ${{ always() && matrix.os == 'windows-latest' }}
         uses: actions/upload-artifact@v4

@@ -74,6 +74,61 @@ def cim_matches_native(creation_utc, filetime):
         return False
 
 
+class P1KIoCounters(ctypes.Structure):
+    """Windows IO_COUNTERS: process-wide cumulative counters only."""
+    _fields_ = [(field, ctypes.c_uint64) for field in (
+        "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+        "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+
+def p1k_read_live_activity(api, handle, kernel, user):
+    """Numeric accounting from the SAME native-live, FILETIME-matched handle.
+
+    No handle duplication/retention, object names, pipes, crash dumps, URLs
+    or network destinations. Missing counters NEVER override live/unknown.
+    """
+    filetime = lambda ft: (ft.dwHighDateTime << 32) | ft.dwLowDateTime
+    result = {
+        "status": "unknown", "cpuKernel100ns": filetime(kernel),
+        "cpuUser100ns": filetime(user),
+        "handleCount": None,
+        "ioReadOperations": None, "ioWriteOperations": None,
+        "ioOtherOperations": None, "ioReadBytes": None,
+        "ioWriteBytes": None, "ioOtherBytes": None,
+        "handleCountStatus": "unknown", "ioCountersStatus": "unknown",
+        "registeredClientsProven": False, "pendingUploadProven": False,
+        "containsHandleNames": False, "containsPaths": False,
+        "containsNetworkDestinations": False
+    }
+    getter = getattr(api, "GetProcessHandleCount", None)
+    if getter is not None:
+        count = wintypes.DWORD()
+        try:
+            if getter(handle, ctypes.byref(count)):
+                result.update(handleCount=count.value, handleCountStatus="observed")
+        except (OSError, ValueError, ctypes.ArgumentError):
+            pass
+    getter = getattr(api, "GetProcessIoCounters", None)
+    if getter is not None:
+        counters = P1KIoCounters()
+        try:
+            if getter(handle, ctypes.byref(counters)):
+                result.update(
+                    ioReadOperations=int(counters.ReadOperationCount),
+                    ioWriteOperations=int(counters.WriteOperationCount),
+                    ioOtherOperations=int(counters.OtherOperationCount),
+                    ioReadBytes=int(counters.ReadTransferCount),
+                    ioWriteBytes=int(counters.WriteTransferCount),
+                    ioOtherBytes=int(counters.OtherTransferCount),
+                    ioCountersStatus="observed")
+        except (OSError, ValueError, ctypes.ArgumentError):
+            pass
+    count = int(result["handleCountStatus"] == "observed") + int(
+        result["ioCountersStatus"] == "observed")
+    result["status"] = "observed" if count == 2 else "partial" if count else "unknown"
+    return result
+
+
 class NativeWindowsProbe:
     """Read identity and zero-time wait state from the same process handle."""
     def __init__(self):
@@ -90,6 +145,11 @@ class NativeWindowsProbe:
         self.api.GetExitCodeProcess.restype = wintypes.BOOL
         self.api.CloseHandle.argtypes = (wintypes.HANDLE,)
         self.api.CloseHandle.restype = wintypes.BOOL
+        # Existing SYNCHRONIZE|PROCESS_QUERY_LIMITED_INFORMATION rights only.
+        self.api.GetProcessHandleCount.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+        self.api.GetProcessHandleCount.restype = wintypes.BOOL
+        self.api.GetProcessIoCounters.argtypes = (wintypes.HANDLE, ctypes.POINTER(P1KIoCounters))
+        self.api.GetProcessIoCounters.restype = wintypes.BOOL
 
     def inspect(self, pid, expected_start=None):
         result = {"pid": pid, "expectedCreationFileTime": expected_start,
@@ -130,6 +190,8 @@ class NativeWindowsProbe:
                 result["exitCode"] = code.value
         elif wait == 258:  # WAIT_TIMEOUT, process is not signaled.
             result["state"] = "live"
+            result["activityCounters"] = p1k_read_live_activity(
+                self.api, handle, kernel, user)
         else:
             result["waitError"] = ctypes.get_last_error()
         return result
@@ -174,19 +236,21 @@ def snapshot(chrome):
       }
       # Crashpad's Windows lifetime is client/pipe-based. Only bounded
       # switch PRESENCE is observable here; never read or persist values.
-      $initial='not_applicable'; $pipe='not_applicable'; $periodic='not_applicable'; $monitor='not_applicable'
+      $initial='not_applicable'; $pipe='not_applicable'; $periodic='not_applicable'; $monitor='not_applicable'; $upload='not_applicable'
       if($kind -eq 'chrome' -and $role -eq 'crashpad-handler') {
-        $initial='unknown'; $pipe='unknown'; $periodic='unknown'; $monitor='unknown'
+        $initial='unknown'; $pipe='unknown'; $periodic='unknown'; $monitor='unknown'; $upload='unknown'
         if($p.CommandLine) {
-          $initial='absent'; $pipe='absent'; $periodic='absent'; $monitor='absent'
+          $initial='absent'; $pipe='absent'; $periodic='absent'; $monitor='absent'; $upload='absent'
           if($p.CommandLine -match '(?:^|\s)"?--initial-client-data(?:=|\s|"|$)') { $initial='present' }
           if($p.CommandLine -match '(?:^|\s)"?--pipe-name(?:=|\s|"|$)') { $pipe='present' }
           if($p.CommandLine -match '(?:^|\s)"?--no-periodic-tasks(?:=|\s|"|$)') { $periodic='present' }
           if($p.CommandLine -match '(?:^|\s)"?--monitor-self(?:\s|"|$)') { $monitor='present' }
+          # Presence only, NEVER return the actual URL or a proof of uploads.
+          if($p.CommandLine -match '(?:^|\s)"?--url(?:=|\s|"|$)') { $upload='present' }
         }
       }
       # Never return raw command lines, pipe names, URLs, profile directories or full paths.
-      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype|$initial|$pipe|$periodic|$monitor"
+      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype|$initial|$pipe|$periodic|$monitor|$upload"
     }
     """
     result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
@@ -208,21 +272,21 @@ def snapshot(chrome):
 
 
 # Exact, allowlisted parser for the PowerShell output (no raw command lines).
-# Old seven/ten-field records are accepted as UNKNOWN *missing* flag evidence, not as absence.
+# Old 7/10/11-field records are accepted as UNKNOWN *missing* flag evidence, not as absence.
 _CRP_STATES = frozenset(("present", "absent", "unknown", "not_applicable"))
 
 
 def parse_sanitized_cim_record(line):
     fields = line.strip().split("|")
-    if len(fields) not in (7, 10, 11) or not fields[0].isdigit() or not fields[1].isdigit():
+    if len(fields) not in (7, 10, 11, 12) or not fields[0].isdigit() or not fields[1].isdigit():
         return None
     if fields[3] not in ("chrome", "driver", "other"):
         return None
-    flags = (fields[7:] if len(fields) == 11 else
-             fields[7:] + ["unknown"] if len(fields) == 10 else ["unknown"] * 4)
+    # Legacy 7/10/11-field metadata means UNKNOWN for newly added modes.
+    flags = fields[7:] + ["unknown"] * (5 - (len(fields) - 7))
     if any(flag not in _CRP_STATES for flag in flags):
         return None
-    if fields[3] != "chrome" and len(fields) in (10, 11) and any(
+    if fields[3] != "chrome" and len(fields) > 7 and any(
             flag != "not_applicable" for flag in fields[7:]):
         return None
     pid = int(fields[0])
@@ -233,6 +297,7 @@ def parse_sanitized_cim_record(line):
                     "pipeName": flags[1],
                     "noPeriodicTasks": flags[2],
                     "monitorSelf": flags[3],
+                    "uploadUrlConfigured": flags[4],
                     "containsValues": False}}
     return pid, (int(fields[1]), fields[2], fields[3]), metadata
 
