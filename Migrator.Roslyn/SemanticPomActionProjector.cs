@@ -107,7 +107,8 @@ public static partial class SemanticPomActionProjector
         void Block(string code, SyntaxNode at, string explanation) =>
             problems.Add(new Problem(code, origin, Line(at), Hash(at), explanation));
 
-        if (symbol == null || symbol.ReturnsVoid != true
+        if (symbol == null || !(symbol.ReturnsVoid
+                || symbol.ReturnType.SpecialType == SpecialType.System_String)
             || symbol.IsAsync || symbol.IsGenericMethod
             || method.Modifiers.Any(SyntaxKind.AbstractKeyword)
             || method.Modifiers.Any(SyntaxKind.UnsafeKeyword)
@@ -116,7 +117,7 @@ public static partial class SemanticPomActionProjector
             || symbol.Parameters.Any(p => p.Type.SpecialType is not
                 (SpecialType.System_String or SpecialType.System_Int32)))
             Block("POM_SIGNATURE_REQUIRES_REVIEW", method,
-                "Only synchronous, non-generic void methods with simple string/int inputs have projected browser statements.");
+                "Only synchronous, non-generic void methods or exact string .Text getters with simple string/int inputs have projected browser statements.");
 
         var emittedStatements = ProjectStructuredStatements(
             method, semantic, symbol, compilation, details, problems,
@@ -318,6 +319,39 @@ public static partial class SemanticPomActionProjector
             locator = parent + ".Nth(" + index.ToString(CultureInfo.InvariantCulture) + ")";
             return true;
         }
+        // A real Page Object may expose IWebElement as a read-only property:
+        //   public IWebElement Button => driver.FindElement(By.Id("save"));
+        // Bind the *declared* property, exact owning type and getter's one
+        // IWebDriver field. Do not follow mutable, virtual, computed, inherited,
+        // alias, multi-driver or externally dispatched properties.
+        if (model.GetSymbolInfo(expression).Symbol is IPropertySymbol property
+            && property.Type.ToDisplayString() == "OpenQA.Selenium.IWebElement"
+            && property.GetMethod != null && property.SetMethod == null
+            && !property.IsStatic && !property.IsVirtual
+            && !property.IsOverride && !property.IsAbstract && !property.IsIndexer
+            && SymbolEqualityComparer.Default.Equals(property.ContainingType,
+                model.GetEnclosingSymbol(expression.SpanStart)?.ContainingType)
+            && property.DeclaringSyntaxReferences.Length == 1
+            && property.DeclaringSyntaxReferences[0].GetSyntax()
+                is PropertyDeclarationSyntax declaration
+            && model.Compilation.SyntaxTrees.Contains(declaration.SyntaxTree)
+            && declaration.ExpressionBody?.Expression is InvocationExpressionSyntax getter
+            && getter.Expression is MemberAccessExpressionSyntax getterCall)
+        {
+            var getterModel = model.Compilation.GetSemanticModel(
+                declaration.SyntaxTree, true);
+            if (getterModel.GetSymbolInfo(getterCall.Expression).Symbol
+                    is IFieldSymbol driver
+                && !driver.IsStatic
+                && driver.Type.ToDisplayString() == "OpenQA.Selenium.IWebDriver"
+                && SymbolEqualityComparer.Default.Equals(
+                    driver.ContainingType, property.ContainingType)
+                && property.ContainingType.GetMembers().OfType<IFieldSymbol>()
+                    .Count(field => !field.IsStatic &&
+                        field.Type.ToDisplayString() == "OpenQA.Selenium.IWebDriver") == 1
+                && TryFindBy(getter, getterModel, out locator, expectMany: false))
+                return true;
+        }
         return false;
     }
 
@@ -340,6 +374,16 @@ public static partial class SemanticPomActionProjector
             || string.IsNullOrWhiteSpace(literal.Token.ValueText))
             return false;
         var value = literal.Token.ValueText;
+        // Literal Selenium LinkText is a bounded exact link-role candidate.
+        // Accessible name / visible text nuances still require browser review;
+        // partial text, dynamic values and non-link nodes cannot be inferred.
+        if (byMember.Name.Identifier.ValueText == "LinkText")
+        {
+            locator = "Page.GetByRole(Microsoft.Playwright.AriaRole.Link, "
+                + "new Microsoft.Playwright.PageGetByRoleOptions { Name = "
+                + JsonSerializer.Serialize(value) + ", Exact = true })";
+            return true;
+        }
         string? selector = byMember.Name.Identifier.ValueText switch
         {
             "CssSelector" => value,
