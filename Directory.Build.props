@@ -5,7 +5,8 @@
     <Authors>Selenium Playwright Migrator Contributors</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
-    <RepositoryUrl>https://github.com/AlexanderLevenskikh/selenium-playwright-migrator-core</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/levencode-labs/selenium-playwright-migrator-core</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/levencode-labs/selenium-playwright-migrator-core</RepositoryUrl>
     <PackageTags>selenium;playwright;roslyn;ast;migration;tests</PackageTags>
   </PropertyGroup>
 </Project>
