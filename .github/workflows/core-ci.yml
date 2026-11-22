@@ -38,6 +38,8 @@ jobs:
         run: python3 scripts/test_p1l_crashpad_client_boundary.py
       - name: P1-M exact tagged Crashpad source identity + original ZIP witness controls (Linux)
         run: python3 scripts/test_p1m_crashpad_tagged_source_boundary.py
+      - name: P1-N isolated test-owned Crashpad witness overlay negative controls (Linux)
+        run: python3 scripts/test_p1n_prepare_crashpad_test_witness.py
       - name: Build dedicated project assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: preview.29 real NUnit 3/4 discovery, TRX and explicit/failure comparison
@@ -119,6 +121,8 @@ jobs:
         run: python scripts/test_p1l_crashpad_client_boundary.py
       - name: P1-M exact tagged Crashpad source identity + original ZIP witness controls (Windows)
         run: python scripts/test_p1m_crashpad_tagged_source_boundary.py
+      - name: P1-N isolated test-owned Crashpad witness overlay negative controls (Windows)
+        run: python scripts/test_p1n_prepare_crashpad_test_witness.py
       - name: Build migration assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: Real NUnit 3/4 source-target discovery and TRX on Windows
