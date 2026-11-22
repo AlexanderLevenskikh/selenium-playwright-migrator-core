@@ -32,7 +32,7 @@ public sealed record MigrationAcceptanceReport(
 /// green dotnet test runner do not establish source behavior preservation.
 /// No user project, MSBuild target, script, browser or NUnit test is executed.
 /// </summary>
-public static class MigrationAcceptanceGate
+public static partial class MigrationAcceptanceGate
 {
     public const string SchemaVersion = "migrator-acceptance/v1";
     public const string RejectedIncomplete = "rejected_incomplete";
@@ -188,6 +188,11 @@ public static class MigrationAcceptanceGate
             }
         }
 
+        // Project-wide coverage that name-matched test statements alone miss.
+        // The source snapshot is read-only; no project, browser or test is run.
+        AppendProjectGraphObligations(analysis, preview, capturedTargetSources,
+            rows, blockers);
+
         if (sourceTests == 0 || sourceTests != analysis.ParsedTests)
             blockers.Add("TEST_DECLARATION_LINEAGE_INCOMPLETE");
         if (sourceMethods == 0 || rows.Count == 0)
@@ -222,6 +227,8 @@ public static class MigrationAcceptanceGate
             blockers.Contains("TARGET_METHOD_AMBIGUOUS") ||
             blockers.Contains("SOURCE_METHOD_BODY_UNAVAILABLE") ||
             blockers.Contains("SOURCE_STATE_MUTATION_REQUIRES_PROOF") ||
+            blockers.Contains("PROJECT_GRAPH_BUDGET_EXCEEDED") ||
+            blockers.Contains("PROJECT_PRIVATE_HELPER_GRAPH_UNRESOLVED") ||
             blockers.Contains("TEST_DECLARATION_LINEAGE_INCOMPLETE") ||
             blockers.Contains("NO_SOURCE_OBLIGATIONS") ||
             blockers.Contains("TRANSFORMATION_INCOMPLETE");

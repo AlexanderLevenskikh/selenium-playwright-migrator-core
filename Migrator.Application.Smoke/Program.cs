@@ -1,4 +1,15 @@
 using Migrator.Application;
+if (args.Length == 1 && args[0] == "--p2-project-graph-only")
+{
+    P2ProjectGraphAcceptanceSmoke.Run();
+    Console.WriteLine("P2_PROJECT_GRAPH_ACCEPTANCE_SMOKE_PASSED");
+    return;
+}
+if (args.Length == 2 && args[0] == "--p2-public-portfolio-only")
+{
+    P2P3PublicSourcePortfolioSmoke.Run(args[1]);
+    return;
+}
 if(args.Contains("--p2-preview47-only",StringComparer.Ordinal))
 {
     PomPreview47OneTimeCleanupSmoke.Run();
@@ -192,6 +203,7 @@ try
     ExistingPlaywrightGuardSmoke.Run();
     RenderedTodoCompletenessSmoke.Run();
     MigrationAcceptanceSmoke.Run();
+    P2ProjectGraphAcceptanceSmoke.Run();
     PomNavigationAndStorageSmoke.Run();
     PomSourceEvidenceSmoke.Run();
     TableRowActionSmoke.Run();
