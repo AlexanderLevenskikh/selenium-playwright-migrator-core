@@ -95,8 +95,10 @@ def audited_original_fail(archive, name):
            and signal.get("signalSent") is True
            and stage.get("hostOwnedBrowserCleanup") == "not_attempted",
            "ORIGINAL_SIGTERM_AND_NO_HOST_CLEANUP_REQUIRED")
-    demand(name.startswith("diagnostic-cycles/cycle-") and "/process-" in name,
-           "ORIGINAL_DIAGNOSTIC_PATH_REQUIRED")
+    root_stage = name.startswith("process-") and "/" not in name
+    diagnostic_stage = (name.startswith("diagnostic-cycles/cycle-")
+                        and "/process-" in name)
+    demand(root_stage or diagnostic_stage, "ORIGINAL_STAGE_PATH_REQUIRED")
     event_name = name[:-5] + ".jsonl"
     demand(event_name in archive.namelist(), "ORIGINAL_TIMELINE_MISSING")
     events = [json.loads(x) for x in archive.read(event_name).decode("utf-8").splitlines()]
@@ -183,7 +185,8 @@ def audited_original_fail(archive, name):
         })
     demand(any(x["role"] == "root" and x["nativeState"] == "exited"
                for x in safe), "CHROMIUM_ROOT_NATIVE_EXIT_UNPROVEN")
-    trx = name.rsplit("/", 1)[0] + "/" + stage["run"] + ".trx"
+    prefix = name.rsplit("/", 1)[0] + "/" if "/" in name else ""
+    trx = prefix + stage["run"] + ".trx"
     demand(trx in archive.namelist()
            and hashlib.sha256(archive.read(trx)).hexdigest() == stage.get("trxSha256"),
            "ORIGINAL_NUNIT_TRX_INTEGRITY_UNPROVEN")
@@ -214,10 +217,10 @@ def audited_original_fail(archive, name):
 def inspect_archive(path, expected_sha):
     members = verify_original_archive(path, expected_sha)
     with zipfile.ZipFile(path) as archive:
-        names = [x for x in members
-                 if x.startswith("diagnostic-cycles/cycle-")
-                 and "/process-" in x and x.endswith(".json")
-                 and not x.endswith("SHA256SUMS.json")]
+        names = [x for x in members if x.endswith(".json") and (
+            (x.startswith("process-") and "/" not in x)
+            or (x.startswith("diagnostic-cycles/cycle-")
+                and "/process-" in x))]
         demand(len(names) <= MAX_RECEIPTS, "ORIGINAL_RECEIPT_BUDGET_EXCEEDED")
         failures = [entry for x in names
                     if (entry := audited_original_fail(archive, x)) is not None]
