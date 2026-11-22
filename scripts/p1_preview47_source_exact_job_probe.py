@@ -114,6 +114,23 @@ def owned(data, root):
             p45.ancestry(data, pid, root) is not None}
 
 
+def record_owned_snapshot(data, root, observed, baseline, phase):
+    """Same continuous ancestry membership as original P47, including late children.
+
+    This function has NO termination rights. New post-fault descendants are
+    included in the unassisted presence predicate, but are not silently
+    promoted to pre-fault Job members.
+    """
+    added = []
+    for key, kind in sorted(owned(data, root).items()):
+        require(key not in baseline, "P47_REAL_JOB_BASELINE_REUSED")
+        if key not in observed:
+            observed[key] = kind
+            added.append({"pid": key[0], "startIdentity": key[1],
+                          "kind": kind, "firstObservedPhase": phase})
+    return added
+
+
 def live_member(api, probe, job, data, precise, pid, start):
     require(pid in data and str(data[pid][1]) == start,
             "P47_REAL_JOB_OBSERVED_PROCESS_IDENTITY_CHANGED")
@@ -135,9 +152,11 @@ def live_member(api, probe, job, data, precise, pid, start):
         api.CloseHandle(handle)
 
 
-def unassisted_gate(chrome, observed, report, out):
-    # Identical presence predicate and 12s time budget to the original P47.
-    limit = time.monotonic() + p47e.PASSIVE_WINDOW_SECONDS
+def unassisted_gate(chrome, observed, report, out, limit):
+    # The 12s deadline was anchored IMMEDIATELY after the runner-exit CIM
+    # snapshot (same order as original P47). Never reset it after TRX/I/O.
+    require(p47e.PASSIVE_WINDOW_SECONDS == 12,
+            "P47_SOURCE_EXACT_ORIGINAL_GATE_WINDOW_CHANGED")
     while True:
         data, _ = p47e.snapshot(chrome)
         survivors = [{"pid": pid, "startIdentity": start, "kind": kind}
@@ -277,9 +296,8 @@ def main():
             deadline = time.monotonic() + 90
             while time.monotonic() < deadline:
                 data, precise = p47e.snapshot(chrome)
-                for key, kind in owned(data, host_pid).items():
-                    require(key not in baseline, "P47_REAL_JOB_BASELINE_REUSED")
-                    observed[key] = kind
+                record_owned_snapshot(data, host_pid, observed, baseline,
+                                      "runner_before_node_fault")
                 if ((out / ("ready-" + cycle)).is_file() and
                         any(v == "driver" for v in observed.values()) and
                         any(v == "chrome" for v in observed.values())):
@@ -317,8 +335,31 @@ def main():
             report["driverTermination"]["signalSent"] = True
             p47e.atomic_json(receipt, report)
             (out / ("ack-" + cycle)).write_text("driver_killed", encoding="utf-8")
-            stdout, stderr = process.communicate(timeout=90)
+            # Original P47 continues observing the ancestry until dotnet test
+            # exits. Do not call communicate() here: it blinds the host to
+            # newly created or newly discovered real Chrome descendants.
+            late = []
+            deadline = time.monotonic() + 90
+            while process.poll() is None:
+                data, precise = p47e.snapshot(chrome)
+                late.extend(record_owned_snapshot(
+                    data, host_pid, observed, baseline, "runner_after_node_fault"))
+                require(time.monotonic() <= deadline,
+                        "P47_SOURCE_EXACT_NUNIT_POSTFAULT_TIMEOUT")
+                time.sleep(.4)
+            stdout, stderr = process.communicate(timeout=30)
+            last, precise = p47e.snapshot(chrome)
+            late.extend(record_owned_snapshot(
+                last, host_pid, observed, baseline, "runner_exit"))
+            # The exact original gate starts at this instant, before TRX
+            # parsing, receipt persistence or any native diagnostic work.
+            limit = time.monotonic() + p47e.PASSIVE_WINDOW_SECONDS
+            survivors = unassisted_gate(chrome, observed, report, out, limit)
+            report["postFaultNewObserved"] = late
+            report["postFaultNewObservedCount"] = len(late)
+            report["observedOwnedProcessCount"] = len(observed)
             report["testRunnerExitCode"] = process.returncode
+            p47e.atomic_json(receipt, report)
             trx = out / "real-job.trx"
             require(trx.is_file(), "P47_REAL_JOB_NUNIT_TRX_MISSING")
             report["trxSha256"] = hashlib.sha256(trx.read_bytes()).hexdigest()
@@ -337,8 +378,8 @@ def main():
                 "observed" if p47.LOG_BROWSER in trx_text else "not_observed")
             report["actualPlaywrightDisposeTargetClosed"] = (
                 "observed" if p47.LOG_DISPOSE in trx_text else "not_observed")
-            survivors = unassisted_gate(chrome, observed, report, out)
-            # The 12-second unassisted result is already durable. From here on,
+            # The original 12-second unassisted result is already durable.
+            # From here on,
             # all actions are SEPARATE, post-gate host cleanup; they cannot
             # change a failed original observation into PASS.
             report["hostCleanup"] = "pending_after_unassisted_gate"

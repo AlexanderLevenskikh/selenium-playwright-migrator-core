@@ -92,5 +92,47 @@ class SourceExactP47FixtureTests(unittest.TestCase):
                 probe.source_exact_fixture(REPO)
 
 
+    def test_post_fault_new_owned_descendant_is_in_unassisted_inventory(self):
+        # Node 2 / Chrome root 3 were observed before the real SIGTERM.
+        # A new child 4 appears while the NUnit test runner is still alive.
+        data = {1: (0, "runner", "other"),
+                2: (1, "node", "driver"),
+                3: (2, "chrome-root", "chrome"),
+                4: (3, "late-child", "chrome")}
+        observed = {(2, "node"): "driver", (3, "chrome-root"): "chrome"}
+        new = probe.record_owned_snapshot(
+            data, 1, observed, set(), "runner_after_node_fault")
+        self.assertEqual(new, [{"pid": 4, "startIdentity": "late-child",
+                                "kind": "chrome",
+                                "firstObservedPhase": "runner_after_node_fault"}])
+        self.assertEqual(observed[(4, "late-child")], "chrome")
+        self.assertEqual(probe.record_owned_snapshot(
+            data, 1, observed, set(), "runner_exit"), [])
+
+    def test_reused_baseline_pid_with_same_start_is_blocked(self):
+        data = {1: (0, "runner", "other"), 3: (1, "chrome", "chrome")}
+        with self.assertRaisesRegex(AssertionError, "BASELINE_REUSED"):
+            probe.record_owned_snapshot(
+                data, 1, {}, {(3, "chrome")}, "runner_after_node_fault")
+
+    def test_gate_uses_existing_deadline_not_extended_after_trx(self):
+        import tempfile
+        from unittest import mock
+        seen = {(7, "chrome-native-start"): "chrome"}
+        last = {7: (1, "chrome-native-start", "chrome")}
+        report = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(probe.p47e, "snapshot", return_value=(last, {})):
+                with mock.patch.object(probe.time, "monotonic", return_value=30.0):
+                    with mock.patch.object(probe.time, "sleep") as sleep:
+                        still_live = probe.unassisted_gate(
+                            "fake-chrome", seen, report, Path(tmp), limit=12.0)
+                        sleep.assert_not_called()
+        self.assertEqual(len(still_live), 1)
+        self.assertEqual(still_live[0]["pid"], 7)
+        self.assertEqual(report["unassistedGateBeforeHostClose"], "failed")
+        self.assertEqual(report["unassistedGateSeconds"], 12)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
