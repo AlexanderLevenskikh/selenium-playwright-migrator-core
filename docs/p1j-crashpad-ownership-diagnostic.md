@@ -1,6 +1,6 @@
 # P1-J — Crashpad/StorageService lifetime hypothesis, NOT A FIX
 
-Stacked on draft Core #67 at exact `91f8e160cb73584025ef4b78f26275648f062b68`. This branch changes neither the original P47 script (pinned SHA256 `fb4f7287c93e5406ff5616afa67ab10d041ab303476a25547ff3815b6e7bb8b4`) nor NUnit, Node SIGTERM, the 12-second gate, Job membership/close, the fixed fail-fast plan, or the full CI matrix.
+Stacked on draft Core #67 at exact `91f8e160cb73584025ef4b78f26275648f062b68`. This branch changes neither the original P47 script (canonical LF SHA256 `53e4fa5babf70dfd7434cfc813cde685be1a77fbbe814d366c154005325632bc`; Windows CRLF checkout SHA256 `fb4f7287c93e5406ff5616afa67ab10d041ab303476a25547ff3815b6e7bb8b4`) nor NUnit, Node SIGTERM, the 12-second gate, Job membership/close, the fixed fail-fast plan, or the full CI matrix.
 
 ## Existing independently verified control ZIPs
 
@@ -37,3 +37,8 @@ The original 10-cycle diagnostic plan remains original fail-fast and does not co
 **Next discriminating experiment (not silently launched):** compare actual P47 A native-LIVE crashpad switch modes at ready, immediately pre-fault, post-fault and post-gate with equivalent B roles; if still inconclusive, add an explicitly authorized bounded read-only ETW process/handle capture for client exit/pipe closure ordering. No PID-only joins, forced orphan, registry changes or artificial PASS. If a B same-process native-LIVE orphan never survives through the gate, last-handle-close proof remains NOT_OBSERVED.
 
 **NO FIX CLAIM; NO MERGE; NO RELEASE; PR stays draft.**
+
+
+### OS newline boundary in the original P47 provenance
+
+The original Python harness in Core #67 has identical Git **blob** across P1-I and P1-J. Linux CI reads LF bytes (SHA256 `53e4fa5babf70dfd7434cfc813cde685be1a77fbbe814d366c154005325632bc`); Windows checkout uses CRLF bytes, historically pinned and proven by P1-I (SHA256 `fb4f7287c93e5406ff5616afa67ab10d041ab303476a25547ff3815b6e7bb8b4`). The P1-J test checks **both** exact raw per-EOL SHA and normalized-LF SHA. No P47 source bytes, SIGTERM logic or gate changed in this PR. The initial P1-J Ubuntu failure on SHA `3e0a154a` was a too-narrow Windows-only raw-hash test, not a source change or P47 remediation outcome.

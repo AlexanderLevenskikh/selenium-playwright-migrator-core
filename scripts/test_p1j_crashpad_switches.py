@@ -6,7 +6,10 @@ import unittest
 
 import p2_preview47_process_evidence as evidence
 
-ORIGINAL_P47_SHA256 = "fb4f7287c93e5406ff5616afa67ab10d041ab303476a25547ff3815b6e7bb8b4"
+# The P1-I original Python P47 was checked out as CRLF on Windows (fb4f...)
+# and LF on Linux (53e4...). Both are exact encodings of the same pinned source.
+P47_SHA256_LF = "53e4fa5babf70dfd7434cfc813cde685be1a77fbbe814d366c154005325632bc"
+P47_SHA256_CRLF = "fb4f7287c93e5406ff5616afa67ab10d041ab303476a25547ff3815b6e7bb8b4"
 
 
 def record(flags=("present", "absent", "present", "absent"), role="crashpad-handler"):
@@ -76,8 +79,12 @@ class CrashpadFlagControls(unittest.TestCase):
 
     def test_source_original_p47_is_byte_for_byte_unchanged(self):
         p47 = Path(__file__).resolve().parent / "p2_preview47_one_time_real_chromium.py"
-        self.assertEqual(hashlib.sha256(p47.read_bytes()).hexdigest(),
-                         ORIGINAL_P47_SHA256)
+        raw = p47.read_bytes()
+        canonical_lf = raw.replace(b"\r\n", b"\n")
+        # Normalizing only EOL cannot mask changes to a source line.
+        self.assertEqual(hashlib.sha256(canonical_lf).hexdigest(), P47_SHA256_LF)
+        raw_expected = P47_SHA256_CRLF if b"\r\n" in raw else P47_SHA256_LF
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), raw_expected)
 
     def test_empty_metadata_does_not_invent_crashpad_switch_evidence(self):
         with tempfile.TemporaryDirectory() as folder:
