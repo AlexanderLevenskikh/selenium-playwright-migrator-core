@@ -10,6 +10,9 @@
 
 Standalone, reusable **.NET 10 AST migration engine** for Selenium C# NUnit → Playwright .NET. It includes the original `Migrator.Core` domain models, Roslyn parser, Selenium C# adapter, Playwright .NET renderer, and the direct `Migrator.Application` API.
 
+> **Release Candidate preparation — NOT a production release.** The integrated P2/P3 branch requires strict source→target acceptance, exact revisions and independent browser observables. A passing compilation or NUnit suite alone is **not** behavioral equivalence. Windows Chromium orphan [issue #59](https://github.com/levencode-labs/selenium-playwright-migrator-core/issues/59) remains OPEN and blocks production; no product fix is proven. See [User Guide](USERGUIDE.md) · [Руководство](USERGUIDE.ru.md) · [Release gates](docs/RC-READINESS.md) · [PR dependency map](docs/PR-DEPENDENCY-GRAPH.md). Current package preview is read from `Directory.Build.props` (at this RC snapshot: `0.1.0-preview.48`); older preview notes below document historical milestones.
+
+
 Source history: imported from [selenium-playwright-ast-migrator](https://github.com/AlexanderLevenskikh/selenium-playwright-ast-migrator), pinned source commit `e9e7a7e67def1a1db7d02a6b12ac0921b2e232a2`. Original upstream master was not changed.
 
 ## Use the API

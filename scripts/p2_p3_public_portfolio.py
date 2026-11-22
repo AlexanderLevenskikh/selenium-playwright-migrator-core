@@ -58,6 +58,22 @@ def git_output(root, *args):
     return value.stdout.strip()
 
 
+def git_blob_bytes(root, blob_sha):
+    """Read exact pinned Git OBJECT bytes, never the platform-normalized worktree."""
+    result = subprocess.run(["git", "-C", str(root), "cat-file",
+                             "blob", blob_sha], capture_output=True, timeout=25)
+    check(result.returncode == 0 and len(result.stdout) <= 1024 * 1024,
+          "canonical pinned Git blob unavailable")
+    return result.stdout
+
+
+def only_checkout_eol_difference(canonical, worktree):
+    # Checkout may replace LF with CRLF. No selector/argument/body mutation is
+    # allowed to hide behind Git's text filters or hash-object normalization.
+    return canonical.replace(b"\r\n", b"\n") == worktree.replace(
+        b"\r\n", b"\n")
+
+
 def inspect(directory):
     root = Path(directory)
     result = []
@@ -72,11 +88,21 @@ def inspect(directory):
             check(f.is_file() and not f.is_symlink(), label + " file missing")
             content = f.read_bytes()
             check(len(content) <= 1024 * 1024, label + " oversized")
-            check(git_output(path, "hash-object", relative) == blob,
-                  label + " Git blob identity changed: " + relative)
+            check(git_output(path, "hash-object", relative) == blob
+                  and not git_output(path, "diff", "--name-only",
+                                     "--", relative),
+                  label + " Git blob identity or checkout integrity changed: "
+                  + relative)
+            canonical = git_blob_bytes(path, blob)
+            check(only_checkout_eol_difference(canonical, content),
+                  label + " checkout diverges beyond LF/CRLF: " + relative)
             files.append({"path": relative, "gitBlobSha1": blob,
-                          "sha256": hashlib.sha256(content).hexdigest(),
-                          "byteLength": len(content)})
+                          # Canonical SHA is stable on Linux and Windows.
+                          "sha256": hashlib.sha256(canonical).hexdigest(),
+                          "byteLength": len(canonical),
+                          "checkoutSha256": hashlib.sha256(content).hexdigest(),
+                          "checkoutByteLength": len(content),
+                          "checkoutEolNormalized": canonical != content})
         result.append({
             "id": label, "repository": sample["repository"],
             "sourceCommit": sample["commit"], "files": files,
