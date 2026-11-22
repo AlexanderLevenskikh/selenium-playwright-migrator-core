@@ -99,7 +99,7 @@ internal static class MigrationAcceptanceSmoke
                 preview, new Dictionary<string, string> { [targetPath] = deletedTest },
                 Passed("syntax"), Passed("compile"), "edited-candidate4", "target-hash4");
             Check(missingMethod.Status == MigrationAcceptanceGate.RejectedIncomplete
-                && missingMethod.Lineage.Any(x => x.Kind == "declaration"
+                && missingMethod.Lineage.Any(x => x.Kind == "method"
                     && x.Method == "PreservesAction" && x.Status == "missing_target"),
                 "removed NUnit test declaration must not disappear from lineage");
 
