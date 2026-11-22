@@ -17,11 +17,10 @@ internal static class PomParameterizedCountGuardSmoke
                 namespace Fictional.P3;
                 public sealed class CountPage {
                     readonly IWebDriver driver;
-                    readonly IWebDriver otherDriver;
                     private readonly int cached;
                     private readonly string dynamicSelector;
-                    public CountPage(IWebDriver driver, IWebDriver otherDriver) {
-                        this.driver=driver;this.otherDriver=otherDriver;
+                    public CountPage(IWebDriver driver) {
+                        this.driver=driver;
                         cached=0;dynamicSelector=".row";
                     }
                     public void Choose(int minimum,int maximum) {
@@ -42,7 +41,7 @@ internal static class PomParameterizedCountGuardSmoke
                     }
                     private void Accept() { driver.FindElement(By.Id("accept")).Click(); }
                     private void Reject() { driver.FindElement(By.Id("reject")).Click(); }
-                    public void UnsafeCapturedOtherDriver(int minimum) {
+                    public void UnsafeCapturedOtherDriver(IWebDriver otherDriver,int minimum) {
                         if (otherDriver.FindElements(By.CssSelector(".row")).Count >= minimum)
                             Accept(); else Reject();
                     }
@@ -60,6 +59,17 @@ internal static class PomParameterizedCountGuardSmoke
                     public void UnsafeUnrelatedEffect(int minimum) {
                         if (driver.FindElements(By.CssSelector(".row")).Count >= minimum)
                             Environment.SetEnvironmentVariable("PRIVATE", "1");
+                    }
+                }
+                public sealed class AmbiguousCountPage {
+                    readonly IWebDriver a;
+                    readonly IWebDriver b;
+                    public AmbiguousCountPage(IWebDriver a,IWebDriver b) {
+                        this.a=a;this.b=b;
+                    }
+                    public void UnsafeCount(int minimum) {
+                        if (a.FindElements(By.CssSelector(".row")).Count >= minimum)
+                            a.FindElement(By.Id("accept")).Click();
                     }
                 }
                 """);
@@ -112,6 +122,14 @@ internal static class PomParameterizedCountGuardSmoke
                     "unknown selector/receiver/state/side effect leaked into active target: "
                     + method);
             }
+            var ambiguous = engine.PlanPomActions(root,
+                "Fictional.P3.AmbiguousCountPage", "UnsafeCount", snapshot);
+            Check(ambiguous.Status == "blocked"
+                && ambiguous.TargetStatements.Count == 0
+                && ambiguous.AdapterCandidate == null
+                && ambiguous.Blockers.Any(x => x.Code ==
+                    "POM_CONDITIONAL_GUARD_UNRESOLVED"),
+                "multiple IWebDriver fields must not implicitly select target Page");
             File.AppendAllText(file, "\n// exact source mutation");
             try
             {

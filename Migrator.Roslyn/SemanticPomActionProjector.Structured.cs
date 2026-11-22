@@ -518,6 +518,12 @@ public static partial class SemanticPomActionProjector
             || driver.Type.ToDisplayString() != "OpenQA.Selenium.IWebDriver"
             || !SymbolEqualityComparer.Default.Equals(
                 driver.ContainingType, owner.ContainingType)
+            // Multiple IWebDriver fields make the intended IPage ambiguous:
+            // do not infer a primary driver from an arbitrary field name.
+            || owner.ContainingType.GetMembers().OfType<IFieldSymbol>()
+                .Count(field => !field.IsStatic
+                    && field.Type.ToDisplayString() ==
+                       "OpenQA.Selenium.IWebDriver") != 1
             || !TryFindBy(find, model, out locator, expectMany: true))
             return false;
         count = candidate;
