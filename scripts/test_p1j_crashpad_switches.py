@@ -44,6 +44,17 @@ class CrashpadFlagControls(unittest.TestCase):
         self.assertIsNone(evidence.parse_sanitized_cim_record("820|3472|x|chrome|x|crashpad-handler||present|absent"))
         self.assertIsNone(evidence.parse_sanitized_cim_record("820|3472|x|other|x|||present|absent|absent"))
 
+    def test_previous_ten_field_nonchrome_record_remains_usable(self):
+        # Legacy v1 recorded only three flags. The newly introduced fourth
+        # flag is unknown, but must not invalidate an unrelated process row.
+        old = ("99|1|11/22/2026 09:48:57|driver|"
+               "2026-11-22T09:48:57.0Z|||not_applicable|"
+               "not_applicable|not_applicable")
+        decoded = evidence.parse_sanitized_cim_record(old)
+        self.assertIsNotNone(decoded)
+        self.assertEqual(decoded[1][2], "driver")
+        self.assertEqual(decoded[2]["crashpadSwitches"]["monitorSelf"], "unknown")
+
     def test_unrelated_chrome_flags_are_not_attributed_to_crashpad(self):
         row = record(("not_applicable",)*4, role="utility")
         self.assertEqual(evidence.parse_sanitized_cim_record(row)[2]

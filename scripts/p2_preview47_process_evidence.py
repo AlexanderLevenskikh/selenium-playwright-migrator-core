@@ -222,7 +222,8 @@ def parse_sanitized_cim_record(line):
              fields[7:] + ["unknown"] if len(fields) == 10 else ["unknown"] * 4)
     if any(flag not in _CRP_STATES for flag in flags):
         return None
-    if fields[3] != "chrome" and any(flag != "not_applicable" for flag in flags) and len(fields) in (10, 11):
+    if fields[3] != "chrome" and len(fields) in (10, 11) and any(
+            flag != "not_applicable" for flag in fields[7:]):
         return None
     pid = int(fields[0])
     metadata = {"creationUtc": fields[4], "chromiumRole": fields[5] or None,
