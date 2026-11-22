@@ -101,7 +101,12 @@ internal static class P2ProjectGraphAcceptanceSmoke
                 && preserved.Lineage.Any(x => x.Kind == "helper_action"
                     && x.Status == "candidate_unverified")
                 && preserved.BehavioralEquivalence.Status == "not_run",
-                "identical AST with NUnit lifecycle is still not behavioral proof");
+                "identical AST with NUnit lifecycle is still not behavioral proof. "
+                + "status=" + preserved.Status
+                + " blockers=" + string.Join(",", preserved.Blockers)
+                + " missing=" + string.Join(";", preserved.Lineage
+                    .Where(x => x.Status == "missing_target")
+                    .Select(x => x.Kind + ":" + x.Method)));
 
             var inverted = intact.Replace("\"#submit\"", "\"#other\"",
                 StringComparison.Ordinal);
