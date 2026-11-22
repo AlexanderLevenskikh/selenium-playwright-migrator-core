@@ -72,7 +72,7 @@ def main(arg):
             report["analysisId"]==record["analysisId"] and
             report["candidateId"]==record["candidateId"] and
             report["sourceTreeHash"]==record["sourceTreeHash"] and
-            report["targetTreeHash"]==record["targetTreeHash"] and
+            report["targetTreeHash"]==record["previewTargetTreeHash"] and
             report["sourceObligations"]>0 and
             report["missingObligations"]>=0 and
             report["candidateMatches"]>=0 and
@@ -80,7 +80,11 @@ def main(arg):
             report["canAutoApply"] is False and
             report["acceptedForRC"] is False and
             report["execution"]=="read_only_not_run",
-            "acceptance ID/status/inventory failed to bind actual original project")
+            "acceptance ID/status/inventory failed to bind actual original project: "+
+            json.dumps({"plan":record,"gate":{k:report.get(k) for k in
+                ("status","analysisId","candidateId","sourceTreeHash",
+                 "targetTreeHash","sourceObligations","runtimeVerified",
+                 "canAutoApply","acceptedForRC","execution")}},sort_keys=True))
     expected_not_run=("compile","testDiscovery","runner",
                       "realBrowser","behavioralEquivalence")
     require(all(report["stages"][s]=="not_run" for s in expected_not_run)

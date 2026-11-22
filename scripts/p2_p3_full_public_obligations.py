@@ -137,6 +137,7 @@ def main(arg):
             "candidateId":full.get("candidateId"),
             "sourceTreeHash":full.get("sourceTreeHash"),
             "targetTreeHash":full.get("targetTreeHash"),
+            "previewTargetTreeHash":full.get("previewTargetTreeHash"),
             "declaredTests":full.get("declaredTests"),
             "issueCodes":[i.get("code") for i in full.get("issues", [])],
             "error":assembly["stderrTail"] if assembly_status=="UNKNOWN" else ""},
