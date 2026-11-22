@@ -172,7 +172,7 @@ def stage_receipts(arm, out, observations):
     return rows
 
 
-def run_block(arm, out):
+def run_block(arm, out, observer_factory=None):
     out.mkdir()
     proof.require(not SOURCE.exists(), "P1E_ORIGINAL_EVIDENCE_NOT_FRESH")
     api = jobs.win32()
@@ -182,6 +182,7 @@ def run_block(arm, out):
     process = None
     observations = {}
     offsets = {}
+    observer = None
     try:
         job = ref["handle"]
         limits = jobs.ExtendedLimits()
@@ -208,6 +209,11 @@ def run_block(arm, out):
                 wrapper["inHostJob"] = jobs.member(api, handle, job)
                 proof.require(wrapper["inHostJob"] == (arm == "B"), "P1E_WRAPPER_MEMBERSHIP")
                 evidence.atomic_json(out / "wrapper.json", wrapper)
+                if observer_factory is not None:
+                    # P1-F starts its independent Win32 watcher BEFORE the original
+                    # wrapper receives its bootstrap byte. P1-E's path is unchanged.
+                    observer = observer_factory(api, native, job, process.pid,
+                                                wrapper["creationFileTime"], arm, SOURCE)
                 process.stdin.write(b"G")
                 process.stdin.close()
             finally:
@@ -217,14 +223,22 @@ def run_block(arm, out):
             while process.poll() is None:
                 if observer_error is None:
                     try:
-                        observe_prefault(api, native, job, offsets, observations)
+                        if observer is None:
+                            observe_prefault(api, native, job, offsets, observations)
+                        else:
+                            observer.poll()
                     except (OSError, ValueError, AssertionError) as error:
                         observer_error = str(error)
                 proof.require(time.monotonic() < deadline, "P1E_ORIGINAL_BLOCK_TIMEOUT")
                 time.sleep(.025)
+        if observer is not None:
+            observations = observer.joined()
+            evidence.atomic_json(out / "native-observer.json", observer.report())
         evidence.atomic_json(out / "terminal.json",
                              {"exitCode": process.returncode, "observerError": observer_error})
         rows = stage_receipts(arm, out, observations)
+        if observer is not None and observer_error is not None:
+            proof.require(False, "P1F_NATIVE_OBSERVER_ERROR: " + observer_error)
         failure = next((row for row in rows if row["status"] != "original_pass"), None)
         proof.require((process.returncode == 0) == (failure is None), "P1E_ORIGINAL_EXIT_MISMATCH")
         if failure and failure["status"] == "native_live_fail" and arm == "B":

@@ -706,6 +706,46 @@ jobs:
           path: artifacts/pom-preview47-p1e-${{ matrix.arm }}/
           if-no-files-found: error
 
+  p1f-preview47-native-job-ba:
+    name: P1-F original P47 native pre-fault Job B then A (one Windows runner)
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/p1f-native-job-ba' }}
+    runs-on: windows-2025
+    timeout-minutes: 65
+    env:
+      DOTNET_MULTILEVEL_LOOKUP: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.100'
+      - name: Install historical P47 Chrome and matching ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: '156.0.8078.80'
+          install-chromedriver: true
+      - name: Use an isolated NuGet cache for runtime fingerprints
+        shell: pwsh
+        run: '"NUGET_PACKAGES=$env:RUNNER_TEMP/p1f-nuget" >> $env:GITHUB_ENV'
+      - name: P1-F fail-closed native identity and ancestry join tests
+        run: python scripts/test_p1_preview47_native_tree.py
+      - name: Build exact Core CLI for the unchanged original P47
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Run original P47 B then A with external Win32 attestation
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p1_preview47_native_job_ba.py
+      - name: Retain original P47 TRX, gates, full native pre-fault tree and post-gate proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview47-p1f-native-job-ba
+          path: artifacts/pom-preview47-p1f-ba/
+          if-no-files-found: error
+
   p1-preview48-real-chromium-crash:
     name: Preview.48 upstream close oracle and real Chromium root crash (${{ matrix.os }})
     strategy:
