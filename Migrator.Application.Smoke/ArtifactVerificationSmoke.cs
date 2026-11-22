@@ -12,6 +12,13 @@ static class ArtifactVerificationSmoke
         Check(generated.Compile.Status == "not_run", "compile must never pass implicitly");
         Check(generated.Runtime.Status == "not_run" && generated.Observables.Status == "not_run",
             "no runtime or observables verification in syntax check");
+        Check(generated.Acceptance != null
+            && generated.Acceptance.SchemaVersion == MigrationAcceptanceGate.SchemaVersion
+            && generated.Acceptance.Status != "accepted"
+            && generated.Acceptance.TestRunner.Status == "not_run"
+            && generated.Acceptance.RealBrowser.Status == "not_run"
+            && generated.Acceptance.BehavioralEquivalence.Status == "not_run",
+            "syntax-only preview must not be behaviorally accepted");
 
         var targetDir = Path.Combine(Path.GetTempPath(), "migrator-target-smoke-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(targetDir);
@@ -31,6 +38,11 @@ static class ArtifactVerificationSmoke
                 "edited candidate must identify its parent");
             Check(edited.Candidate.CandidateId != preview.CandidateId, "new revision must have new id");
             Check(edited.Syntax.Status == "passed" && edited.Compile.Status == "passed", "edited self-contained code must compile");
+            Check(edited.Acceptance != null
+                && edited.Acceptance.Status != "accepted"
+                && edited.Acceptance.TestDiscovery.Status == "not_run"
+                && edited.Acceptance.TestRunner.Status == "not_run",
+                "a compiling edited candidate cannot inherit source/behavior acceptance");
             Check(edited.ReferenceContextHash is { Length: 64 }, "reference context must be captured");
             Check(edited.Runtime.Status == "not_run" && edited.Observables.Status == "not_run", "compile is not runtime");
 
