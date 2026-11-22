@@ -80,6 +80,10 @@ public sealed record MigrationPreview(
         = Array.Empty<NUnitAttributeEvidence>();
     public IReadOnlyList<NUnitCaseInventory> NUnitCases { get; init; }
         = Array.Empty<NUnitCaseInventory>();
+
+    // P2: per-action source -> candidate-IR inventory; not a behavior equivalence proof.
+    public IReadOnlyList<MigrationSourceObligation> SourceObligations { get; init; }
+        = Array.Empty<MigrationSourceObligation>();
 }
 
 public sealed record SourceExcerptLine(int Line, string Text);
@@ -136,4 +140,8 @@ public sealed record ArtifactVerification(
     VerificationStage Runtime,
     VerificationStage Observables,
     string? ReferenceContextHash,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations)
+{
+    // P2: explicit fail-closed result, separate from syntax and compile status.
+    public MigrationAcceptance? Acceptance { get; init; }
+}
