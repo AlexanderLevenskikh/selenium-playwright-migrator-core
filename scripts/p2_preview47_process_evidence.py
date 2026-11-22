@@ -172,8 +172,20 @@ def snapshot(chrome):
           }
         }
       }
-      # Never return raw command lines, URLs, profile directories or full paths.
-      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype"
+      # Crashpad's Windows lifetime is client/pipe-based. Only bounded
+      # switch PRESENCE is observable here; never read or persist values.
+      $initial='not_applicable'; $pipe='not_applicable'; $periodic='not_applicable'
+      if($kind -eq 'chrome' -and $role -eq 'crashpad-handler') {
+        $initial='unknown'; $pipe='unknown'; $periodic='unknown'
+        if($p.CommandLine) {
+          $initial='absent'; $pipe='absent'; $periodic='absent'
+          if($p.CommandLine -match '(?:^|\s)"?--initial-client-data(?:=|\s|"|$)') { $initial='present' }
+          if($p.CommandLine -match '(?:^|\s)"?--pipe-name(?:=|\s|"|$)') { $pipe='present' }
+          if($p.CommandLine -match '(?:^|\s)"?--no-periodic-tasks(?:=|\s|"|$)') { $periodic='present' }
+        }
+      }
+      # Never return raw command lines, pipe names, URLs, profile directories or full paths.
+      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype|$initial|$pipe|$periodic"
     }
     """
     result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
@@ -182,16 +194,43 @@ def snapshot(chrome):
         raise RuntimeError("P47_WINDOWS_CIM_PROCESS_METADATA_UNAVAILABLE")
     data, precise = {}, {}
     for line in result.stdout.splitlines():
-        fields = line.strip().split("|")
-        if len(fields) != 7 or not fields[0].isdigit() or not fields[1].isdigit():
+        decoded = parse_sanitized_cim_record(line)
+        if decoded is None:
             continue
-        pid = int(fields[0])
-        data[pid] = (int(fields[1]), fields[2], fields[3])
-        precise[pid] = {"creationUtc": fields[4], "chromiumRole": fields[5] or None,
-                        "chromiumUtilitySubtype": fields[6] or None}
+        pid, row, metadata = decoded
+        data[pid] = row
+        precise[pid] = metadata
     if not data:
         raise RuntimeError("P47_WINDOWS_CIM_RETURNED_EMPTY_PROCESS_TABLE")
     return data, precise
+
+
+
+# Exact, allowlisted parser for the PowerShell output (no raw command lines).
+# Old seven-field records are accepted as UNKNOWN flag evidence, not as absence.
+_CRP_STATES = frozenset(("present", "absent", "unknown", "not_applicable"))
+
+
+def parse_sanitized_cim_record(line):
+    fields = line.strip().split("|")
+    if len(fields) not in (7, 10) or not fields[0].isdigit() or not fields[1].isdigit():
+        return None
+    if fields[3] not in ("chrome", "driver", "other"):
+        return None
+    flags = fields[7:] if len(fields) == 10 else ["unknown"] * 3
+    if any(flag not in _CRP_STATES for flag in flags):
+        return None
+    if fields[3] != "chrome" and any(flag != "not_applicable" for flag in flags) and len(fields) == 10:
+        return None
+    pid = int(fields[0])
+    metadata = {"creationUtc": fields[4], "chromiumRole": fields[5] or None,
+                "chromiumUtilitySubtype": fields[6] or None,
+                "crashpadSwitches": {
+                    "initialClientData": flags[0],
+                    "pipeName": flags[1],
+                    "noPeriodicTasks": flags[2],
+                    "containsValues": False}}
+    return pid, (int(fields[1]), fields[2], fields[3]), metadata
 
 
 def classify_presence(present, native):
@@ -268,6 +307,7 @@ class StageEvidence:
                 if data[pid][2] == "chrome":
                     row.update(chromiumRole=metadata.get("chromiumRole") or "not_observed",
                                chromiumUtilitySubtype=metadata.get("chromiumUtilitySubtype"),
+                               crashpadSwitches=metadata.get("crashpadSwitches"),
                                executableMatchesConfiguredChrome=True)
             records.append(row)
         return records
