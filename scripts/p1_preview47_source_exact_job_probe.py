@@ -102,7 +102,7 @@ def expected_nunit(stage):
     return expected
 
 
-def require(condition, code):
+def require(ok, code):
     if not ok:
         raise AssertionError(code)
 
