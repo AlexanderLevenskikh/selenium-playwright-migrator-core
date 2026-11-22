@@ -26,7 +26,7 @@ class CrashpadFlagControls(unittest.TestCase):
         self.assertEqual(safe["crashpadSwitches"],
                          {"initialClientData": "present", "pipeName": "absent",
                           "noPeriodicTasks": "present", "monitorSelf": "absent",
-                          "containsValues": False})
+                          "uploadUrlConfigured": "unknown", "containsValues": False})
 
     def test_unknown_does_not_mean_absent_and_old_evidence_is_unknown(self):
         for flags in (("unknown", "unknown", "unknown", "unknown"),):
