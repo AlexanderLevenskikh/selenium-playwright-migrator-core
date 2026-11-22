@@ -127,7 +127,10 @@ class NativeTreeObserver:
             if not disconnect:
                 continue
             path = self.source / f"process-{stage}.json"
-            if path.is_file() and json.loads(path.read_text(encoding="utf-8")).get("status") == "running":
+            # The original stage updates JSON via os.replace(). Opening it for
+            # polling races with rename on Windows (WinError 5); stat-only.
+            # Previous stage files remain, so the latest existing stage wins.
+            if path.is_file():
                 return stage
         return None
 

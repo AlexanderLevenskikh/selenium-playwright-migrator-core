@@ -1,5 +1,8 @@
 """Fail-closed portable tests for P1-F Win32-to-original timeline joins."""
 import unittest
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
 from p1_preview47_native_tree import owned_chain, join_prefault
 
 
@@ -41,6 +44,18 @@ class P1FNativeJoinTests(unittest.TestCase):
 
     def test_missing_fault_is_unknown(self):
         self.assertEqual(join_prefault(self.samples, self.events[:1]), {})
+
+    def test_active_stage_never_opens_original_atomic_json(self):
+        from p1_preview47_native_tree import NativeTreeObserver
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "process-disconnect_primary.json").write_text("incomplete-json")
+            observer = NativeTreeObserver.__new__(NativeTreeObserver)
+            observer.source = Path(directory)
+            observer.stages = (("disconnect_primary", "Failed", True),
+                               ("disconnect_pass", "Passed", True))
+            # Opening the file would interfere with os.replace on Windows.
+            with patch.object(Path, "read_text", side_effect=AssertionError("read forbidden")):
+                self.assertEqual(observer.active_stage(), "disconnect_primary")
 
     def test_no_pid_only_orphan_ancestry(self):
         table = {10: (1, "python.exe"), 20: (10, "dotnet.exe"), 30: (20, "node.exe")}
