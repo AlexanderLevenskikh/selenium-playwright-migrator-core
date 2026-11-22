@@ -379,9 +379,50 @@ public static partial class SemanticPomActionProjector
                 ? RenderStatements(block.Statements, model, owner, depth, false)
                 : RenderStatement(body, model, owner, depth, false);
 
+        // Source: string GetButtonText() => Button.Text;
+        // Only the exact Selenium IWebElement.Text property read is admitted,
+        // and only as the sole string-returning source operation.
+        // Playwright's InnerTextAsync can differ in CSS/whitespace/visibility:
+        // emit a review-only candidate, never behavioral acceptance.
+        string? RenderStringTextReturn(ExpressionSyntax expression,
+            SemanticModel model, IMethodSymbol? owner)
+        {
+            if (owner?.ReturnType.SpecialType != SpecialType.System_String
+                || expression is not MemberAccessExpressionSyntax read
+                || read.Name.Identifier.ValueText != "Text"
+                || model.GetSymbolInfo(read).Symbol is not IPropertySymbol textProperty
+                || textProperty.ContainingType.ToDisplayString()
+                    != "OpenQA.Selenium.IWebElement"
+                || !TryElementLocator(read.Expression, model, out var locator))
+            {
+                Block("POM_RETURN_TEXT_UNRESOLVED", expression,
+                    "Only a single typed IWebElement.Text property return is projected; other result-producing operations or side effects cannot be omitted.");
+                return null;
+            }
+            var target = "return await " + locator + ".InnerTextAsync();";
+            Evidence(read, textProperty, "rendered_text_return", target);
+            return target;
+        }
+
         string? RenderMethod(MethodDeclarationSyntax method, SemanticModel model,
             IMethodSymbol? owner, int depth, bool isRoot)
         {
+            if (owner?.ReturnType.SpecialType == SpecialType.System_String)
+            {
+                ExpressionSyntax? result = method.ExpressionBody?.Expression;
+                if (result == null && method.Body?.Statements.Count == 1
+                    && method.Body.Statements[0] is ReturnStatementSyntax singleReturn)
+                    result = singleReturn.Expression;
+                if (result == null)
+                {
+                    Block("POM_RETURN_TEXT_UNRESOLVED", method,
+                        "String method must be exactly one Selenium IWebElement.Text read.");
+                    return null;
+                }
+                var projected = RenderStringTextReturn(result, model, owner);
+                if (projected != null && isRoot) topLevel.Add(projected);
+                return projected;
+            }
             if (method.Body != null)
                 return RenderStatements(method.Body.Statements, model,
                     owner, depth, isRoot);

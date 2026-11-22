@@ -185,6 +185,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build P2 AST/Core smoke
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: Typed POM property selectors, exact LinkText and rendered Text return negative controls
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-real-public-property-only
       - name: Verify RC NO-GO blockers and negative release-gate controls
         run: |
           python scripts/test_rc_gate_contract.py
@@ -257,6 +259,21 @@ jobs:
         with:
           name: migrator-p2-real-public-pom-slice-${{ matrix.os }}
           path: artifacts/p2-real-public-pom-slice/*
+          if-no-files-found: warn
+      - name: Build exact Core pom-plan CLI for real public-source generated target
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Execute original public Page Objects vs actual Core-projected Playwright source in same Chrome
+        timeout-minutes: 15
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.public-pom-chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.public-pom-chrome.outputs.chromedriver-path }}
+        run: python scripts/p2_real_public_generated_pom_slice.py public-portfolio/desh
+      - name: Preserve source-bound Core generated target hash, independent TRX and mutation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p2-core-projected-public-pom-${{ matrix.os }}
+          path: artifacts/p2-generated-real-public-pom/*
           if-no-files-found: warn
       - name: Roslyn semantic source-backed POM action regression
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only

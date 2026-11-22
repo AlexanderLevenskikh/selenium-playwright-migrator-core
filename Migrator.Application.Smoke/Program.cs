@@ -1,4 +1,10 @@
 using Migrator.Application;
+if (args.Contains("--p2-real-public-property-only", StringComparer.Ordinal))
+{
+    PomPublicPropertyProjectionSmoke.Run();
+    Console.WriteLine("P2_PUBLIC_PROPERTY_POM_PROJECTOR_SOURCE_AST_PASSED");
+    return;
+}
 if (args.Length == 1 && args[0] == "--p2-project-graph-only")
 {
     P2ProjectGraphAcceptanceSmoke.Run();
