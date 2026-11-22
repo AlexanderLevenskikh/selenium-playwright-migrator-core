@@ -709,3 +709,32 @@ jobs:
             artifacts/preview48/*
             artifacts/pom-preview48/*
           if-no-files-found: warn
+
+  p1b-disconnect-pass-timing-ab:
+    name: P1-B Windows real P47 disconnect_pass fixed timing AB
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install historical Chrome 156.0.8078.80
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: '156.0.8078.80'
+          install-chromedriver: true
+      - name: Run pre-registered 8-trial ABBAABBA unchanged NUnit cleanup timing experiment
+        timeout-minutes: 32
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+        run: python scripts/p1b_preview47_disconnect_pass_timing_ab.py
+      - name: Preserve original TRX PID FILETIME native logs and SHA manifest even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p1b-disconnect-pass-timing-ab-windows
+          path: artifacts/p1b-disconnect-pass-timing/
+          if-no-files-found: error
