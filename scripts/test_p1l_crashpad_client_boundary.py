@@ -13,7 +13,7 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def fixture_archive(original, *, fail=True, corruption=None):
+def fixture_archive(original, *, fail=True, corruption=None, primary=False):
     driver = {"pid": 90, "startIdentity": "node-start", "kind": "driver",
               "native": {"creationFileTime": "1000", "state": "live"}}
     root = {"pid": 91, "startIdentity": "root-start", "kind": "chrome",
@@ -64,7 +64,7 @@ def fixture_archive(original, *, fail=True, corruption=None):
         receipt["finalObservedProcesses"][1]["native"]["creationFileTime"] = "9999"
     if corruption == "root":
         receipt["finalObservedProcesses"][0]["native"]["state"] = "unknown"
-    base = "diagnostic-cycles/cycle-001/"
+    base = "" if primary else "diagnostic-cycles/cycle-001/"
     events = [
         {"phase": "runner_exited", "utc": "2026-11-22T01:00:00+00:00"},
         {"phase": "passive_cleanup_observation",
@@ -74,8 +74,9 @@ def fixture_archive(original, *, fail=True, corruption=None):
         base + "process-disconnect_primary.jsonl": (
             "\n".join(json.dumps(e) for e in events) + "\n").encode(),
         base + "disconnect_primary.trx": trx}
-    child = {k[len(base):]: sha(v) for k, v in entries.items()}
-    entries[base + "SHA256SUMS.json"] = json.dumps(child).encode()
+    if not primary:
+        child = {k[len(base):]: sha(v) for k, v in entries.items()}
+        entries[base + "SHA256SUMS.json"] = json.dumps(child).encode()
     manifest = {k: sha(v) for k, v in entries.items()}
     if corruption == "manifest":
         manifest[base + "disconnect_primary.trx"] = "0" * 64
@@ -116,6 +117,13 @@ class P1LControls(unittest.TestCase):
                          "no_original_native_live_failure_attested")
         self.assertIsNone(result["originalFailFastFailure"])
         self.assertFalse(result["fixClaim"])
+
+    def test_primary_original_gate_failure_cannot_disappear(self):
+        digest = fixture_archive(self.archive, primary=True)
+        result = audit.inspect_archive(self.archive, digest)
+        self.assertEqual(result["status"], "native_live_failure_observed")
+        self.assertEqual(result["originalFailFastFailure"]["sourceReceipt"],
+                         "process-disconnect_primary.json")
 
     def test_original_outer_sha_mismatch_rejected(self):
         digest = fixture_archive(self.archive)
