@@ -830,6 +830,48 @@ jobs:
           path: artifacts/pom-preview47-p1h-lifetime/
           if-no-files-found: error
 
+  p1i-preview47-original-A-real-orphan-postgate:
+    name: P1-I real original P47 A orphan post-gate Win32 Job adoption (windows-2025)
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/p1i-real-orphan-postgate' }}
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      DOTNET_MULTILEVEL_LOOKUP: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.100'
+      - name: Install original P47 Chrome and matching ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: '156.0.8078.80'
+          install-chromedriver: true
+      - name: Isolate NuGet cache for package and native binary fingerprints
+        shell: pwsh
+        run: '"NUGET_PACKAGES=$env:RUNNER_TEMP/p1i-nuget" >> $env:GITHUB_ENV'
+      - name: Verify native source and ancestry negative controls
+        run: python scripts/test_p1_preview47_native_tree.py
+      - name: Verify P1-I source-exact postgate adoption fail-closed controls
+        run: python scripts/test_p1_preview47_adopt_survivor.py
+      - name: Build exact Core CLI for unchanged original P47
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Run only one original P47 A fail-fast block with conditional postgate Job
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p1_preview47_postgate_i.py
+      - name: Retain unchanged original P47 gate, TRX, native identity, postgate and manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview47-p1i-real-orphan-postgate
+          path: artifacts/pom-preview47-p1i-real-orphan/
+          if-no-files-found: error
+
   p1-preview48-real-chromium-crash:
     name: Preview.48 upstream close oracle and real Chromium root crash (${{ matrix.os }})
     strategy:

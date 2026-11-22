@@ -178,7 +178,7 @@ def stage_receipts(arm, out, observations):
     return rows
 
 
-def run_block(arm, out, observer_factory=None):
+def run_block(arm, out, observer_factory=None, postgate_callback=None):
     out.mkdir()
     proof.require(not SOURCE.exists(), "P1E_ORIGINAL_EVIDENCE_NOT_FRESH")
     api = jobs.win32()
@@ -290,6 +290,11 @@ def run_block(arm, out, observer_factory=None):
                         api.CloseHandle(handle)
                 control.append(row)
             evidence.atomic_json(out / "control-survivors.json", control)
+            if postgate_callback is not None:
+                # P1-I only. Original source P47 has already terminated with
+                # its real native-LIVE FAIL and immutable 12-second gate.
+                # The A control receipts above are persisted BEFORE adoption.
+                postgate_callback(api, native, ref, failure, out, SOURCE, wrapper)
         return failure["status"] if failure else "original_pass"
     finally:
         if process is not None:
