@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="assets/product-hero.jpg" width="1200" alt="Levencode Labs Migrator Core — Roslyn-backed Selenium C# to Playwright .NET migration engine" />
+
+</div>
+
 # Selenium → Playwright Migrator Core
 
 Standalone, reusable **.NET 10 AST migration engine** for Selenium C# NUnit → Playwright .NET. It includes the original `Migrator.Core` domain models, Roslyn parser, Selenium C# adapter, Playwright .NET renderer, and the direct `Migrator.Application` API.
