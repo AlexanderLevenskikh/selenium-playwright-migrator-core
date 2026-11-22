@@ -158,6 +158,33 @@ public static class MigrationAcceptanceGate
                     Append(source, node, "operation", kind, target,
                         candidate, file.RelativePath, targetPath, phase, rows);
                 }
+
+                // A matching Click/Assert invocation cannot compensate for a deleted
+                // guard, catch/throw path or loop. Each source control-flow construct
+                // is its own obligation. Matching syntax is only candidate_unverified:
+                // conditions, order, reachability and observable effects are NOT proven.
+                var targetControlFlow = targetBody?.DescendantNodesAndSelf()
+                    .Where(node => ControlFlowKind(node) != null).ToArray()
+                    ?? Array.Empty<SyntaxNode>();
+                var usedControlFlow = new HashSet<int>();
+                foreach (var node in body.DescendantNodesAndSelf())
+                {
+                    var flowKind = ControlFlowKind(node);
+                    if (flowKind == null)
+                        continue;
+                    SyntaxNode? candidateFlow = null;
+                    for (var i = 0; i < targetControlFlow.Length; i++)
+                    {
+                        if (usedControlFlow.Contains(i) ||
+                            ControlFlowKind(targetControlFlow[i]) != flowKind)
+                            continue;
+                        usedControlFlow.Add(i);
+                        candidateFlow = targetControlFlow[i];
+                        break;
+                    }
+                    Append(source, node, "control_flow", flowKind, target,
+                        candidateFlow, file.RelativePath, targetPath, phase, rows);
+                }
             }
         }
 
@@ -252,6 +279,31 @@ public static class MigrationAcceptanceGate
         IdentifierNameSyntax i => i.Identifier.ValueText,
         GenericNameSyntax g => g.Identifier.ValueText,
         _ => call.Expression.ToString()
+    };
+
+    // These are syntactic obligations, not a claim of equivalent branching.
+    // Preserve individual else/catch/finally/throw paths, not just an outer if/try.
+    private static string? ControlFlowKind(SyntaxNode node) => node switch
+    {
+        IfStatementSyntax => "if_guard",
+        ElseClauseSyntax => "else_path",
+        SwitchStatementSyntax => "switch_dispatch",
+        SwitchExpressionSyntax => "switch_expression",
+        ConditionalExpressionSyntax => "ternary_guard",
+        ConditionalAccessExpressionSyntax => "conditional_access",
+        TryStatementSyntax => "try_scope",
+        CatchClauseSyntax => "catch_path",
+        FinallyClauseSyntax => "finally_path",
+        ThrowStatementSyntax => "throw_path",
+        ThrowExpressionSyntax => "throw_expression",
+        ForStatementSyntax => "for_loop",
+        ForEachStatementSyntax => "foreach_loop",
+        WhileStatementSyntax => "while_loop",
+        DoStatementSyntax => "do_loop",
+        BreakStatementSyntax => "break_path",
+        ContinueStatementSyntax => "continue_path",
+        ReturnStatementSyntax => "return_path",
+        _ => null
     };
 
     private static string Classify(SyntaxNode node, string phase)
