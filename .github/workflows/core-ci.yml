@@ -393,6 +393,21 @@ jobs:
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
         run: python scripts/p2_preview41_async_count_real_chromium.py
+      - name: P3 real Selenium vs Playwright source-owned parameterized POM Count branches
+        timeout-minutes: 24
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p3_pom_parameterized_count_real_chromium.py
+      - name: Retain P3 real NUnit Count guard and negative mutation PNG evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p3-count-guard-browser-${{ matrix.os }}
+          path: artifacts/p3-parameterized-count/*
+          if-no-files-found: warn
       - name: Retain real NUnit TRX browser snapshots PNG and SHA evidence
         if: always()
         uses: actions/upload-artifact@v4
