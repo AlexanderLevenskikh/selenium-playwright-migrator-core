@@ -36,8 +36,8 @@ SCHEMA = "migrator-preview47-source-exact-host-job/v1"
 CHILD_RIGHTS = 0x00100000 | 0x1000
 ASSIGN_RIGHTS = CHILD_RIGHTS | 0x0100 | 0x0001
 
-PRE_CREATE_GATE = """        # Host-assignment handshake: the ONLY addition to original P47 NUnit
-        # setup, before Playwright.CreateAsync can spawn the Node driver.
+PRE_CREATE_GATE = """        // Host-assignment handshake: the ONLY addition to original P47 NUnit
+        // setup, before Playwright.CreateAsync can spawn the Node driver.
         File.WriteAllText(Path.Combine(DirectoryPath,"testhost-gate"),
             Environment.ProcessId.ToString());
         for(var i=0;i<300&&!File.Exists(Path.Combine(DirectoryPath,"job-assigned"));i++)
