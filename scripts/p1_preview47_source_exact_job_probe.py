@@ -56,8 +56,8 @@ def source_exact_fixture(repo):
     file46 = repo / "Migrator.Application.Smoke/PomPreview46TypedTargetClosedSmoke.cs"
     file47 = repo / "Migrator.Application.Smoke/PomPreview47OneTimeCleanupSmoke.cs"
     bytes46, bytes47 = file46.read_bytes(), file47.read_bytes()
-    teardown = p42.synthetic("TypedTearDown", bytes46.decode("utf-8"))
-    one_time = p42.synthetic("OneTimeTearDown", bytes47.decode("utf-8"))
+    teardown = p42.synthetic("TypedTearDown", bytes46.decode("utf-8").replace("\r\n", "\n"))
+    one_time = p42.synthetic("OneTimeTearDown", bytes47.decode("utf-8").replace("\r\n", "\n"))
     require(p47.TEMPLATE.count("__TEARDOWN_SOURCE__") == 1 and
             p47.TEMPLATE.count("__ONE_TIME_SOURCE__") == 1,
             "P47_SOURCE_EXACT_TEMPLATE_PLACEHOLDER_MISMATCH")
