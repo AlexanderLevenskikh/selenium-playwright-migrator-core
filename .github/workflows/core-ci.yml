@@ -664,33 +664,46 @@ jobs:
           if-no-files-found: warn
 
 
-  p1d-preview47-sequence-job-ab:
-    name: P1-D full P47 sequence Windows Job A/B
-    needs: p1-preview47-real-onetime
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && github.head_ref == 'experiment/p1d-sequence-job-ab' }}
-    runs-on: windows-latest
+  p1e-preview47-external-job:
+    name: P1-E original P47 external Job (${{ matrix.arm }})
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/p1d-sequence-job-ab' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arm: [A, B]
+    runs-on: windows-2025
     timeout-minutes: 30
+    env:
+      DOTNET_MULTILEVEL_LOOKUP: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
-      - name: Install historical P47 Chrome
+          dotnet-version: '10.0.100'
+      - name: Install historical P47 Chrome and matching ChromeDriver
         id: chrome
         uses: browser-actions/setup-chrome@v2.2.0
         with:
           chrome-version: '156.0.8078.80'
           install-chromedriver: true
-      - name: Run one fixed B to A pair of full original stage sequences
+      - name: Use an isolated NuGet cache for runtime fingerprints
+        shell: pwsh
+        run: '"NUGET_PACKAGES=$env:RUNNER_TEMP/p1e-nuget" >> $env:GITHUB_ENV'
+      - name: Build exact Core CLI for original P47
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Run the original fail-fast P47 through the external supervisor
         env:
           MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: python scripts/p1_preview47_sequence_job_ab.py
-      - name: Retain per-arm receipts, TRX, timeline and manifests
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p1_preview47_external_job.py ${{ matrix.arm }}
+      - name: Retain original gate, receipts, and native Job observations
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: migrator-preview47-p1d-sequence-job-ab-windows
-          path: artifacts/pom-preview47-p1d/
+          name: migrator-preview47-p1e-external-job-${{ matrix.arm }}
+          path: artifacts/pom-preview47-p1e-${{ matrix.arm }}/
           if-no-files-found: error
 
   p1-preview48-real-chromium-crash:
