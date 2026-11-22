@@ -64,3 +64,32 @@ postGateHostRemediationProven=false, fixClaim=false.
 Original historical real FAIL evidence must remain. A new all-green original
 P47 or no native-live Job survivor is NOT a fix. No ad hoc randomized
 experiments are added. No merge/release while #59 remains OPEN.
+
+
+## Narrowed sampling after first exact-SHA CI
+The first P1-K candidate CI #45025728640 exposed a genuine **prerequisite
+failure**, not an orphan: original diagnostic cycle-002 `healthy_pass`
+had NUnit `Operation=Passed` and original 12s presence gate `passed`, but
+`P47_LIVE_OWNED_CHROME_DRIVER_NOT_OBSERVED` because the observer attested a
+real Node and **no** Chrome before it disappeared. No subsequent stage was
+run after the original failure. Original ZIP SHA256
+`ae3bf3247208806fb25eeac7804341eb89b4de56751c747ca8b06d9afbe1842a`
+passed CRC and 78/78 internal checks. This remains a failure and is not
+rewritten as successful cleanup.
+
+The new offline P1-K ZIP SHA256
+`2f94efd1a075d1f71c26fd4ed96a188c81276569d132806ec7926ca10dbb369f`
+has 16 source-linked pre-fault helper receipts but **no post-run matching
+live sample**; it correctly reports `insufficient_observations`, zero
+native counter deltas, `registeredClientsProven=false`,
+`pendingCrashUploadProven=false`, and `fixClaim=false`.
+The separate Job control also remained unproven.
+
+Review of the first original ZIP found new CPU/IO/handle numeric samples
+for service ancestors, NUnit and Node as well as Chrome. This follow-up
+restricts expensive numeric accounting to **crashpad-handler** or
+`utility/storage.mojom.StorageService` only, leaving the original
+GetProcessTimes + WaitForSingleObject liveness/FILETIME path for other
+processes intact. This reduces the observer footprint but does **not**
+prove that it caused the original prerequisite failure or fixes orphan
+cleanup. The latest commit-triggered CI is required for the narrowed code.

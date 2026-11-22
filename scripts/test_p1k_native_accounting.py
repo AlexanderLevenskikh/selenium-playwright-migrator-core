@@ -71,6 +71,19 @@ class P1KControls(unittest.TestCase):
         self.assertEqual(counters(handles=False)["status"], "partial")
         self.assertEqual(counters(handles=False, io=False)["status"], "unknown")
 
+    def test_scope_excludes_node_runner_root_and_renderer(self):
+        chooser = evidence.p1k_target_helper
+        self.assertFalse(chooser("driver", {"chromiumRole": "crashpad-handler"}))
+        self.assertFalse(chooser("other", {"chromiumRole": "crashpad-handler"}))
+        self.assertFalse(chooser("chrome", {"chromiumRole": "root"}))
+        self.assertFalse(chooser("chrome", {"chromiumRole": "renderer"}))
+        self.assertTrue(chooser("chrome", {"chromiumRole": "crashpad-handler"}))
+        self.assertTrue(chooser("chrome", {
+            "chromiumRole": "utility",
+            "chromiumUtilitySubtype": "storage.mojom.StorageService"}))
+        self.assertFalse(chooser("chrome", {"chromiumRole": "utility",
+                                           "chromiumUtilitySubtype": "network.mojom.NetworkService"}))
+
     def test_new_url_presence_is_allowlisted_and_legacy_unknown(self):
         text = ("80|30|11/22/2026|chrome|2026-11-22Z|crashpad-handler||"
                 "present|absent|absent|absent|present")

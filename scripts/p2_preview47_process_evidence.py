@@ -151,7 +151,7 @@ class NativeWindowsProbe:
         self.api.GetProcessIoCounters.argtypes = (wintypes.HANDLE, ctypes.POINTER(P1KIoCounters))
         self.api.GetProcessIoCounters.restype = wintypes.BOOL
 
-    def inspect(self, pid, expected_start=None):
+    def inspect(self, pid, expected_start=None, capture_activity=False):
         result = {"pid": pid, "expectedCreationFileTime": expected_start,
                   "state": "unknown", "method": "GetProcessTimes+WaitForSingleObject(0)"}
         # SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, no terminate rights.
@@ -162,11 +162,13 @@ class NativeWindowsProbe:
                           openError=error)
             return result
         try:
-            return self.inspect_handle(handle, pid, expected_start)
+            return self.inspect_handle(handle, pid, expected_start,
+                                       capture_activity=capture_activity)
         finally:
             self.api.CloseHandle(handle)
 
-    def inspect_handle(self, handle, pid, expected_start=None):
+    def inspect_handle(self, handle, pid, expected_start=None,
+                       capture_activity=False):
         # Caller owns this handle. Production inspect() always closes its
         # temporary handle; only the synthetic exit-object control retains one.
         result = {"pid": pid, "expectedCreationFileTime": expected_start,
@@ -190,8 +192,11 @@ class NativeWindowsProbe:
                 result["exitCode"] = code.value
         elif wait == 258:  # WAIT_TIMEOUT, process is not signaled.
             result["state"] = "live"
-            result["activityCounters"] = p1k_read_live_activity(
-                self.api, handle, kernel, user)
+            # Preserve P47 driver/ancestry timing; only explicitly selected
+            # original Chrome helper roles incur counter reads.
+            if capture_activity:
+                result["activityCounters"] = p1k_read_live_activity(
+                    self.api, handle, kernel, user)
         else:
             result["waitError"] = ctypes.get_last_error()
         return result
@@ -310,6 +315,14 @@ def classify_presence(present, native):
             for state in ("live", "exited", "absent", "identity_mismatch", "unknown", "not_applicable")}
 
 
+def p1k_target_helper(kind, metadata):
+    """Only the two historically observed Chrome helper roles are in scope."""
+    return (kind == "chrome" and
+            (metadata.get("chromiumRole") == "crashpad-handler" or
+             (metadata.get("chromiumRole") == "utility" and
+              metadata.get("chromiumUtilitySubtype") == "storage.mojom.StorageService")))
+
+
 class StageEvidence:
     def __init__(self, evidence, stage, expected, disconnect, native=None):
         self.directory = Path(evidence)
@@ -342,11 +355,16 @@ class StageEvidence:
             os.fsync(stream.fileno())
         return event
 
-    def observe_native(self, pid, start, bind=False, cim_creation_utc=None):
+    def observe_native(self, pid, start, bind=False, cim_creation_utc=None,
+                       capture_activity=False):
         if self.native is None:
             return {"pid": pid, "state": "not_applicable", "method": "linux_proc_start_identity"}
         key = (pid, start)
-        native = self.native.inspect(pid, self.native_starts.get(key))
+        if capture_activity and isinstance(self.native, NativeWindowsProbe):
+            native = self.native.inspect(pid, self.native_starts.get(key),
+                                         capture_activity=True)
+        else:
+            native = self.native.inspect(pid, self.native_starts.get(key))
         if key not in self.native_starts:
             joined = cim_matches_native(cim_creation_utc, native.get("creationFileTime"))
             if bind and native["state"] == "live" and joined:
@@ -368,8 +386,11 @@ class StageEvidence:
             metadata = precise.get(pid, {})
             row = {"pid": pid, "startIdentity": start,
                    "presentWithOriginalIdentity": pid in data and str(data[pid][1]) == start,
-                   "native": self.observe_native(pid, start, bind=bind,
-                                                 cim_creation_utc=metadata.get("creationUtc"))}
+                   "native": self.observe_native(
+                       pid, start, bind=bind,
+                       cim_creation_utc=metadata.get("creationUtc"),
+                       capture_activity=p1k_target_helper(
+                           data[pid][2] if pid in data else None, metadata))}
             if pid in data:
                 row.update(parentPid=data[pid][0], currentStartIdentity=str(data[pid][1]),
                            creationUtc=metadata.get("creationUtc"), kind=data[pid][2])
