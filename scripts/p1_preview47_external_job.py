@@ -152,10 +152,16 @@ def stage_receipts(arm, out, observations):
             and x["native"]["creationFileTime"] == x["native"]["expectedCreationFileTime"]
         ]
         row["nativeLiveChrome"] = survivors
-        attested = {x["kind"] for x in pre} == {"chrome", "driver"} and all(
-            x["inHostJob"] == (arm == "B") for x in pre)
-        row["prefaultMembership"] = ("attested" if attested else "identity_or_membership_unattested"
-                                     if disconnect else "not_applicable")
+        if arm == "B_late":
+            # P1-G Chrome-only late-association is a separate oracle experiment:
+            # wrapper/Node remain out of Job. It cannot prove pre-create mitigation.
+            from p1_preview47_late_chrome_job import membership_contract
+            membership = membership_contract(arm, pre)
+        else:
+            attested = {x["kind"] for x in pre} == {"chrome", "driver"} and all(
+                x["inHostJob"] == (arm == "B") for x in pre)
+            membership = "attested" if attested else "identity_or_membership_unattested"
+        row["prefaultMembership"] = membership if disconnect else "not_applicable"
         stopped = result["status"] != "passed"
         if not stopped:
             row["status"] = "original_pass"
@@ -241,12 +247,19 @@ def run_block(arm, out, observer_factory=None):
             proof.require(False, "P1F_NATIVE_OBSERVER_ERROR: " + observer_error)
         failure = next((row for row in rows if row["status"] != "original_pass"), None)
         proof.require((process.returncode == 0) == (failure is None), "P1E_ORIGINAL_EXIT_MISMATCH")
-        if failure and failure["status"] == "native_live_fail" and arm == "B":
-            report = {"unassistedGateBeforeHostClose": "failed"}
+        if failure and failure["status"] == "native_live_fail" and arm in ("B", "B_late"):
+            report = {"unassistedGateBeforeHostClose": "failed",
+                      "arm": arm,
+                      "productPreCreateMitigationProved": False,
+                      "assignmentMode": ("before_bootstrap" if arm == "B"
+                                         else "late_chrome_only_before_ready")}
             destination = out / "containment.json"
             try:
                 members = failure["verifiedBeforeFault"]
-                proof.require(failure["prefaultMembership"] == "attested", "P1E_PREFAULT_UNATTESTED")
+                expected_membership = ("attested" if arm == "B"
+                                       else "chrome_attested_driver_outside_job")
+                proof.require(failure["prefaultMembership"] == expected_membership,
+                              "P1G_PREFAULT_UNATTESTED")
                 proof.prove_after_gate(
                     api, native, ref, members, failure["nativeLiveChrome"], report,
                     lambda: evidence.atomic_json(destination, report), jobs.member)
