@@ -44,6 +44,7 @@ jobs:
         run: |
           python3 scripts/test_p1o_builder_and_witness_contract.py
           python3 scripts/test_p1o_launcher_safety.py
+          python3 scripts/test_p1o_process_ancestry_offline.py
           python3 scripts/p1o_builder_and_witness_contract.py --lock docs/p1o-chromium156-toolchain.lock.json --out artifacts/p1o-offline/blocked.json
       - name: Retain P1-O explicit Windows builder PREREQUISITE_FAILURE, not runtime PASS (Linux)
         if: always()
@@ -136,10 +137,16 @@ jobs:
       - name: P1-N isolated test-owned Crashpad witness overlay negative controls (Windows)
         run: python scripts/test_p1n_prepare_crashpad_test_witness.py
       - name: P1-O isolated builder/native witness contract (OFFLINE, no runtime) Windows
+        shell: pwsh
         run: |
           python scripts/test_p1o_builder_and_witness_contract.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/test_p1o_launcher_safety.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/test_p1o_process_ancestry_offline.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/p1o_builder_and_witness_contract.py --lock docs/p1o-chromium156-toolchain.lock.json --out artifacts/p1o-offline/blocked.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain P1-O explicit Windows builder PREREQUISITE_FAILURE, not runtime PASS (Windows)
         if: always()
         uses: actions/upload-artifact@v4

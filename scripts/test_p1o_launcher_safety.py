@@ -1,5 +1,6 @@
 """P1-O fail-closed launcher/static safety: no Windows build is executed in CI."""
 import json
+import ast
 from pathlib import Path
 import subprocess
 import unittest
@@ -55,6 +56,10 @@ class P1OLauncherSafety(unittest.TestCase):
 
     def test_preflight_is_readonly_and_requires_approved_windows(self):
         pre = self.read("scripts/p1o_windows_builder_preflight.ps1")
+        self.assertIn("[Text.UTF8Encoding]::new($false)", pre)
+        self.assertIn("chromium.clang-cl.exe", pre)
+        self.assertIn("chromium.gn.exe", pre)
+        self.assertIn("sdk.windows.h", pre)
         for token in (
             "OwnerApprovedIsolatedBuilder", "scratchFreeGiB",
             "Get-CimInstance Win32_ComputerSystem", "depotToolsCommit",
@@ -70,6 +75,8 @@ class P1OLauncherSafety(unittest.TestCase):
 
     def test_build_only_modifies_fresh_isolated_copy(self):
         build = self.read("scripts/p1o_build_test_owned_chromium156.ps1")
+        self.assertIn("[Text.UTF8Encoding]::new($false)", build)
+        self.assertIn("buildToolBinariesSha256", build)
         for token in (
             "ApproveOneInstrumentedBuild",
             "FRESH", "robocopy", "/E /COPY:DAT /DCOPY:DAT",
@@ -121,7 +128,14 @@ class P1OLauncherSafety(unittest.TestCase):
         ):
             self.assertIn(required, portable)
         self.assertNotIn("OpenProcess", portable)
-        self.assertNotIn("os.kill(", portable)
+        syntax = ast.parse(portable)
+        native_kills = [node for node in ast.walk(syntax)
+                        if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "os"
+                        and node.func.attr in ("kill", "killpg")]
+        self.assertEqual(native_kills, [], "portable verifier may never kill a process")
 
     def test_windows_default_builder_not_run_on_public_ci(self):
         yaml = self.read(".github/workflows/core-ci.yml")

@@ -127,9 +127,18 @@ if ($facts.os -eq 'Windows') {
         $dirty = & git -C $ChromiumRoot status --porcelain --untracked-files=no 2>$null
         $facts.sourceTreeClean = ($LASTEXITCODE -eq 0 -and -not $dirty)
     }
-    if (!(Test-Path -LiteralPath (Join-Path $DepotToolsRoot 'gn.bat')) -or
-        !(Test-Path -LiteralPath (Join-Path $DepotToolsRoot 'autoninja.bat'))) {
-        $problems += 'PINNED_DEPOT_TOOLS_NOT_BOOTSTRAPPED'
+    $toolBinaries = [ordered]@{
+        'depot.gn.bat' = Join-Path $DepotToolsRoot 'gn.bat'
+        'depot.autoninja.bat' = Join-Path $DepotToolsRoot 'autoninja.bat'
+        'chromium.gn.exe' = Join-Path $ChromiumRoot 'buildtools/win/gn.exe'
+        'chromium.clang-cl.exe' = Join-Path $ChromiumRoot 'third_party/llvm-build/Release+Asserts/bin/clang-cl.exe'
+        'chromium.lld-link.exe' = Join-Path $ChromiumRoot 'third_party/llvm-build/Release+Asserts/bin/lld-link.exe'
+        'sdk.windows.h' = Join-Path $kits 'Include/10.0.28000.0/um/Windows.h'
+    }
+    foreach ($key in $toolBinaries.Keys) {
+        $sha = Sha $toolBinaries[$key]
+        $facts.filesSha256[$key] = $sha
+        if (!$sha) { $problems += ('PINNED_BINARY_OR_SDK_FILE_MISSING_' + $key) }
     }
     # The future build script disables auto update in its child environment.
     # This is a process-scoped intent, never a persistent/global setting.
@@ -140,7 +149,8 @@ $folder = [System.IO.Path]::GetDirectoryName($target)
 if (!(Test-Path -LiteralPath $folder)) {
     [void](New-Item -ItemType Directory -Force -Path $folder)
 }
-$facts | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $target -Encoding UTF8
+$factJson = $facts | ConvertTo-Json -Depth 10
+[IO.File]::WriteAllText($target, $factJson, ([Text.UTF8Encoding]::new($false)))
 $assessmentPath = $target + '.assessment.json'
 $checker = Join-Path $repo 'scripts/p1o_builder_and_witness_contract.py'
 # Never print host identity, private absolute paths, environment, credentials.

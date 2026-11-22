@@ -87,7 +87,7 @@ foreach ($relative in $paths) {
         # units, without touching project GN flags or production code.
         $data = $data.Replace($marker,
             ('#define MIGRATOR_P1_TEST_OWNED_WITNESS 1' + [Environment]::NewLine + $marker))
-        [IO.File]::WriteAllText($dst, $data, (New-Object Text.UTF8Encoding($false)))
+        [IO.File]::WriteAllText($dst, $data, ([Text.UTF8Encoding]::new($false)))
     } else {
         Copy-Item -LiteralPath $src -Destination $dst
     }
@@ -96,7 +96,7 @@ foreach ($relative in $paths) {
 $outDir = Join-Path $stage 'out\P1O-156-instrumented'
 [void](New-Item -ItemType Directory -Force -Path $outDir)
 $gnArgs = (($lock.gn.args | ForEach-Object { [string]$_ }) -join [Environment]::NewLine) + [Environment]::NewLine
-[IO.File]::WriteAllText((Join-Path $outDir 'args.gn'), $gnArgs, (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText((Join-Path $outDir 'args.gn'), $gnArgs, ([Text.UTF8Encoding]::new($false)))
 
 $oldPath = $env:PATH
 $oldDepotUpdate = $env:DEPOT_TOOLS_UPDATE
@@ -149,6 +149,7 @@ $receipt = [ordered]@{
     visualStudioVersion = $facts.visualStudioVersion
     visualStudioBuildRecord = $facts.visualStudioBuild
     visualStudioBinarySha256 = $facts.filesSha256.'MSBuild.exe'
+    buildToolBinariesSha256 = $facts.filesSha256
     windowsSdk = $facts.windowsSdk
     gnArgumentsSha256 = HashFile (Join-Path $outDir 'args.gn')
     ninjaManifestSha256 = HashFile $buildNinja
@@ -168,5 +169,6 @@ $receipt = [ordered]@{
     releaseAllowed = $false
 }
 $receiptPath = Join-Path $privateDir 'p1o-test-owned-build-receipt.json'
-$receipt | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+$receiptJson = $receipt | ConvertTo-Json -Depth 12
+[IO.File]::WriteAllText($receiptPath, $receiptJson, ([Text.UTF8Encoding]::new($false)))
 Write-Output 'P1O_TEST_OWNED_CHROMIUM_COMPILED_RUNTIME_NOT_YET_EXECUTED_NO_FIX_CLAIM'

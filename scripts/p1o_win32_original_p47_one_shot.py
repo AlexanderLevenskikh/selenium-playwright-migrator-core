@@ -75,22 +75,47 @@ def native_identity(pid):
         kernel.CloseHandle(handle)
 
 
-def poll_owned_chrome(chrome):
-    # Existing original source uses CIM and filters *by exact executable path*.
-    # We query native handles ONLY for these matching test-owned Chromium PIDs.
-    current = existing_observer.snapshot(str(chrome))
+def poll_owned_chrome(chrome, original_pid, previously_owned):
+    # The stock P47 observer's Windows CIM command relies on this env var
+    # when comparing exact exe paths. Scope it to this subprocess only.
+    previous = os.environ.get("MIGRATOR_CHROME_BIN")
+    try:
+        os.environ["MIGRATOR_CHROME_BIN"] = str(chrome)
+        current = existing_observer.snapshot(str(chrome))
+    finally:
+        if previous is None:
+            os.environ.pop("MIGRATOR_CHROME_BIN", None)
+        else:
+            os.environ["MIGRATOR_CHROME_BIN"] = previous
     snapshot = []
     for pid, (_parent, started, role) in current.items():
         if role != "chrome":
+            continue
+        # The exact image path is NOT sufficient ownership evidence. While
+        # the original P47 parent is alive, require a real observed chain to
+        # its own Python PID. After P47 exits, trust only exact PID + native
+        # FILETIME bindings previously rooted in that observed ancestry.
+        ancestry = existing_observer.ancestry(current, pid, original_pid)
+        # Never even OPEN a native process handle for a foreign same-image
+        # PID. A formerly owned PID may be queried only to disprove PID
+        # reuse by comparing the native creation FILETIME.
+        if ancestry is None and not any(prior_pid == pid
+                                        for prior_pid, _ in previously_owned):
             continue
         binding = native_identity(pid)
         if binding is None:
             continue
         filetime, native_live = binding
+        identity = (pid, filetime)
+        if ancestry is None and identity not in previously_owned:
+            continue
+        if ancestry is not None:
+            previously_owned.add(identity)
         snapshot.append({
             "pid": pid, "nativeFiletime": filetime,
             "startIdentity": started,
             "nativeLive": native_live,
+            "observedOriginalAncestry": identity in previously_owned,
         })
     return snapshot
 
@@ -194,11 +219,12 @@ def main(argv=None):
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         encoding="utf-8", errors="replace")
     samples = []
+    owned_native_identities = set()
     query_fault = None
     try:
         while original.poll() is None:
             try:
-                samples.extend(poll_owned_chrome(chrome))
+                samples.extend(poll_owned_chrome(chrome, original.pid, owned_native_identities))
             except (subprocess.SubprocessError, RuntimeError, OSError) as ex:
                 query_fault = type(ex).__name__
                 break
@@ -209,7 +235,7 @@ def main(argv=None):
     finally:
         # A final query is AFTER P47's own 12s gate and after original exit.
         try:
-            last = poll_owned_chrome(chrome)
+            last = poll_owned_chrome(chrome, original.pid, owned_native_identities)
         except (subprocess.SubprocessError, RuntimeError, OSError):
             last = []
     # stdout/stderr may contain paths and error details, kept PRIVATE ONLY.
@@ -284,6 +310,7 @@ def main(argv=None):
         "chromeDriverSha256": sha_file(driver),
         "privateEventFileSha256": sha_file(handler_trace)
                                   if handler_trace.is_file() else None,
+        "originalAncestryBoundNativeIdentitiesCount": len(owned_native_identities),
         "nativeLiveChromeAfterOriginalExit": native_live,
         "nativeHandlerBindingAtOriginalExit": trace_correlates,
         "originalP47Changed": False,
