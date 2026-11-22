@@ -174,18 +174,19 @@ def snapshot(chrome):
       }
       # Crashpad's Windows lifetime is client/pipe-based. Only bounded
       # switch PRESENCE is observable here; never read or persist values.
-      $initial='not_applicable'; $pipe='not_applicable'; $periodic='not_applicable'
+      $initial='not_applicable'; $pipe='not_applicable'; $periodic='not_applicable'; $monitor='not_applicable'
       if($kind -eq 'chrome' -and $role -eq 'crashpad-handler') {
-        $initial='unknown'; $pipe='unknown'; $periodic='unknown'
+        $initial='unknown'; $pipe='unknown'; $periodic='unknown'; $monitor='unknown'
         if($p.CommandLine) {
-          $initial='absent'; $pipe='absent'; $periodic='absent'
+          $initial='absent'; $pipe='absent'; $periodic='absent'; $monitor='absent'
           if($p.CommandLine -match '(?:^|\s)"?--initial-client-data(?:=|\s|"|$)') { $initial='present' }
           if($p.CommandLine -match '(?:^|\s)"?--pipe-name(?:=|\s|"|$)') { $pipe='present' }
           if($p.CommandLine -match '(?:^|\s)"?--no-periodic-tasks(?:=|\s|"|$)') { $periodic='present' }
+          if($p.CommandLine -match '(?:^|\s)"?--monitor-self(?:\s|"|$)') { $monitor='present' }
         }
       }
       # Never return raw command lines, pipe names, URLs, profile directories or full paths.
-      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype|$initial|$pipe|$periodic"
+      Write-Output "$($p.ProcessId)|$($p.ParentProcessId)|$created|$kind|$precise|$role|$subtype|$initial|$pipe|$periodic|$monitor"
     }
     """
     result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
@@ -207,20 +208,21 @@ def snapshot(chrome):
 
 
 # Exact, allowlisted parser for the PowerShell output (no raw command lines).
-# Old seven-field records are accepted as UNKNOWN flag evidence, not as absence.
+# Old seven/ten-field records are accepted as UNKNOWN *missing* flag evidence, not as absence.
 _CRP_STATES = frozenset(("present", "absent", "unknown", "not_applicable"))
 
 
 def parse_sanitized_cim_record(line):
     fields = line.strip().split("|")
-    if len(fields) not in (7, 10) or not fields[0].isdigit() or not fields[1].isdigit():
+    if len(fields) not in (7, 10, 11) or not fields[0].isdigit() or not fields[1].isdigit():
         return None
     if fields[3] not in ("chrome", "driver", "other"):
         return None
-    flags = fields[7:] if len(fields) == 10 else ["unknown"] * 3
+    flags = (fields[7:] if len(fields) == 11 else
+             fields[7:] + ["unknown"] if len(fields) == 10 else ["unknown"] * 4)
     if any(flag not in _CRP_STATES for flag in flags):
         return None
-    if fields[3] != "chrome" and any(flag != "not_applicable" for flag in flags) and len(fields) == 10:
+    if fields[3] != "chrome" and any(flag != "not_applicable" for flag in flags) and len(fields) in (10, 11):
         return None
     pid = int(fields[0])
     metadata = {"creationUtc": fields[4], "chromiumRole": fields[5] or None,
@@ -229,6 +231,7 @@ def parse_sanitized_cim_record(line):
                     "initialClientData": flags[0],
                     "pipeName": flags[1],
                     "noPeriodicTasks": flags[2],
+                    "monitorSelf": flags[3],
                     "containsValues": False}}
     return pid, (int(fields[1]), fields[2], fields[3]), metadata
 
