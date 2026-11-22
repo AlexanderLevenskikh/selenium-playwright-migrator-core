@@ -76,6 +76,7 @@ public sealed partial class MigrationEngine
             hash, files.Select(file => new CandidateFileEvidence(file.RelativePath,
                 Convert.ToHexString(SHA256.HashData(file.Bytes)).ToLowerInvariant(), file.Bytes.Length)).ToArray());
 
+        var capturedTexts = new Dictionary<string, string>(StringComparer.Ordinal);
         var parsed = new List<SyntaxTree>(files.Length);
         var syntaxDiagnostics = new List<VerificationDiagnostic>();
         foreach (var file in files)
@@ -96,6 +97,7 @@ public sealed partial class MigrationEngine
                 continue;
             }
 
+            capturedTexts.Add(file.RelativePath, text);
             var tree = CSharpSyntaxTree.ParseText(text, path: file.RelativePath);
             parsed.Add(tree);
             foreach (var error in tree.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Take(40))
@@ -133,6 +135,13 @@ public sealed partial class MigrationEngine
                 throw new InvalidOperationException("TARGET_CHANGED_DURING_VERIFICATION: target bytes changed while being verified.");
         }
 
+        // Revalidate the source snapshot after the read-only lineage walk.
+        // In-flight source edits must never carry old acceptance evidence.
+        var gate = MigrationAcceptanceGate.Evaluate(current, preview, capturedTexts,
+            syntax, compile, revision.CandidateId, hash);
+        if (Analyze(sourcePath, configPath, cancellationToken).AnalysisId != preview.AnalysisId)
+            throw new InvalidOperationException("SOURCE_CHANGED_DURING_ACCEPTANCE: restart verification.");
+
         return new ArtifactVerification(ContractVersions.Verification, revision, syntax, compile,
             new VerificationStage("not_run", "runtime", Array.Empty<VerificationDiagnostic>()),
             new VerificationStage("not_run", "observables", Array.Empty<VerificationDiagnostic>()),
@@ -144,7 +153,10 @@ public sealed partial class MigrationEngine
                 "No browser, runtime or behavioral observations are performed by this alpha verifier.",
                 "Source snapshot context uses the alpha project's lightweight inventory; full transitive MSBuild inputs are not attested.",
                 "Reference context identifies supplied DLL bytes and runtime version, not a hermetic project build."
-            });
+            })
+        {
+            Acceptance = gate
+        };
     }
 
     private sealed record CapturedFile(string RelativePath, byte[] Bytes);

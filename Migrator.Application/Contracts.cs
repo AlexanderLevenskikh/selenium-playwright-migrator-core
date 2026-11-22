@@ -6,7 +6,7 @@ public static class ContractVersions
     public const string Analysis = "migrator-analysis/v1alpha2";
     public const string Preview = "migrator-preview/v1alpha2";
     public const string Explanation = "migrator-explanation/v1alpha1";
-    public const string Verification = "migrator-verification/v1alpha1";
+    public const string Verification = "migrator-verification/v1alpha2";
 }
 
 public sealed record MigrationFinding(
@@ -136,4 +136,8 @@ public sealed record ArtifactVerification(
     VerificationStage Runtime,
     VerificationStage Observables,
     string? ReferenceContextHash,
-    IReadOnlyList<string> Limitations);
+    IReadOnlyList<string> Limitations)
+{
+    /// <summary>Mandatory fail-closed source/target acceptance evidence.</summary>
+    public MigrationAcceptanceReport? Acceptance { get; init; }
+}
