@@ -154,6 +154,18 @@ namespace Fictional.P3;
       Record("playwright",snapshot);CheckEvent(snapshot,expected);
     } finally {await b.CloseAsync();pw.Dispose();}
   }
+  [Test,Explicit("independent false-green negative: NUnit may pass while Click is gone")]
+  public async Task LostActionNUnitGreen() {
+    var(pw,b,page)=await Start(2);
+    try {
+      // This intentionally loses the source Count/Accept action.
+      // A plain runner reports PASS; the external observable oracle MUST reject.
+      Assert.That(true, Is.True);
+      var snapshot=await page.EvaluateAsync<string>(
+        "() => JSON.stringify(window.snapshot())");
+      Record("falsegreen",snapshot);
+    } finally {await b.CloseAsync();pw.Dispose();}
+  }
   [Test,Explicit("negative changed guard must fail")]
   public async Task MutationMustFail() {
     var(pw,b,page)=await Start(2);
@@ -234,6 +246,16 @@ def main():
                     common.check(rendered.count(placeholder)==1,
                         "Unexpected target placeholder "+placeholder)
                     rendered=rendered.replace(placeholder,action)
+                # Exact immutable synthetic target bytes and the true browser
+                # witness revision are retained. This oracle identity is NOT
+                # a Core verify_artifact CandidateId and cannot authorize edits.
+                target_bytes=rendered.encode("utf-8")
+                target_sha=hashlib.sha256(target_bytes).hexdigest()
+                oracle_revision=hashlib.sha256(
+                    ("migrator-public-oracle/v1\n"+tree+"\n"+original_hash+"\n"
+                     +target_sha).encode("utf-8")).hexdigest()
+                (evidence/"synthetic-source.cs").write_bytes(SOURCE.encode("utf-8"))
+                (evidence/"synthetic-target.cs").write_bytes(target_bytes)
                 tests=root/"tests";tests.mkdir()
                 for name,data in (
                     ("Synthetic.Tests.csproj",common.CSPROJ),
@@ -285,11 +307,30 @@ def main():
                 png=evidence/"mutant-guard.png"
                 common.check(png.read_bytes()[:8]==b"\x89PNG\r\n\x1a\n",
                     "Actual negative Chromium PNG not produced")
+                false_green=common.run(["dotnet","test","-c","Release",
+                    "--no-build","--no-restore","--nologo",
+                    "--logger","trx;LogFileName=falsegreen.trx",
+                    "--results-directory",evidence,
+                    "--filter","Name~LostActionNUnitGreen"],tests,timeout=360)
+                false_green_trx=common.read_trx(evidence/"falsegreen.trx")
+                common.check(false_green["code"]==0
+                    and false_green_trx=={"LostActionNUnitGreen":"Passed"},
+                    "False-green NUnit negative must PASS on its own")
+                lost=json.loads(
+                    (evidence/"falsegreen-LostActionNUnitGreen.json").read_text())
+                common.check(lost["events"]==[]
+                    and pairs["Inside"]["events"]==["accept"],
+                    "Mandatory source Click removal did not diverge in DOM")
                 summary={
                     "schema":"migrator-p3-real-pom-count-guards/v1",
                     "source":"real Selenium C# NUnit on localhost fictional DOM",
                     "target":"generated review-only Playwright .NET",
                     "sourceTreeSha256":tree,"sourceSha256":original_hash,
+                    "oracleCandidateSha256":oracle_revision,
+                    "targetFileSha256":target_sha,
+                    "targetFileName":"synthetic-target.cs",
+                    "sourceFileName":"synthetic-source.cs",
+                    "candidateProvenance":"independent_synthetic_oracle_not_Core_VerifyArtifact",
                     "methodSha256":{k:v["sourceMethodSha256"] for k,v in plans.items()},
                     "chromeVersion":os.environ.get("MIGRATOR_CHROME_VERSION"),
                     "chromeSha256":hashlib.sha256(chrome.read_bytes()).hexdigest(),
@@ -298,6 +339,10 @@ def main():
                     "compared":["NUnit_TRX","DOM","ordered_events","Chrome_user_agent"],
                     "negativeMutation":{"outcome":"Failed","before":"accept",
                         "after":"reject","pngSha256":hashlib.sha256(png.read_bytes()).hexdigest()},
+                    "falseGreenNegative":{"sourceBaselineNUnit":"Passed",
+                        "mutantTargetNUnit":"Passed",
+                        "sourceEvents":["accept"],"mutantTargetEvents":[],
+                        "behavior":"different","acceptance":"rejected_behavior_difference"},
                     "autoApply":False,"requiresReview":True,
                     "generalBehavioralEquivalence":"not_proven",
                     "privateProjects":"not_run"}
