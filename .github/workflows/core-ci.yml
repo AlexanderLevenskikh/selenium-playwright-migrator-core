@@ -40,6 +40,18 @@ jobs:
         run: python3 scripts/test_p1m_crashpad_tagged_source_boundary.py
       - name: P1-N isolated test-owned Crashpad witness overlay negative controls (Linux)
         run: python3 scripts/test_p1n_prepare_crashpad_test_witness.py
+      - name: P1-O isolated builder/native witness contract (OFFLINE, no runtime) Linux
+        run: |
+          python3 scripts/test_p1o_builder_and_witness_contract.py
+          python3 scripts/test_p1o_launcher_safety.py
+          python3 scripts/p1o_builder_and_witness_contract.py --lock docs/p1o-chromium156-toolchain.lock.json --out artifacts/p1o-offline/blocked.json
+      - name: Retain P1-O explicit Windows builder PREREQUISITE_FAILURE, not runtime PASS (Linux)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p1o-offline-prerequisite-linux
+          path: artifacts/p1o-offline/blocked.json
+          if-no-files-found: warn
       - name: Build dedicated project assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: preview.29 real NUnit 3/4 discovery, TRX and explicit/failure comparison
@@ -123,6 +135,18 @@ jobs:
         run: python scripts/test_p1m_crashpad_tagged_source_boundary.py
       - name: P1-N isolated test-owned Crashpad witness overlay negative controls (Windows)
         run: python scripts/test_p1n_prepare_crashpad_test_witness.py
+      - name: P1-O isolated builder/native witness contract (OFFLINE, no runtime) Windows
+        run: |
+          python scripts/test_p1o_builder_and_witness_contract.py
+          python scripts/test_p1o_launcher_safety.py
+          python scripts/p1o_builder_and_witness_contract.py --lock docs/p1o-chromium156-toolchain.lock.json --out artifacts/p1o-offline/blocked.json
+      - name: Retain P1-O explicit Windows builder PREREQUISITE_FAILURE, not runtime PASS (Windows)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p1o-offline-prerequisite-windows
+          path: artifacts/p1o-offline/blocked.json
+          if-no-files-found: warn
       - name: Build migration assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: Real NUnit 3/4 source-target discovery and TRX on Windows
