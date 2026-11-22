@@ -44,3 +44,38 @@ dotnet run --project Migrator.AssemblyCli -c Release -- verify /absolute/source-
 См. [release gates](docs/RC-READINESS.md). До доказанного устранения P1 #59, полной матрицы 28 Core + 2 MCP и независимой поведенческой приёмки **NO-GO**. Исходный Windows P47, реальный Node SIGTERM, 12-секундный gate, PID/FILETIME, fail-fast и исторические ZIP остаются неизменными. Внешний Win32 Job Object не заменяет исправление продукта.
 
 Не снижайте требования после FAIL, не скрывайте `UNKNOWN` и не выполняйте чужой код без разрешения.
+
+
+## Публичный NUnit-проект — подтверждённые P2/P3 границы (draft #85, 22.11.2026)
+
+Оригинальный `desh2001/Selenium-NUnit-Automation@edacb9feb41a7e21d9b6bf6924f24c11698a4427`
+(.NET 10) на Linux и Windows **собирается**; NUnit находит **10 тестов**.
+Оригинальные тесты против внешнего сайта **не выполнялись**. Настоящий
+`Core generate --build` создаёт отдельный Playwright/NUnit проект:
+четыре файла C#, `.csproj`, manifest, успешная сборка и обнаружение
+**10/10 тестов**. Сами тесты target **не запускались**. C# после
+CRLF→LF идентичен на Linux/Windows, но в нём остаются обязательные
+`TODO` на DriverManager, POM, действия, assertions и lifecycle.
+**Компиляция ≠ поведенческая эквивалентность.**
+
+Полный исходный POM-граф: 15 методов, из них 14
+`requires_review`, а `AlertsPage.WaitForAlert` — `blocked`
+(неподдержанный `IAlert`). Отдельно исходные публичные методы
+SampleApp выполнены в реальном Chromium через Selenium и
+Core-generated Playwright на localhost: одинаковые успешный/ошибочный
+логины, семь NUnit TRX и три отрицательные мутации. Это **не** запуск
+оригинального полного TestFixture/DriverManager.
+
+`acceptance-inspect <original-project-root> <AnalysisId> <CandidateId>`
+использует идентификаторы из точного `plan`, выводит
+source-target lineage, обнаруживает **125 обязательств / 115
+неперенесённых** и возвращает `rejected_incomplete` на обеих ОС.
+Старый CandidateId отвергается, статус не становится PASS от того,
+что собрался проект. Анализ только read-only: никакого выполнения кода.
+
+См. [сводку приёмки](docs/P2-P3-PUBLIC-SAMPLEAPP-PROJECT-GATE.md),
+[Core draft #85](https://github.com/levencode-labs/selenium-playwright-migrator-core/pull/85)
+и [RC #80](https://github.com/levencode-labs/selenium-playwright-migrator-core/issues/80).
+`Selenio` и `re-motion/Framework` пока подтверждены только по
+исходникам. Поведенческая приёмка всех трёх проектов **UNKNOWN**,
+P1 #59 — OPEN / NO FIX CLAIM. Релиз, merge и autoapply запрещены.

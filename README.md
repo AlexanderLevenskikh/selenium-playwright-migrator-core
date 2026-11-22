@@ -13,6 +13,42 @@ Standalone, reusable **.NET 10 AST migration engine** for Selenium C# NUnit → 
 > **Release Candidate preparation — NOT a production release.** The integrated P2/P3 branch requires strict source→target acceptance, exact revisions and independent browser observables. A passing compilation or NUnit suite alone is **not** behavioral equivalence. Windows Chromium orphan [issue #59](https://github.com/levencode-labs/selenium-playwright-migrator-core/issues/59) remains OPEN and blocks production; no product fix is proven. See [User Guide](USERGUIDE.md) · [Руководство](USERGUIDE.ru.md) · [Release gates](docs/RC-READINESS.md) · [PR dependency map](docs/PR-DEPENDENCY-GRAPH.md). Current package preview is read from `Directory.Build.props` (at this RC snapshot: `0.1.0-preview.48`); older preview notes below document historical milestones.
 
 
+
+## Public NUnit project: bounded P2/P3 evidence (draft #85, 2026-11-22)
+
+The SHA-pinned `desh2001/Selenium-NUnit-Automation@edacb9feb41a7e21d9b6bf6924f24c11698a4427`
+**original .NET 10 project** restores, compiles and discovers 10 NUnit tests on
+Linux and Windows; its original external-site NUnit tests are **not run**.
+Core's **actual** `generate --build` produces a separate four-file
+Playwright/NUnit target with an SDK `.csproj`, manifests and 10 discovered
+target tests. Those target tests are **not executed**; all four C# source
+files match across Linux/Windows after canonical CRLF→LF normalization.
+The generated project contains unresolved POM/DriverManager/action/assertion/
+lifecycle TODOs. Passing compilation and identical test discovery **do not**
+establish behavioral equivalence.
+
+`pom-inspect`/`pom-plan` cover all 15 original Page Object methods: 14
+`requires_review`; `AlertsPage.WaitForAlert` is `blocked` (source
+`IAlert`/method signature). The exact public SampleApp source method bodies
+were independently executed with Selenium vs Core-generated Playwright on
+localhost real Chromium: positive/negative login and seven NUnit TRX with
+three negative mutation controls. This is **bounded POM evidence**, never
+an original project-level fixture/DriverManager acceptance.
+
+Use `acceptance-inspect <original-project-root> <AnalysisId> <CandidateId>`
+from the exact Core `plan`: its source-target lineage reports 125 source
+obligations and 115 missing, with **`rejected_incomplete`** on both OS.
+A stale CandidateId fails; even a complete AST match cannot bypass
+`testDiscovery`, `runner`, `realBrowser` and
+`behavioralEquivalence` stages. This inspection is strictly read-only
+and exits nonzero for every non-accepted status. See
+[public source/target gate](docs/P2-P3-PUBLIC-SAMPLEAPP-PROJECT-GATE.md),
+[draft #85](https://github.com/levencode-labs/selenium-playwright-migrator-core/pull/85)
+and [RC #80](https://github.com/levencode-labs/selenium-playwright-migrator-core/issues/80).
+`selenio` and `re-motion/Framework` remain public source-only inputs;
+full NUnit runtime parity for all three is **UNKNOWN**, as is P1 #59.
+No release, merge or unrestricted autoapply.
+
 Source history: imported from [selenium-playwright-ast-migrator](https://github.com/AlexanderLevenskikh/selenium-playwright-ast-migrator), pinned source commit `e9e7a7e67def1a1db7d02a6b12ac0921b2e232a2`. Original upstream master was not changed.
 
 ## Use the API

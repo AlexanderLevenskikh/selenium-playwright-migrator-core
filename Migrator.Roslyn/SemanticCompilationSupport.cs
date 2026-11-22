@@ -94,6 +94,7 @@ internal static class SemanticCompilationSupport
                 public sealed class By
                 {
                     public static By Id(string value) => new();
+                    public static By Name(string value) => new();
                     public static By LinkText(string value) => new();
                     public static By CssSelector(string value) => new();
                     public static By XPath(string value) => new();
