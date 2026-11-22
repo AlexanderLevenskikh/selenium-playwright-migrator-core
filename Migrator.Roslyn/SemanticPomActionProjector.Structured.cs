@@ -463,34 +463,103 @@ public static partial class SemanticPomActionProjector
             return true;
         }
 
-        if (op is "==" or "!=" && binary.Left is IdentifierNameSyntax name
-            && model.GetSymbolInfo(name).Symbol is IParameterSymbol parameter
-            && owner != null
-            && SymbolEqualityComparer.Default.Equals(parameter.ContainingSymbol, owner)
-            && parameter.Type.SpecialType == SpecialType.System_String
-            && binary.Right is LiteralExpressionSyntax literal
-            && literal.IsKind(SyntaxKind.StringLiteralExpression))
+        if ((op is "==" or "!=")
+            && SafeString(binary.Left, model, owner, out var leftString)
+            && SafeString(binary.Right, model, owner, out var rightString)
+            && (OwningStringParameter(binary.Left, model, owner) != null
+                || OwningStringParameter(binary.Right, model, owner) != null))
         {
-            target = parameter.Name + " " + op + " "
-                + JsonSerializer.Serialize(literal.Token.ValueText);
-            sourceSymbol = parameter;
+            target = leftString + " " + op + " " + rightString;
+            sourceSymbol = OwningStringParameter(binary.Left, model, owner)
+                ?? OwningStringParameter(binary.Right, model, owner);
             return true;
         }
 
-        if (binary.Left is MemberAccessExpressionSyntax read
-            && read.Name.Identifier.ValueText == "Count"
-            && read.Expression is InvocationExpressionSyntax find
-            && model.GetSymbolInfo(read).Symbol is IPropertySymbol count
-            && count.Type.SpecialType == SpecialType.System_Int32
-            && TryFindBy(find, model, out var locator, expectMany: true)
-            && LiteralInt(binary.Right, out var value) && value >= 0)
+        if (TryCountComparisonOperand(binary.Left, model, owner,
+                out var lhsLocator, out var lhsCount)
+            && SafeNonnegativeCountThreshold(binary.Right, model, owner,
+                out var rightThreshold))
         {
-            target = "(await " + locator + ".CountAsync()) " + op
-                + " " + value.ToString(CultureInfo.InvariantCulture);
-            sourceSymbol = count;
+            target = "(await " + lhsLocator + ".CountAsync()) " + op
+                + " " + rightThreshold;
+            sourceSymbol = lhsCount;
+            return true;
+        }
+        if (TryCountComparisonOperand(binary.Right, model, owner,
+                out var rhsLocator, out var rhsCount)
+            && SafeNonnegativeCountThreshold(binary.Left, model, owner,
+                out var leftThreshold))
+        {
+            target = leftThreshold + " " + op + " (await "
+                + rhsLocator + ".CountAsync())";
+            sourceSymbol = rhsCount;
             return true;
         }
         return false;
+    }
+
+    // Reject captured/local/foreign WebDriver variables: this structural source
+    // guard is only actionable for the exact owning POM IWebDriver field.
+    // Constructor binding, DOM timing and effect equivalence still require review.
+    private static bool TryCountComparisonOperand(ExpressionSyntax expression,
+        SemanticModel model, IMethodSymbol? owner,
+        out string locator, out IPropertySymbol? count)
+    {
+        locator = "";
+        count = null;
+        if (owner == null
+            || expression is not MemberAccessExpressionSyntax member
+            || member.Name.Identifier.ValueText != "Count"
+            || model.GetSymbolInfo(member).Symbol is not IPropertySymbol candidate
+            || candidate.Type.SpecialType != SpecialType.System_Int32
+            || member.Expression is not InvocationExpressionSyntax find
+            || find.Expression is not MemberAccessExpressionSyntax findCall
+            || model.GetSymbolInfo(findCall.Expression).Symbol is not IFieldSymbol driver
+            || driver.Type.ToDisplayString() != "OpenQA.Selenium.IWebDriver"
+            || !SymbolEqualityComparer.Default.Equals(
+                driver.ContainingType, owner.ContainingType)
+            // Multiple IWebDriver fields make the intended IPage ambiguous:
+            // do not infer a primary driver from an arbitrary field name.
+            || owner.ContainingType.GetMembers().OfType<IFieldSymbol>()
+                .Count(field => !field.IsStatic
+                    && field.Type.ToDisplayString() ==
+                       "OpenQA.Selenium.IWebDriver") != 1
+            || !TryFindBy(find, model, out locator, expectMany: true))
+            return false;
+        count = candidate;
+        return true;
+    }
+
+    private static bool SafeNonnegativeCountThreshold(ExpressionSyntax value,
+        SemanticModel model, IMethodSymbol? owner, out string rendered)
+    {
+        rendered = "";
+        // Existing projected literal-count guards admit only >=0. Preserve
+        // that boundary while allowing exact, unchanged int input parameters.
+        if (LiteralInt(value, out var literal))
+        {
+            if (literal < 0)
+                return false;
+            rendered = literal.ToString(CultureInfo.InvariantCulture);
+            return true;
+        }
+        if (value is IdentifierNameSyntax
+            && SafeInt(value, model, owner, out rendered))
+            return true;
+        return false;
+    }
+
+    private static IParameterSymbol? OwningStringParameter(
+        ExpressionSyntax expression, SemanticModel model, IMethodSymbol? owner)
+    {
+        if (expression is IdentifierNameSyntax name
+            && model.GetSymbolInfo(name).Symbol is IParameterSymbol parameter
+            && owner != null
+            && SymbolEqualityComparer.Default.Equals(
+                parameter.ContainingSymbol, owner)
+            && parameter.Type.SpecialType == SpecialType.System_String)
+            return parameter;
+        return null;
     }
 
     private static bool TryTimeoutGuard(IfStatementSyntax guard,

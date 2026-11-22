@@ -97,6 +97,7 @@ if (args.Contains("--p2-typed-retry-only", StringComparer.Ordinal))
 if (args.Contains("--p2-structured-only", StringComparer.Ordinal))
 {
     PomStructuredActionsSmoke.Run();
+    PomParameterizedCountGuardSmoke.Run();
     Console.WriteLine("POM_STRUCTURED_PREVIEW31_AST_PASSED");
     return;
 }
