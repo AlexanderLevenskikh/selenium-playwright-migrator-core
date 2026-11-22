@@ -65,3 +65,22 @@ behavioral-equivalence receipt remain **UNKNOWN/BLOCKED**.
 No autoapply or release authorization follows from a green method-slice CI.
 MCP consumers must retain method-level, source-only review semantics.
 General RC tracker: Core issue #80; independent P1 blocker: #59.
+
+## Complete original POM method coverage ledger
+
+After the exact Core CLI build, a new read-only 15-method sweep covers all
+five pinned source classes: four HomePage navigations; three TextInputPage
+methods; two SampleAppPage login/message methods; two ClientSideDelayPage
+methods; and four AlertsPage methods, including source IAlert WaitForAlert.
+Each method is analyzed using the **same complete five-file POM source tree**
+and recorded as requires_review, blocked or UNKNOWN with method SHA,
+source-to-target effect SHA, and blocker code. Unsupported IAlert return
+must remain blocked/UNKNOWN, never silently produce target browser code.
+The sweep separately runs the actual Core single-project assembly `plan`
+on the complete ten-file original NUnit project and reports its AnalysisId,
+CandidateId, declared test count, source/target hashes and plan issues.
+
+All results remain read-only. Neither a successful method projection nor an
+assembly `ready_for_build` status means a real full NUnit project migration,
+and runtime behavioral equivalence remains UNKNOWN. The ledger has no
+MSBuild execution permission and cannot autoapply a candidate.

@@ -280,6 +280,16 @@ jobs:
           if-no-files-found: warn
       - name: Build exact Core pom-plan CLI for real public-source generated target
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: Inspect ALL fifteen pinned public POM method obligations and original NUnit project acceptance boundary
+        timeout-minutes: 8
+        run: python scripts/p2_p3_full_public_obligations.py public-portfolio/desh-full
+      - name: Preserve complete 15-method public source lineage, blockers and exact original project plan
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-p2p3-public-full-source-obligations-${{ matrix.os }}
+          path: artifacts/p2p3-public-full-source-obligations/*
+          if-no-files-found: error
       - name: Execute original public Page Objects vs actual Core-projected Playwright source in same Chrome
         timeout-minutes: 15
         env:
