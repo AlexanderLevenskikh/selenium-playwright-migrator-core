@@ -97,7 +97,7 @@ def main():
                             return next((x for x in events if x["phase"] == phase), None)
                         root = event("runner_exited")
                         signal = event("driver_termination_before_signal")
-                        roles = sorted({(item.get("chromiumRole"), item.get("chromiumUtilitySubtype")) for event_row in events for item in event_row.get("processes", []) if item.get("kind") == "chrome"})
+                        roles = sorted({(item.get("chromiumRole"), item.get("chromiumUtilitySubtype")) for event_row in events for item in event_row.get("processes", []) if item.get("kind") == "chrome"}, key=repr)
                         report["results"].append({
                             "chromiumRolesObserved": [{"role": r, "utilitySubtype": u} for r, u in roles],
                             "index": ordinal, "arm": arm, "status": "observed",
