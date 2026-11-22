@@ -1,0 +1,35 @@
+{
+  "schema": "migrator-rc-readiness/v1",
+  "asOf": "2026-11-22",
+  "productBase": {
+    "coreMain": "0745e6a9046dff8edb684931a84e7074a2382788",
+    "mcpMain": "9069a6f019426362e10fe0ff992011c00a59e0c0"
+  },
+  "productSource": {
+    "coreDraft78": "d8600b158d6e871d8bf6048b8910b19a1f9481d6",
+    "coreCI": 45039742816,
+    "coreJobsPassed": 28,
+    "mcpDraft60": "f94654b8ea494b8c269d07abe67faaa85edc1638",
+    "mcpCI": 45040204967,
+    "mcpJobsPassed": 2
+  },
+  "integration": {
+    "coreFinalSha": "pending",
+    "mcpFinalSha": "pending",
+    "coreCI": "pending",
+    "mcpCI": "pending"
+  },
+  "gate": {
+    "p1Issue59": "open",
+    "historicalNativeLiveOrphan": "confirmed_failed",
+    "productCleanupFix": "not_proven",
+    "directCrashpadClientWitness": "unknown",
+    "realPublicProjectBehavioralEquivalence": "unknown",
+    "localSyntheticOracle": "bounded_verified",
+    "releaseAllowed": false,
+    "mergeAuthorized": false,
+    "publishAuthorized": false
+  },
+  "notRunAsPass": false,
+  "autoApplyAllowed": false
+}

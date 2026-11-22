@@ -34,6 +34,14 @@ jobs:
         run: python3 scripts/nunit_nested_source_probe.py
       - name: Run Core smoke
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: P2 real NUnit false-green with missing Click (source and target must both PASS)
+        run: python3 scripts/p2_false_green_real_nunit.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-p2-false-green-real-nunit
+          path: artifacts/p2-false-green/*
+          if-no-files-found: error
       - name: Build dedicated project assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: preview.29 real NUnit 3/4 discovery, TRX and explicit/failure comparison
@@ -171,6 +179,57 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build P2 AST/Core smoke
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
+      - name: Verify RC NO-GO blockers and negative release-gate controls
+        run: |
+          python scripts/test_rc_gate_contract.py
+          python scripts/check_rc_gate_contract.py docs/rc-status.json
+      - name: P2/P3 independent receipt hash, mutation and false-green negative controls
+        run: python scripts/test_p2_p3_validate_behavior_receipt.py
+      - name: P2 same-class helper and NUnit project lifecycle graph negatives
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-project-graph-only
+      - name: Checkout pinned public Selenium NUnit POM source (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: desh2001/Selenium-NUnit-Automation
+          ref: edacb9feb41a7e21d9b6bf6924f24c11698a4427
+          path: public-portfolio/desh
+          sparse-checkout: |
+            AssignmentProject/Tests/TextInputTests.cs
+            AssignmentProject/Pages/TextInputPage.cs
+          sparse-checkout-cone-mode: false
+      - name: Checkout pinned public inherited NUnit PageFactory source (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: jorgedelacruz/selenio
+          ref: 0ca128dfaf32c00f944b756fea9dbf9b6c8964a2
+          path: public-portfolio/selenio
+          sparse-checkout: |
+            Selenio/Selenio.NUnit/NUnitTests.cs
+            Selenio/Selenio.NUnit/PageObjects/SeleniumHomePage.cs
+          sparse-checkout-cone-mode: false
+      - name: Checkout pinned public NUnit SetUpFixture source (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: re-motion/Framework
+          ref: 27716889ad2d26f4fa4b442207460c570bd253db
+          path: public-portfolio/remotion
+          filter: blob:none
+          sparse-checkout: |
+            Remotion/Web/IntegrationTests/SetUpFixture.cs
+          sparse-checkout-cone-mode: false
+      - name: P2/P3 canonical Git source byte parity and mutation negatives
+        run: python scripts/test_p2_p3_public_portfolio_canonical.py
+      - name: Verify 3 actual public source revisions and 5 Git blob IDs without execution
+        run: python scripts/p2_p3_public_portfolio.py public-portfolio --out artifacts/p2p3-public-portfolio/sha-bound.json
+      - name: Roslyn inventory for real POM, inherited NUnit and SetUpFixture boundaries
+        run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-public-portfolio-only public-portfolio
+      - name: Retain immutable public source SHA audit (UNKNOWN is not PASS parity)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-p2p3-public-source-portfolio-${{ matrix.os }}
+          path: artifacts/p2p3-public-portfolio/*
+          if-no-files-found: warn
       - name: Roslyn semantic source-backed POM action regression
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release -- --p2-action-only
       - name: preview.31 source-backed structured POM AST success/failure
@@ -385,6 +444,23 @@ jobs:
           MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
           MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
         run: python scripts/p2_preview41_async_count_real_chromium.py
+      - name: P3 real Selenium vs Playwright source-owned parameterized POM Count branches
+        timeout-minutes: 24
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p3_pom_parameterized_count_real_chromium.py
+      - name: Independently attest exact P2/P3 target candidate and false-green behavior
+        run: python scripts/p2_p3_validate_behavior_receipt.py artifacts/p3-parameterized-count
+      - name: Retain P3 real NUnit Count guard and negative mutation PNG evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p3-count-guard-browser-${{ matrix.os }}
+          path: artifacts/p3-parameterized-count/*
+          if-no-files-found: warn
       - name: Retain real NUnit TRX browser snapshots PNG and SHA evidence
         if: always()
         uses: actions/upload-artifact@v4

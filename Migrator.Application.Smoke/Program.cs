@@ -1,4 +1,15 @@
 using Migrator.Application;
+if (args.Length == 1 && args[0] == "--p2-project-graph-only")
+{
+    P2ProjectGraphAcceptanceSmoke.Run();
+    Console.WriteLine("P2_PROJECT_GRAPH_ACCEPTANCE_SMOKE_PASSED");
+    return;
+}
+if (args.Length == 2 && args[0] == "--p2-public-portfolio-only")
+{
+    P2P3PublicSourcePortfolioSmoke.Run(args[1]);
+    return;
+}
 if(args.Contains("--p2-preview47-only",StringComparer.Ordinal))
 {
     PomPreview47OneTimeCleanupSmoke.Run();
@@ -97,6 +108,7 @@ if (args.Contains("--p2-typed-retry-only", StringComparer.Ordinal))
 if (args.Contains("--p2-structured-only", StringComparer.Ordinal))
 {
     PomStructuredActionsSmoke.Run();
+    PomParameterizedCountGuardSmoke.Run();
     Console.WriteLine("POM_STRUCTURED_PREVIEW31_AST_PASSED");
     return;
 }
@@ -190,6 +202,8 @@ try
     catch (InvalidOperationException ex) when (ex.Message.StartsWith("STALE_ANALYSIS", StringComparison.Ordinal)) {}
     ExistingPlaywrightGuardSmoke.Run();
     RenderedTodoCompletenessSmoke.Run();
+    MigrationAcceptanceSmoke.Run();
+    P2ProjectGraphAcceptanceSmoke.Run();
     PomNavigationAndStorageSmoke.Run();
     PomSourceEvidenceSmoke.Run();
     TableRowActionSmoke.Run();
