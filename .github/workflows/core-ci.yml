@@ -664,6 +664,35 @@ jobs:
           if-no-files-found: warn
 
 
+  p1d-preview47-sequence-job-ab:
+    name: P1-D full P47 sequence Windows Job A/B
+    needs: p1-preview47-real-onetime
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && github.head_ref == 'experiment/p1d-sequence-job-ab' }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install historical P47 Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: '156.0.8078.80'
+          install-chromedriver: true
+      - name: Run one fixed B to A pair of full original stage sequences
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: python scripts/p1_preview47_sequence_job_ab.py
+      - name: Retain per-arm receipts, TRX, timeline and manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview47-p1d-sequence-job-ab-windows
+          path: artifacts/pom-preview47-p1d/
+          if-no-files-found: error
+
   p1-preview48-real-chromium-crash:
     name: Preview.48 upstream close oracle and real Chromium root crash (${{ matrix.os }})
     strategy:

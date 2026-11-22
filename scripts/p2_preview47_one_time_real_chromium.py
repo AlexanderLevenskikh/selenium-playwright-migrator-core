@@ -126,17 +126,17 @@ def runtime_canonical(source):
     # Extract exact raw C# method from public AST smoke, source unchanged.
     return p42.synthetic("OneTimeTearDown",source)
 
-def run_probe(stage,outcome,disconnect,project,evidence,chrome,url):
+def run_probe(stage,outcome,disconnect,project,evidence,chrome,url,experiment=None):
     audit=p47e.StageEvidence(evidence,stage,outcome,disconnect)
     try:
-        result=run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audit)
+        result=run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audit,experiment)
         audit.finish(result)
         return result
     except BaseException as error:
         if audit.report["status"]!="failed":audit.fail(str(error))
         raise
 
-def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audit):
+def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audit,experiment=None):
     run_name=stage
     env=dict(os.environ,P47_STAGE=stage,P47_RUN=run_name,
              P47_EVIDENCE=str(evidence),P47_URL=url)
@@ -165,6 +165,8 @@ def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audi
     ack=evidence/("ack-"+run_name)
     while process.poll() is None:
         data,precise=p47e.snapshot(chrome)
+        if experiment is not None:
+            experiment.poll(process, data, precise, observed, audit, driver_terminated)
         ancestor_keys=set()
         for pid,(parent,start,kind) in data.items():
             if kind not in ("chrome","driver"): continue
@@ -214,6 +216,8 @@ def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audi
             if audit.native is not None and before["state"]!="live":
                 process.kill()
                 audit.check(False,"P47_DRIVER_NATIVE_IDENTITY_UNVERIFIED: "+stage)
+            if experiment is not None:
+                experiment.before_fault(data, observed, audit)
             os.kill(driver_pid,signal.SIGTERM)
             driver_terminated=True
             after=audit.observe_native(driver_pid,driver_start)
@@ -312,6 +316,8 @@ def run_probe_observed(stage,outcome,disconnect,project,evidence,chrome,url,audi
         audit.check(not page_caught and not context_caught
             and not browser_caught and not dispose_caught,
             "P47_UNEXPECTED_TARGET_CLOSED_ON_HEALTHY_BROWSER")
+    if experiment is not None:
+        experiment.after_gate(audit, observed, survivors)
     audit.check(not survivors,"P47_OWNED_OBSERVED_CHILD_PIDS_SURVIVED: "+
         str(sorted(survivors)))
     audit.check(any(v=="chrome" for v in observed.values())
