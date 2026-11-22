@@ -190,6 +190,7 @@ try
     catch (InvalidOperationException ex) when (ex.Message.StartsWith("STALE_ANALYSIS", StringComparison.Ordinal)) {}
     ExistingPlaywrightGuardSmoke.Run();
     RenderedTodoCompletenessSmoke.Run();
+    MigrationAcceptanceSmoke.Run();
     PomNavigationAndStorageSmoke.Run();
     PomSourceEvidenceSmoke.Run();
     TableRowActionSmoke.Run();
