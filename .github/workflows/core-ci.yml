@@ -34,6 +34,8 @@ jobs:
         run: python3 scripts/nunit_nested_source_probe.py
       - name: Run Core smoke
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: P1-L original ZIP/client-boundary falsification controls (Linux)
+        run: python3 scripts/test_p1l_crashpad_client_boundary.py
       - name: Build dedicated project assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: preview.29 real NUnit 3/4 discovery, TRX and explicit/failure comparison
@@ -111,6 +113,8 @@ jobs:
         run: dotnet build Migrator.Application.Smoke/Migrator.Application.Smoke.csproj -c Release
       - name: Check static NUnit semantics without execution
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-build -c Release
+      - name: P1-L original ZIP/client-boundary falsification controls (Windows)
+        run: python scripts/test_p1l_crashpad_client_boundary.py
       - name: Build migration assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: Real NUnit 3/4 source-target discovery and TRX on Windows
