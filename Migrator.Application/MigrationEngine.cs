@@ -302,7 +302,8 @@ public sealed partial class MigrationEngine
             artifact.TargetHash, status, files, findings)
         {
             NUnitAttributes = after.Files.SelectMany(f => f.NUnitAttributes).ToArray(),
-            NUnitCases = after.Files.SelectMany(f => f.NUnitCases).ToArray()
+            NUnitCases = after.Files.SelectMany(f => f.NUnitCases).ToArray(),
+            SourceObligations = MigrationAcceptanceGate.SourceLedger(parsed, before.SourceScope)
         };
     }
 
