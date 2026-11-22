@@ -478,19 +478,19 @@ public static partial class SemanticPomActionProjector
         if (TryCountComparisonOperand(binary.Left, model, owner,
                 out var lhsLocator, out var lhsCount)
             && SafeNonnegativeCountThreshold(binary.Right, model, owner,
-                out var rhs))
+                out var rightThreshold))
         {
             target = "(await " + lhsLocator + ".CountAsync()) " + op
-                + " " + rhs;
+                + " " + rightThreshold;
             sourceSymbol = lhsCount;
             return true;
         }
         if (TryCountComparisonOperand(binary.Right, model, owner,
                 out var rhsLocator, out var rhsCount)
             && SafeNonnegativeCountThreshold(binary.Left, model, owner,
-                out var lhs))
+                out var leftThreshold))
         {
-            target = lhs + " " + op + " (await "
+            target = leftThreshold + " " + op + " (await "
                 + rhsLocator + ".CountAsync())";
             sourceSymbol = rhsCount;
             return true;
