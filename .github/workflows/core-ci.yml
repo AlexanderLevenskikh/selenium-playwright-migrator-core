@@ -34,6 +34,14 @@ jobs:
         run: python3 scripts/nunit_nested_source_probe.py
       - name: Run Core smoke
         run: dotnet run --project Migrator.Application.Smoke/Migrator.Application.Smoke.csproj --no-restore -c Release
+      - name: P2 real NUnit false-green with missing Click (source and target must both PASS)
+        run: python3 scripts/p2_false_green_real_nunit.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-p2-false-green-real-nunit
+          path: artifacts/p2-false-green/*
+          if-no-files-found: error
       - name: Build dedicated project assembly CLI
         run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
       - name: preview.29 real NUnit 3/4 discovery, TRX and explicit/failure comparison
