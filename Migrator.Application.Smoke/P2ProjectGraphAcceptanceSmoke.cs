@@ -87,7 +87,7 @@ internal static class P2ProjectGraphAcceptanceSmoke
                     [Test] public void ClickAndAssert() { Perform(); }
                     private void Perform() { ThenClick(); }
                     private void ThenClick() {
-                        driver.FindElement("#submit").Click();
+                        Page.Locator("#submit").ClickAsync();
                         Assert.That(true, Is.True);
                     }
                 }
