@@ -47,6 +47,75 @@ Five packages are built together at version `0.1.0-preview.1`: `Migrator.Core`, 
 
 Preview.2 is a pre-release contract; the Core CI builds version-matched NuGet packages but does not publish them publicly.
 
+### Analysis freshness for a selected file or subdirectory
+
+`AnalysisId` includes the semantic inputs selected by the lightweight Roslyn
+project resolver: owning project selection, project XML, transitive
+`ProjectReference` source files, explicit linked `Compile` inputs and existing
+`HintPath` assembly bytes. A dependency edit invalidates the old analysis even
+when the selected fixture bytes are unchanged. Preview, explanation and
+artifact verification reject that old ID with `STALE_ANALYSIS`; callers must
+analyze again. Rewriting identical bytes preserves the content identity.
+
+`SourceTreeHash` still describes the explicitly selected source scope. The
+additional semantic fingerprint is checked before and after analysis; it does
+not claim full MSBuild evaluation, package restore, or runtime equivalence.
+The Linux/Windows CI regression records actual stale-input rejection and
+unchanged-input controls in `artifacts/analysis-identity/receipt.json`.
+
+### Windows cleanup diagnostic boundary
+
+The P47 driver-loss probe retains its original five NUnit stages and 12-second
+unassisted process-presence gate. Per-stage ancestry, native Windows process
+creation identity, zero-time wait state and failure summaries are now persisted
+before a failed gate can abort the run. Native liveness is diagnostic evidence,
+separate from CIM membership; no browser descendant is killed to make the gate
+pass. A retained exited process object and a live Python child exercise only
+the observer, never certify Playwright cleanup. The original failed Windows
+artifact and its unresolved historical cause remain unchanged.
+
+This job pins Chrome and ChromeDriver `156.0.8078.80`, the release recorded in
+the original failed job. The earlier `stable` input had advanced to
+`157.0.8103.38` for the first diagnostic run, which passed all five stages.
+That browser change confounds any claim of a cleanup fix. The explicit pin
+keeps the original failing release under the same Linux/Windows gate; the
+failed run did not retain a browser binary hash, so this is a historical
+release replay, not a byte-for-byte reconstruction of its environment.
+
+
+### P1 Windows host-owned Job Object feasibility — separate from P47
+
+After the **unchanged** real Chromium P47 gate, the Windows workflow runs
+\`scripts/p2_preview47_windows_job_object_probe.py\` as an independent
+**synthetic** process-control experiment, including when P47 fails. The test
+creates an unnamed Job Object with verified \`KILL_ON_JOB_CLOSE\`, disallows
+breakaway, attaches a gate-blocked test parent *before* it creates a child,
+verifies the grandchild's real Win32 job membership, proves the grandchild
+remains alive after its parent dies, then confirms termination on closing the
+last job handle by checking the exact original native process identity and
+signaled wait state. It reports \`job-object-probe.json\` with SHA256 manifest.
+If assignment fails because the runner has incompatible job constraints,
+the experiment fails explicitly; it never assumes Windows job eligibility.
+
+This proves only a host-owned **mechanism for separately supervised trees**.
+It does not place Playwright/Chromium into that job, repair the original
+Browser.CloseAsync/Dispose sequence, or erase the historic Windows orphan
+survivors (PIDs 5936/9024 with their original start identities). A future
+production design must create a real supervised process without an assignment
+race (e.g. suspended process start + assign before resume), verify child
+membership, account for nested jobs and breakaway, and run the original
+12-second leak observation *before* last-handle close. Host termination must
+be reported as a separate post-gate cleanup, never as an unassisted PASS.
+Issue #59 and the draft release gate remain open pending real Chromium proof.
+
+After the original five stages, Windows CI runs a fixed diagnostic series of
+ten additional cycles of those same five stages on the pinned browser. Each
+cycle has separate ready/ack files, TRX, process observations and hashes. The
+first failure fails the job and retains all completed evidence; successes are
+never selected from retries. No cleanup, exception suppression or additional
+process-exit allowance is introduced. A clean bounded series establishes only
+the observations of that series, not the cause of the historical two-PID failure.
+
 ## Existing Playwright source guard (preview.3)
 
 This engine's production frontend migrates **Selenium C# NUnit inputs**. It must not re-migrate tests already written in Playwright .NET.
@@ -1289,3 +1358,33 @@ claim about other Playwright versions, arbitrary callbacks, custom
 framework hooks, browser race conditions, unreturned resources or
 whole-OS absence of orphan processes. Existing preview.40–46 tools are
 unchanged; preview.47 stays opt-in, `requires_review`, `CanAutoApply=false`.
+
+## P1 preview.50-A — source dependency flow before any real migration
+
+The opt-in `PomFlowSourceInspector.Inspect(sourceDirectory, fixtureType,
+sourceMethod, exactSourceTreeHash)` follows an **exact, constrained C# source
+shape** from an NUnit test through its local `[SetUp]`, TestBase DI getter,
+Navigation generic page factory, Page Object member types, ComboBox input/
+filter/confirmation, bounded Loader retry/failure path and immediate indexed
+table assertions. Only SHA-bound method/source operation witnesses are
+returned; the output contains **no target statements, inferred selectors,
+navigation URLs or timing fixes**. Its target status is always `blocked`,
+even when source structure is `source_verified_requires_review`.
+
+A matching source chain is useful because it replaces opaque "unknown POM
+method" with specific source obligations: passed-in ComboBox values, deferred
+Open/click/confirmation, explicit setup alias lifetime, bounded retries and
+conditional reload, exact table indices and Be/Contain intent. It does not
+prove that a Selenium source factory can be used for Playwright or that
+Tabular DOM, application auth, external DI/ControlFactory, NUnit runtime,
+browser origin and timing are equivalent. Unknown/modified source and any
+shape outside this narrow domain return `blocked` with **no partial
+witnesses**. Existing migration preview paths and TODO counts are
+unmodified; `CanAutoApply=false` and runtime remains `not_run`.
+
+Core CI includes a public fictitious NUnit/POM flow with two table
+assertions and strict positive/negative/stale-source controls on Linux and
+Windows. Private project inputs must only be inspected on a trusted local
+machine, never uploaded to Actions. MCP presents only SHA and proof counts,
+not original source bytes or selectors. Source acceptance is a distinct
+gate from target-project build and Chromium equivalence.

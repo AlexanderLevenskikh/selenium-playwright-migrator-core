@@ -23,6 +23,13 @@ public sealed partial class MigrationEngine
         var files = Discover(scope);
         var configHash = HashConfig(configPath);
         var beforeHash = HashScope(scope);
+        // The selected source scope may be one fixture or a subdirectory, while
+        // Parse(file) resolves an enclosing project and external dependencies.
+        // Keep SourceTreeHash's existing scope contract, but bind AnalysisId to
+        // those additional semantic inputs and verify their freshness below.
+        var beforeSemanticHash = ProjectSemanticIndexBuilder.ComputeCompilationInputHash(
+            files, cancellationToken);
+        var beforeFrameworkHash = SourceFrameworkGuard.ComputeInputHash(files, scope, cancellationToken);
         var surveys = new List<FileSurvey>(files.Count);
         var allFindings = new List<MigrationFinding>();
         // Include sibling source declarations so inherited NUnit gates cannot
@@ -180,7 +187,14 @@ public sealed partial class MigrationEngine
 
         cancellationToken.ThrowIfCancellationRequested();
         var afterHash = HashScope(scope);
-        if (!string.Equals(beforeHash, afterHash, StringComparison.Ordinal))
+        var afterFiles = Discover(scope);
+        var afterSemanticHash = ProjectSemanticIndexBuilder.ComputeCompilationInputHash(
+            afterFiles, cancellationToken);
+        var afterFrameworkHash = SourceFrameworkGuard.ComputeInputHash(afterFiles, scope, cancellationToken);
+        if (!string.Equals(beforeHash, afterHash, StringComparison.Ordinal)
+            || !string.Equals(beforeSemanticHash, afterSemanticHash, StringComparison.Ordinal)
+            || !string.Equals(beforeFrameworkHash, afterFrameworkHash, StringComparison.Ordinal)
+            || !string.Equals(configHash, HashConfig(configPath), StringComparison.Ordinal))
             throw new InvalidOperationException("SOURCE_CHANGED_DURING_ANALYSIS: retry from a stable checkout.");
 
         var count = surveys.Sum(x => x.DeclaredTests);
@@ -188,7 +202,9 @@ public sealed partial class MigrationEngine
         var status = surveys.Any(x => x.Disposition is not ("supported" or "no_test_declarations"))
             ? "partial" : count == 0 ? "empty" : "complete";
         var id = Digest("migrator-analysis/v1alpha1\n" + scope + "\n" + beforeHash + "\n" + configHash
-            + "\n" + (configPath == null ? "unconfigured" : Path.GetFullPath(configPath)));
+            + "\n" + (configPath == null ? "unconfigured" : Path.GetFullPath(configPath))
+            + "\nsemantic-inputs/v1\n" + beforeSemanticHash
+            + "\nframework-inputs/v1\n" + beforeFrameworkHash);
         return new MigrationAnalysis(ContractVersions.Analysis, id, scope, beforeHash, configHash,
             status, count, parsed, surveys, allFindings,
             new[] { "NUnit case inventory expands only statically proven literal cases; dynamic discovery and runtime execution are not claimed.",

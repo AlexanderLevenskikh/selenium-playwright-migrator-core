@@ -179,13 +179,21 @@ public static class ProjectSemanticIndexBuilder
     static readonly Lazy<MetadataReference[]> PlatformReferences = new(CreatePlatformReferences);
 
     public static string? FindNearestProject(string inputPath)
+        => FindNearestProject(inputPath, observeCandidates: null);
+
+    // Freshness must use the same selection rule as Parse(file), including
+    // ambiguous project ownership and fallback to a standalone compilation.
+    static string? FindNearestProject(string inputPath, Action<string[]>? observeCandidates)
     {
         if (string.IsNullOrWhiteSpace(inputPath))
             return null;
 
         var full = Path.GetFullPath(inputPath);
         if (File.Exists(full) && string.Equals(Path.GetExtension(full), ".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            observeCandidates?.Invoke(new[] { full });
             return full;
+        }
 
         var start = File.Exists(full) ? Path.GetDirectoryName(full) : full;
         if (string.IsNullOrWhiteSpace(start) || !Directory.Exists(start))
@@ -204,6 +212,7 @@ public static class ProjectSemanticIndexBuilder
                 .OrderBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(file => file.Name, StringComparer.Ordinal)
                 .ToArray();
+            observeCandidates?.Invoke(projects.Select(project => project.FullName).ToArray());
             if (projects.Length == 1)
                 return projects[0].FullName;
             if (projects.Length > 1)
@@ -213,6 +222,20 @@ public static class ProjectSemanticIndexBuilder
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Content identity of the lightweight semantic inputs actually selected by
+    /// Parse(file): nearest project selection, project XML, source closure and
+    /// existing HintPath assemblies. It does not evaluate MSBuild or claim that
+    /// PackageReference/Import inputs are resolved. Runtime/framework references
+    /// belong to the running toolchain, not this source dependency fingerprint.
+    /// </summary>
+    public static string ComputeCompilationInputHash(
+        IEnumerable<string> inputPaths, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(inputPaths);
+        return CompilationGraphBuilder.ComputeInputHash(inputPaths, cancellationToken);
     }
 
     public static ProjectSemanticIndex BuildForInput(string inputPath)
@@ -573,6 +596,78 @@ public static class ProjectSemanticIndexBuilder
         readonly Dictionary<string, CompilationNode> _nodes = new(StringComparer.OrdinalIgnoreCase);
         readonly HashSet<string> _stack = new(StringComparer.OrdinalIgnoreCase);
 
+        public static string ComputeInputHash(
+            IEnumerable<string> inputPaths, CancellationToken cancellationToken)
+        {
+            var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            var captured = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            entries.Add("schema", Encoding.UTF8.GetBytes("project-compilation-inputs/v1"));
+
+            static string Key(string path) => Path.GetFullPath(path).Replace('\\', '/');
+            byte[] Capture(string role, string path)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                path = Path.GetFullPath(path);
+                if (!captured.TryGetValue(path, out var bytes))
+                {
+                    bytes = File.ReadAllBytes(path);
+                    captured.Add(path, bytes);
+                }
+                entries[role + "/" + Key(path)] = bytes;
+                return bytes;
+            }
+
+            void Visit(string projectPath)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!visited.Add(projectPath)) return;
+                var bytes = Capture("project", projectPath);
+                XDocument document;
+                try
+                {
+                    // Resolve from these exact captured bytes; do not reread the
+                    // project while attaching its dependency list to the hash.
+                    using var stream = new MemoryStream(bytes, writable: false);
+                    document = XDocument.Load(stream, LoadOptions.None);
+                }
+                catch (System.Xml.XmlException)
+                {
+                    // Analyze already reports the resolver/parser error. Retain
+                    // identity for the malformed bytes without claiming a graph.
+                    entries["unresolved-project/" + Key(projectPath)] =
+                        Encoding.UTF8.GetBytes("invalid-project-xml");
+                    return;
+                }
+                var directory = Path.GetDirectoryName(projectPath)!;
+                foreach (var source in ReadSourceFiles(document, directory))
+                    Capture("source", source);
+                foreach (var reference in ReadHintPathFiles(document, directory))
+                    Capture("reference", reference);
+                // A cycle is still rejected by BuildNode. Here visited bounds
+                // hashing while retaining every source/project byte in the cycle.
+                foreach (var dependency in ReadProjectReferences(document, directory))
+                    Visit(dependency);
+            }
+
+            foreach (var input in inputPaths.Select(Path.GetFullPath)
+                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                         .OrderBy(path => path, StringComparer.Ordinal))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var project = FindNearestProject(input, candidates =>
+                {
+                    foreach (var candidate in candidates)
+                        Capture("project-selection", candidate);
+                });
+                entries["selection/" + Key(input)] =
+                    Encoding.UTF8.GetBytes(project == null ? "standalone" : Key(project));
+                if (project != null) Visit(project);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return ContentTreeHasher.ComputeBytes(entries.Select(entry => (entry.Key, entry.Value)));
+        }
+
         public CompilationGraph Build(string rootProjectPath)
         {
             BuildNode(Path.GetFullPath(rootProjectPath));
@@ -703,6 +798,12 @@ public static class ProjectSemanticIndexBuilder
         }
 
         static MetadataReference[] ReadHintPathReferences(XDocument document, string projectDirectory)
+            => ReadHintPathFiles(document, projectDirectory)
+                .Select(path => MetadataReference.CreateFromFile(path)).ToArray();
+
+        // Shared by compilation and freshness capture: never maintain a second
+        // interpretation of which external assembly paths affect symbol binding.
+        static string[] ReadHintPathFiles(XDocument document, string projectDirectory)
         {
             return document.Descendants()
                 .Where(element => element.Name.LocalName == "Reference")
@@ -712,7 +813,6 @@ public static class ProjectSemanticIndexBuilder
                 .Where(File.Exists)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .Select(path => MetadataReference.CreateFromFile(path))
                 .ToArray();
         }
 
