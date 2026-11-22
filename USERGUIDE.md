@@ -56,3 +56,39 @@ Current CI uses a fictional localhost real Selenium/Playwright slice with eight 
 See [RC gates](docs/RC-READINESS.md). Do not merge/release while issue #59 remains OPEN or while any required scenario is `UNKNOWN`/FAIL. Original Windows P47 retains real Node `os.kill(SIGTERM)`, an unmodified 12-second gate, exact PID + native FILETIME, fail-fast, historical original ZIP/TRX. The test-owned Crashpad instrumentation overlay in P1 #77 is **uncompiled** and cannot prove a fix.
 
 If an adapter is blocked, narrow the scope or collect source-backed selector/call-graph evidence. Do **not** weaken CI, rewrite historical failures, substitute an external Win32 Job cleanup, or silently skip operations.
+
+
+## Public NUnit project: bounded P2/P3 evidence (draft #85, 2026-11-22)
+
+The SHA-pinned `desh2001/Selenium-NUnit-Automation@edacb9feb41a7e21d9b6bf6924f24c11698a4427`
+**original .NET 10 project** restores, compiles and discovers 10 NUnit tests on
+Linux and Windows; its original external-site NUnit tests are **not run**.
+Core's **actual** `generate --build` produces a separate four-file
+Playwright/NUnit target with an SDK `.csproj`, manifests and 10 discovered
+target tests. Those target tests are **not executed**; all four C# source
+files match across Linux/Windows after canonical CRLF→LF normalization.
+The generated project contains unresolved POM/DriverManager/action/assertion/
+lifecycle TODOs. Passing compilation and identical test discovery **do not**
+establish behavioral equivalence.
+
+`pom-inspect`/`pom-plan` cover all 15 original Page Object methods: 14
+`requires_review`; `AlertsPage.WaitForAlert` is `blocked` (source
+`IAlert`/method signature). The exact public SampleApp source method bodies
+were independently executed with Selenium vs Core-generated Playwright on
+localhost real Chromium: positive/negative login and seven NUnit TRX with
+three negative mutation controls. This is **bounded POM evidence**, never
+an original project-level fixture/DriverManager acceptance.
+
+Use `acceptance-inspect <original-project-root> <AnalysisId> <CandidateId>`
+from the exact Core `plan`: its source-target lineage reports 125 source
+obligations and 115 missing, with **`rejected_incomplete`** on both OS.
+A stale CandidateId fails; even a complete AST match cannot bypass
+`testDiscovery`, `runner`, `realBrowser` and
+`behavioralEquivalence` stages. This inspection is strictly read-only
+and exits nonzero for every non-accepted status. See
+[public source/target gate](docs/P2-P3-PUBLIC-SAMPLEAPP-PROJECT-GATE.md),
+[draft #85](https://github.com/levencode-labs/selenium-playwright-migrator-core/pull/85)
+and [RC #80](https://github.com/levencode-labs/selenium-playwright-migrator-core/issues/80).
+`selenio` and `re-motion/Framework` remain public source-only inputs;
+full NUnit runtime parity for all three is **UNKNOWN**, as is P1 #59.
+No release, merge or unrestricted autoapply.
