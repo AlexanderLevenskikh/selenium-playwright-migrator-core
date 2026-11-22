@@ -3,6 +3,7 @@
 Tests deliberately use fake Win32 handles; none can satisfy a real Chromium
 gate, and all real acceptance comes exclusively from the Actions evidence.
 """
+import ctypes
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
@@ -11,7 +12,7 @@ from unittest.mock import patch
 
 import p1_preview47_late_chrome_job as late
 import p2_preview47_windows_job_object_probe as jobs
-from p1_preview47_job_close_g import inspect_containment
+from p1_preview47_job_close_g import inspect_containment, verify_block_membership
 
 
 class FakeAPI:
@@ -60,6 +61,7 @@ class LateAttachmentTests(unittest.TestCase):
         o.active_name, o.can_attach = "disconnect_primary", True
         o.associations, o.rejections = {}, []
         o.cutoffs = {}
+        o.job_ref, o.job_generation, o.stage_rotations = {"handle": 77}, 1, []
         self.table = {101: (0, "python.exe"),
                       202: (101, "node.exe"),
                       303: (202, "chrome.exe")}
@@ -103,6 +105,79 @@ class LateAttachmentTests(unittest.TestCase):
         self.assertNotEqual(len(self.api.assigned), 0)
         self.assertTrue(any(x["reason"] == "native_identity_changed_after_assign"
                             for x in self.observer.rejections))
+
+
+class StageScopedJobRotationTests(LateAttachmentTests):
+    def _receipt(self, status="passed", gate="passed"):
+        self.observer.job_ref = {"handle": 77}
+        self.observer.job = 77
+        self.observer.job_generation = 1
+        self.observer.stage_rotations = []
+        self.observer.samples = {"disconnect_primary": {
+            (303, "100000303", "chrome"): {
+                "pid": 303, "kind": "chrome",
+                "creationFileTime": "100000303", "inHostJob": True}}}
+        (self.observer.source / "process-disconnect_primary.json").write_text(
+            json.dumps({"status": status, "originalPresenceGate": gate,
+                        "originalPresenceSurvivors": [],
+                        "survivingObservedProcessCount": 0}))
+        return self.observer
+
+    def test_never_close_stage_job_before_original_pass(self):
+        observer = self._receipt(status="running")
+        with self.assertRaisesRegex(AssertionError, "P1G_ROTATION_BEFORE_ORIGINAL_PASSED_GATE"):
+            observer._rotate_after_original_pass("disconnect_primary", "disconnect_pass")
+        self.assertEqual(self.api.closed, [])
+
+    def test_never_kill_still_live_member_during_rotation(self):
+        observer = self._receipt()
+        self.native.inspect = lambda pid, expected: {"state": "live"}
+        with self.assertRaisesRegex(AssertionError, "P1G_PREVIOUS_STAGE_MEMBER_STILL_LIVE"):
+            observer._rotate_after_original_pass("disconnect_primary", "disconnect_pass")
+        self.assertEqual(self.api.closed, [])
+
+    def test_zero_active_members_allows_new_job_only_after_gate(self):
+        observer = self._receipt()
+        self.native.inspect = lambda pid, expected: {"state": "exited"}
+        class API(FakeAPI):
+            def QueryInformationJobObject(self, job, kind, pointer, size, _):
+                if kind == 1:
+                    ctypes.cast(pointer, ctypes.POINTER(late.BasicAccounting)).contents.ActiveProcesses = 0
+                elif kind == 9:
+                    ctypes.cast(pointer, ctypes.POINTER(jobs.ExtendedLimits)).contents.BasicLimitInformation.LimitFlags = jobs.KILL_ON_JOB_CLOSE
+                return True
+            def CreateJobObjectW(self, *args):
+                return 88
+            def SetInformationJobObject(self, *args):
+                return True
+        api = API()
+        observer.api = api
+        observer._rotate_after_original_pass("disconnect_primary", "disconnect_pass")
+        self.assertEqual(api.closed, [77])
+        self.assertEqual(observer.job_ref["handle"], 88)
+        self.assertEqual(observer.job_generation, 2)
+        self.assertEqual(observer.stage_rotations[0]["previousOriginalGate"], "passed")
+
+
+class CoverageTests(unittest.TestCase):
+    def test_incomplete_job_membership_stops_new_original_block(self):
+        with TemporaryDirectory() as directory:
+            p = Path(directory) / "stages.json"
+            p.write_text(json.dumps([
+                {"stage": "disconnect_primary", "disconnect": True,
+                 "status": "original_pass",
+                 "prefaultMembership": "chrome_attested_driver_outside_job"},
+                {"stage": "disconnect_pass", "disconnect": True,
+                 "status": "original_pass",
+                 "prefaultMembership": "identity_or_membership_unattested"}]))
+            receipt = verify_block_membership(Path(directory), "B_late")
+            self.assertFalse(receipt["valid"])
+            self.assertEqual(receipt["unattestedStages"], ["disconnect_pass"])
+            rows = json.loads(p.read_text())
+            self.assertTrue(all(x["status"] == "original_pass" for x in rows))
+            rows[1]["prefaultMembership"] = "chrome_attested_driver_outside_job"
+            p.write_text(json.dumps(rows))
+            self.assertTrue(verify_block_membership(Path(directory), "B_late")["valid"])
 
 
 class MembershipTests(unittest.TestCase):

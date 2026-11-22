@@ -9,6 +9,8 @@ A surviving Chrome is a real post-gate witness ONLY after a native FILETIME
 and source lineage join; Job close is proved separately after the failed gate.
 """
 import ctypes
+from ctypes import wintypes
+import json
 from pathlib import Path
 
 import p1_preview47_native_tree as tree
@@ -17,6 +19,19 @@ import p2_preview47_windows_job_object_probe as jobs
 SCHEMA = "migrator-preview47-p1g-late-chrome-attachment/v1"
 ASSIGN_RIGHTS = 0x00100000 | 0x1000 | 0x0100 | 0x0001
 MAX_REJECTIONS = 64
+
+class BasicAccounting(ctypes.Structure):
+    """JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION, Win32 x64; Class 1."""
+    _fields_ = [
+        ("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+        ("ThisPeriodTotalUserTime", ctypes.c_int64),
+        ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+        ("TotalPageFaultCount", wintypes.DWORD),
+        ("TotalProcesses", wintypes.DWORD),
+        ("ActiveProcesses", wintypes.DWORD),
+        ("TotalTerminatedProcesses", wintypes.DWORD),
+    ]
+
 
 
 def attachment_allowed(ready_marker):
@@ -58,6 +73,9 @@ class LateChromeJobObserver(tree.NativeTreeObserver):
         self.associations = {}
         self.cutoffs = {}
         self.rejections = []
+        self.job_ref = None
+        self.job_generation = 1
+        self.stage_rotations = []
 
     def _reject(self, reason, pid, detail=None):
         if len(self.rejections) < MAX_REJECTIONS:
@@ -65,8 +83,76 @@ class LateChromeJobObserver(tree.NativeTreeObserver):
                                     "reason": reason, "detail": detail,
                                     "utc": self.utc_now()})
 
+    def bind_job_ref(self, ref):
+        if ref.get("handle") != self.job:
+            raise AssertionError("P1G_JOB_REF_MISMATCH")
+        self.job_ref = ref
+
+    def _rotate_after_original_pass(self, previous, next_stage):
+        # Next stage's original evidence file exists only after P47 returned
+        # from previous run_probe and its original gate. No same-file race.
+        if self.job_ref is None or self.job_ref.get("handle") != self.job:
+            raise AssertionError("P1G_STAGE_JOB_OWNER_MISSING")
+        previous_path = self.source / ("process-" + previous + ".json")
+        receipt = json.loads(previous_path.read_text(encoding="utf-8"))
+        if (receipt.get("status") != "passed"
+                or receipt.get("originalPresenceGate") != "passed"
+                or receipt.get("originalPresenceSurvivors")
+                or receipt.get("survivingObservedProcessCount") != 0):
+            raise AssertionError("P1G_ROTATION_BEFORE_ORIGINAL_PASSED_GATE")
+        members = [row for row in self.samples.get(previous, {}).values()
+                   if row.get("kind") == "chrome" and row.get("inHostJob") is True]
+        if not members:
+            raise AssertionError("P1G_PREVIOUS_STAGE_CHROME_MEMBERSHIP_UNPROVEN")
+        # No Job close may kill a Chrome after an original green gate.
+        for row in members:
+            state = self.native.inspect(row["pid"], row["creationFileTime"])
+            if state.get("state") not in ("absent", "exited", "identity_mismatch"):
+                raise AssertionError("P1G_PREVIOUS_STAGE_MEMBER_STILL_LIVE_OR_UNKNOWN")
+        if ctypes.sizeof(ctypes.c_void_p) != 8 or ctypes.sizeof(BasicAccounting) != 48:
+            raise AssertionError("P1G_JOB_ACCOUNTING_LAYOUT_NOT_X64")
+        accounting = BasicAccounting()
+        if not self.api.QueryInformationJobObject(
+                self.job, 1, ctypes.byref(accounting),
+                ctypes.sizeof(accounting), None):
+            raise OSError(ctypes.get_last_error(), "P1G_QUERY_JOB_ACCOUNTING")
+        if accounting.ActiveProcesses != 0:
+            raise AssertionError("P1G_JOB_HAS_LIVE_MEMBERS_AFTER_ORIGINAL_GATE")
+        old = self.job
+        if not self.api.CloseHandle(old):
+            raise OSError(ctypes.get_last_error(), "P1G_CLOSE_EMPTY_STAGE_JOB")
+        self.job_ref["handle"] = None
+        new = self.api.CreateJobObjectW(None, None)
+        if not new:
+            raise OSError(ctypes.get_last_error(), "P1G_CREATE_NEXT_STAGE_JOB")
+        self.job_ref["handle"] = new
+        self.job = new
+        limits = jobs.ExtendedLimits()
+        limits.BasicLimitInformation.LimitFlags = jobs.KILL_ON_JOB_CLOSE
+        if not self.api.SetInformationJobObject(
+                new, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            raise OSError(ctypes.get_last_error(), "P1G_SET_NEXT_STAGE_LIMITS")
+        if not self.api.QueryInformationJobObject(
+                new, 9, ctypes.byref(limits), ctypes.sizeof(limits), None):
+            raise OSError(ctypes.get_last_error(), "P1G_QUERY_NEXT_STAGE_LIMITS")
+        if limits.BasicLimitInformation.LimitFlags != jobs.KILL_ON_JOB_CLOSE:
+            raise AssertionError("P1G_NEXT_JOB_LIMIT_FLAGS_CHANGED")
+        self.job_generation += 1
+        self.stage_rotations.append({
+            "previousStage": previous, "nextStage": next_stage,
+            "previousOriginalGate": "passed",
+            "activeJobProcessesBeforeClose": 0,
+            "knownChromeMembersConfirmedExitedOrAbsent": len(members),
+            "closedAfterOriginalGate": True,
+            "newJobGeneration": self.job_generation,
+            "rotatedUtc": self.utc_now(),
+        })
+
     def poll(self):
-        self.active_name = self.active_stage()
+        stage = self.active_stage()
+        if stage and self.active_name and stage != self.active_name:
+            self._rotate_after_original_pass(self.active_name, stage)
+        self.active_name = stage
         if self.active_name is not None:
             ready = self.source / ("ready-" + self.active_name)
             self.can_attach = attachment_allowed(ready)
@@ -128,6 +214,7 @@ class LateChromeJobObserver(tree.NativeTreeObserver):
                                 "creationFileTime": creation, "kind": "chrome",
                                 "mode": "explicit_assign_after_launch_before_ready",
                                 "readyWasAbsentAtAssignment": True,
+                                "jobGeneration": self.job_generation,
                                 "assignedUtc": self.utc_now(),
                                 "inHostJobAfterAssignment": True,
                             })
@@ -161,5 +248,7 @@ class LateChromeJobObserver(tree.NativeTreeObserver):
                       associations=sorted(self.associations.values(),
                                           key=lambda item: (item["stage"], item["pid"])),
                       readyMarkerObservedUtc=self.cutoffs,
+                      stageJobRotations=self.stage_rotations,
+                      jobGenerationAtOriginalExit=self.job_generation,
                       rejectedObservations=self.rejections)
         return result

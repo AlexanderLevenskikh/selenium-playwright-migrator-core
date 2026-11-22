@@ -220,6 +220,10 @@ def run_block(arm, out, observer_factory=None):
                     # wrapper receives its bootstrap byte. P1-E's path is unchanged.
                     observer = observer_factory(api, native, job, process.pid,
                                                 wrapper["creationFileTime"], arm, SOURCE)
+                    if hasattr(observer, "bind_job_ref"):
+                        # P1-G only: stage-scoped Job handles remain owned by the
+                        # same supervisor ref, including its emergency finally.
+                        observer.bind_job_ref(ref)
                 process.stdin.write(b"G")
                 process.stdin.close()
             finally:

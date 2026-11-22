@@ -56,6 +56,23 @@ def inspect_containment(path, arm):
                      else "experimental_chrome_only_late_assignment_not_product"}
 
 
+def verify_block_membership(folder, arm):
+    path = folder / "stages.json"
+    if not path.is_file():
+        return {"valid": False, "reason": "missing_original_stage_receipts"}
+    rows = json.loads(path.read_text(encoding="utf-8"))
+    expected = ("attested" if arm == "B"
+                else "chrome_attested_driver_outside_job")
+    executed = [row for row in rows if row.get("disconnect") and
+                row.get("status") not in ("not_run_due_to_original_fail_fast",
+                                           "prerequisite_failure")]
+    missing = [row["stage"] for row in executed
+               if row.get("prefaultMembership") != expected]
+    return {"valid": bool(executed) and not missing,
+            "expected": expected, "executedDisconnectStages": len(executed),
+            "unattestedStages": missing}
+
+
 def main():
     require = external.proof.require
     require(os.name == "nt", "P1G_WINDOWS_REQUIRED")
@@ -107,6 +124,13 @@ def main():
                     item = {"block": number, "status": status,
                             "detail": str(error), "originalP47Unchanged": True}
                 item["jobClose"] = inspect_containment(folder / "containment.json", arm)
+                item["prefaultMembershipCoverage"] = verify_block_membership(folder, arm)
+                if status == "original_pass" and not item["prefaultMembershipCoverage"]["valid"]:
+                    # Do NOT modify the original per-stage PASS. Stop further
+                    # blocks: the host observer has not proved membership.
+                    status = "prerequisite_failure"
+                    item.update(status=status, originalStatus="original_pass",
+                                detail="P1G_PREFAULT_MEMBERSHIP_INCOMPLETE")
                 if item["jobClose"]["proved"]:
                     # Only a real native-LIVE survivor after original gate may
                     # ever reach this branch. The original FAIL is not erased.
