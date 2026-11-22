@@ -788,6 +788,48 @@ jobs:
           path: artifacts/pom-preview47-p1g-job-close/
           if-no-files-found: error
 
+  p1h-preview47-native-exit-timing:
+    name: P1-H original P47 B native Chrome lifetime (single source-exact block)
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == 'experiment/p1h-native-exit-timing' }}
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      DOTNET_MULTILEVEL_LOOKUP: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.100'
+      - name: Install original P47 Chrome and matching ChromeDriver
+        id: chrome
+        uses: browser-actions/setup-chrome@v2.2.0
+        with:
+          chrome-version: '156.0.8078.80'
+          install-chromedriver: true
+      - name: Isolate NuGet package cache for binary identity fingerprints
+        shell: pwsh
+        run: '"NUGET_PACKAGES=$env:RUNNER_TEMP/p1h-nuget" >> $env:GITHUB_ENV'
+      - name: P1-F native identity and ancestry negative controls
+        run: python scripts/test_p1_preview47_native_tree.py
+      - name: P1-H native lifetime source join and PID reuse negative controls
+        run: python scripts/test_p1_preview47_exit_timing.py
+      - name: Build unchanged original P47 Core CLI
+        run: dotnet build Migrator.AssemblyCli/Migrator.AssemblyCli.csproj -c Release
+      - name: One source-exact B block with read-only native process lifetime witness
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.chrome.outputs.chromedriver-path }}
+          MIGRATOR_CHROME_VERSION: ${{ steps.chrome.outputs.chrome-version }}
+          MIGRATOR_CHROMEDRIVER_VERSION: ${{ steps.chrome.outputs.chromedriver-version }}
+        run: python scripts/p1_preview47_lifetime_h.py
+      - name: Retain original P47 TRX, gates, native lifetime and all manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-preview47-p1h-native-lifetime
+          path: artifacts/pom-preview47-p1h-lifetime/
+          if-no-files-found: error
+
   p1-preview48-real-chromium-crash:
     name: Preview.48 upstream close oracle and real Chromium root crash (${{ matrix.os }})
     strategy:

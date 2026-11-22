@@ -298,10 +298,18 @@ def run_block(arm, out, observer_factory=None):
             if process.poll() is None:
                 process.kill()  # bounded emergency stop of this exact wrapper only
                 process.wait(timeout=15)
-        if ref["handle"]:
-            proof.require(api.CloseHandle(ref["handle"]), "P1E_CLOSE_JOB")
-        if SOURCE.exists():
-            SOURCE.rename(out / "original")
+        try:
+            if observer is not None and callable(getattr(observer, "close", None)):
+                # P1-H: relinquish held read-only child handles AFTER original
+                # gate and any independent post-gate proof, never while P47 runs.
+                observer.close()
+        finally:
+            try:
+                if ref["handle"]:
+                    proof.require(api.CloseHandle(ref["handle"]), "P1E_CLOSE_JOB")
+            finally:
+                if SOURCE.exists():
+                    SOURCE.rename(out / "original")
 
 
 def main():
