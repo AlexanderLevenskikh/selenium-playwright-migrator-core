@@ -1,0 +1,93 @@
+{
+  "schema": "migrator-p1o-chromium156-builder-lock/v1",
+  "purpose": "test_owned_instrumentation_only_no_product_fix",
+  "originalCoreHead": "b065d9d4b3d5bc664ec51b0008d40f4412a35410",
+  "source": {
+    "url": "https://chromium.googlesource.com/chromium/src.git",
+    "tag": "156.0.8078.80",
+    "commit": "fb096c0011f9d50f0a264a9376420cdea9c421e3",
+    "gitBlobs": {
+      "DEPS": "b902d611fe6a71d28add17ec663faa48e10f877d",
+      "docs/windows_build_instructions.md": "224fe5df98bcdb612e1682791957327ea06b5b8a",
+      "chrome/VERSION": "31f37d1714a6f80b7a8194471e817f6eacae0466",
+      "third_party/crashpad/README.chromium": "f7ea6573881414e25af1e0293556efd8a56ebecb",
+      "third_party/crashpad/crashpad/util/win/exception_handler_server.cc": "8af53a62b088fececd558f1436a84d4c2c4feabd",
+      "third_party/crashpad/crashpad/util/win/exception_handler_server.h": "6f67ce8adc64f453da4be6105ae5a79ee4c7fc36",
+      "third_party/crashpad/crashpad/handler/crash_report_upload_thread.cc": "bec8714263779d57bfff5ba83cfe26776acf3732"
+    },
+    "crashpadRevision": "53c4dcfae02976fe5c1b0b9e5347914b1ccfcd9f",
+    "externalDepotToolsCommitFromDeps": "a07c06fe67a1a9d64ac4728df3a11c1ceb0cf73e"
+  },
+  "builder": {
+    "os": "Windows",
+    "architecture": "AMD64",
+    "minRamGiB": 32,
+    "minScratchFreeGiB": 300,
+    "scratchFilesystem": "NTFS",
+    "visualStudio": {
+      "release": "Visual Studio 2026 Build Tools Stable",
+      "version": "18.11.4",
+      "microsoftReleaseBuild": "12402.416",
+      "requiredComponents": [
+        "Microsoft.VisualStudio.Workload.NativeDesktop",
+        "Microsoft.VisualStudio.Component.VC.ATLMFC"
+      ]
+    },
+    "windowsSdk": {
+      "kitVersion": "10.0.28000.0",
+      "releaseVersion": "10.0.28000.2270",
+      "minDebuggingToolsVersion": "10.0.26100.3323"
+    },
+    "depotTools": {
+      "repository": "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
+      "exactCommit": "a07c06fe67a1a9d64ac4728df3a11c1ceb0cf73e",
+      "autoUpdate": false
+    },
+    "allowNetworkDuringBuild": false,
+    "preprovisionedAndIsolatedRequired": true,
+    "noGlobalEnvironmentOrCredentialChanges": true
+  },
+  "gn": {
+    "args": [
+      "is_debug = false",
+      "is_component_build = false",
+      "is_official_build = false",
+      "symbol_level = 1",
+      "target_cpu = \"x64\"",
+      "use_remoteexec = false",
+      "use_siso = false"
+    ],
+    "buildTarget": "chrome",
+    "explicitTestMacro": "MIGRATOR_P1_TEST_OWNED_WITNESS"
+  },
+  "p47": {
+    "path": "scripts/p2_preview47_one_time_real_chromium.py",
+    "originalGitBlobSha1": "f0d44e21d40b2cbf16397bc400671f77232004db",
+    "originalGateSeconds": 12,
+    "originalFault": "os.kill(driver_pid, signal.SIGTERM)",
+    "originalStageOrder": [
+      "healthy_pass",
+      "healthy_primary",
+      "disconnect_primary",
+      "disconnect_pass",
+      "disconnect_primary_repeat"
+    ],
+    "firstFailStopsSequence": true,
+    "noRetries": true,
+    "noWin32HostJobSubstitution": true,
+    "historicalNativeLiveArtifacts": [
+      14745840024,
+      14753824405,
+      14754039147
+    ]
+  },
+  "state": {
+    "sourcePinned": true,
+    "windowsBuilderProvisioned": false,
+    "chromiumInstrumentedCompiled": false,
+    "nativeLiveWitnessObserved": false,
+    "productFixProven": false,
+    "releaseAllowed": false,
+    "status": "prerequisite_failure_builder_not_provisioned"
+  }
+}
