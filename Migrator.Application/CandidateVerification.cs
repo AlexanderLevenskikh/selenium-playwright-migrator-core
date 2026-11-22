@@ -76,6 +76,7 @@ public sealed partial class MigrationEngine
             hash, files.Select(file => new CandidateFileEvidence(file.RelativePath,
                 Convert.ToHexString(SHA256.HashData(file.Bytes)).ToLowerInvariant(), file.Bytes.Length)).ToArray());
 
+        var capturedTexts = new List<(string RelativePath, string Content)>(files.Length);
         var parsed = new List<SyntaxTree>(files.Length);
         var syntaxDiagnostics = new List<VerificationDiagnostic>();
         foreach (var file in files)
@@ -96,6 +97,7 @@ public sealed partial class MigrationEngine
                 continue;
             }
 
+            capturedTexts.Add((file.RelativePath, text));
             var tree = CSharpSyntaxTree.ParseText(text, path: file.RelativePath);
             parsed.Add(tree);
             foreach (var error in tree.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Take(40))
@@ -144,7 +146,10 @@ public sealed partial class MigrationEngine
                 "No browser, runtime or behavioral observations are performed by this alpha verifier.",
                 "Source snapshot context uses the alpha project's lightweight inventory; full transitive MSBuild inputs are not attested.",
                 "Reference context identifies supplied DLL bytes and runtime version, not a hermetic project build."
-            });
+            })
+        {
+            Acceptance = MigrationAcceptanceGate.Evaluate(preview, capturedTexts)
+        };
     }
 
     private sealed record CapturedFile(string RelativePath, byte[] Bytes);
