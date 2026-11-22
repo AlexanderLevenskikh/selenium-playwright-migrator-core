@@ -336,6 +336,60 @@ if (args.Length >= 5 && args[0] == "pom-exception-contract")
     }
 }
 
+// P2/P3 read-only *entire original project* static completeness contract.
+// Requires exact AnalysisId/CandidateId from plan; never builds, executes or
+// exposes executable target/source C#. Always exits nonzero: static AST checks
+// can at most block, NEVER certify source-to-target browser equivalence.
+if (args.Length > 0 && args[0] == "acceptance-inspect")
+{
+    if (args.Length != 4)
+    {
+        Console.Error.WriteLine(
+            "Usage: acceptance-inspect <single-project-root> <AnalysisId> <CandidateId>");
+        return 2;
+    }
+    try
+    {
+        var engine = new MigrationEngine();
+        var verification = engine.VerifyArtifact(args[1], args[2], args[3]);
+        var gate = verification.Acceptance
+            ?? throw new InvalidOperationException(
+                "P2_ACCEPTANCE_CONTRACT_UNAVAILABLE");
+        if (gate.SchemaVersion != MigrationAcceptanceGate.SchemaVersion
+            || gate.Status is not (MigrationAcceptanceGate.RejectedIncomplete
+                or MigrationAcceptanceGate.BlockedUnverified))
+            throw new InvalidOperationException(
+                "P2_ACCEPTANCE_STATUS_UNRECOGNIZED");
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            gate.SchemaVersion, gate.Status, gate.AnalysisId, gate.CandidateId,
+            gate.SourceTreeHash, gate.TargetTreeHash, gate.SourceObligations,
+            gate.CandidateMatches, gate.MissingObligations, gate.ReviewRequired,
+            gate.Blockers,
+            lineage = gate.Lineage.Select(l => new {
+                l.Id, l.SourcePath, l.Method, l.Phase, l.SourceLine,
+                l.Kind, l.SourceSha256, l.TargetPath, l.TargetLine,
+                l.TargetSha256, l.Status, l.Reason
+            }),
+            stages = new {
+                syntax = gate.Syntax.Status, compile = gate.Compile.Status,
+                testDiscovery = gate.TestDiscovery.Status,
+                runner = gate.Runner.Status, realBrowser = gate.RealBrowser.Status,
+                behavioralEquivalence = gate.BehavioralEquivalence.Status
+            },
+            execution = "read_only_not_run", runtimeVerified = false,
+            canAutoApply = false, acceptedForRC = false
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        return 3; // Both rejected_incomplete and blocked_unverified are NO-GO.
+    }
+    catch (Exception e) when (e is ArgumentException
+        or InvalidOperationException or IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine(e.GetType().Name + ": " + e.Message);
+        return 5;
+    }
+}
+
 // P2 read-only POM source plan. This CLI never edits source or target.
 // --emit-target is explicit because templates can contain private selectors.
 if (args.Length >= 2 && args[0] == "pom-inspect")
@@ -393,6 +447,8 @@ const string Usage = """
       dotnet run --project Migrator.AssemblyCli -- plan <single-project-root> [--config path]
       dotnet run --project Migrator.AssemblyCli -- generate <single-project-root> <new-target-root> [--config path] [--build] [--test]
       dotnet run --project Migrator.AssemblyCli -- verify <single-project-root> <target-root> [--config path] [--build] [--test]
+
+      dotnet run --project Migrator.AssemblyCli -- acceptance-inspect <single-project-root> <AnalysisId> <CandidateId>
 
       dotnet run --project Migrator.AssemblyCli -- solution-plan <multi-project-root> [--config path]
       dotnet run --project Migrator.AssemblyCli -- solution-generate <multi-project-root> <new-target-root> [--config path] [--build] [--test]

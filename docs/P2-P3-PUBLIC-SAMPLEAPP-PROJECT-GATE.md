@@ -84,3 +84,27 @@ All results remain read-only. Neither a successful method projection nor an
 assembly `ready_for_build` status means a real full NUnit project migration,
 and runtime behavioral equivalence remains UNKNOWN. The ledger has no
 MSBuild execution permission and cannot autoapply a candidate.
+
+## Original full-project CandidateId-bound static acceptance
+
+The new local CLI command is deliberately review-only:
+
+`dotnet Migrator.AssemblyCli.dll acceptance-inspect <sourceProjectRoot> <AnalysisId> <CandidateId>`
+
+The two identity arguments MUST match those obtained from the exact original
+project `plan`. The CLI invokes the Core's actual
+`MigrationEngine.VerifyArtifact` and prints
+`migrator-acceptance/v1`: complete source/target operation/lifecycle
+lineage hashes, missing obligations, blockers and six independent stage
+statuses. A stale CandidateId returns an error, and neither
+`rejected_incomplete` nor `blocked_unverified` returns exit 0.
+No target source is emitted, no project is built/run, no browser or fixture
+executed, and no autoapply is available.
+
+The existing 15-method full public POM ledger must be present and still
+record `WaitForAlert` as blocked/UNKNOWN. The original project acceptance
+stage is bound to all 10 source test declarations, the exact
+AnalysisId/CandidateId and current source/target hashes, independently of
+the `ready_for_build` structural assembly plan. On its own this does not
+certify the original test fixture execution or a complete Playwright
+runtime migration.

@@ -290,6 +290,16 @@ jobs:
           name: migrator-p2p3-public-full-source-obligations-${{ matrix.os }}
           path: artifacts/p2p3-public-full-source-obligations/*
           if-no-files-found: error
+      - name: Verify original ten-file NUnit candidate completeness using exact AnalysisId and CandidateId
+        timeout-minutes: 8
+        run: python scripts/p2_p3_full_public_acceptance.py public-portfolio/desh-full
+      - name: Preserve original NUnit project's complete source-target static lineage and rejection gates
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: migrator-p2p3-public-original-acceptance-${{ matrix.os }}
+          path: artifacts/p2p3-original-nunit-acceptance/*
+          if-no-files-found: error
       - name: Execute original public Page Objects vs actual Core-projected Playwright source in same Chrome
         timeout-minutes: 15
         env:
