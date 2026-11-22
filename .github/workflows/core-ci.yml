@@ -626,6 +626,8 @@ jobs:
         run: python scripts/test_p2_preview47_process_evidence.py
       - name: P1-A post-gate real Job containment oracle (pure fail-closed tests)
         run: python scripts/test_p1_preview47_job_postgate_proof.py
+      - name: P1-A2 source-exact P47 fixture identity and omission negatives (both OS)
+        run: python scripts/test_p1_preview47_source_exact_fixture.py
       - name: Actual driver loss, source-bound NUnit cleanup and primary failure witness
         timeout-minutes: 24
         env:
@@ -638,7 +640,7 @@ jobs:
       - name: P1 independent Windows Job Object host-owned containment control
         if: ${{ always() && matrix.os == 'windows-latest' }}
         run: python scripts/p2_preview47_windows_job_object_probe.py
-      - name: P1-A six fixed real Node Chromium Job trials; fail first unassisted survivor
+      - name: P1-A2 fixed six source-exact P47 NUnit Job trials; unobserved real survivor blocks
         if: ${{ always() && matrix.os == 'windows-latest' }}
         timeout-minutes: 16
         env:
