@@ -206,6 +206,8 @@ jobs:
           sparse-checkout: |
             AssignmentProject/Tests/TextInputTests.cs
             AssignmentProject/Pages/TextInputPage.cs
+            AssignmentProject/Pages/SampleAppPage.cs
+            AssignmentProject/Tests/SampleAppTests.cs
             AssignmentProject/Pages/HomePage.cs
           sparse-checkout-cone-mode: false
       - name: Checkout pinned public inherited NUnit PageFactory source (read-only)
@@ -253,6 +255,22 @@ jobs:
           MIGRATOR_CHROME_BIN: ${{ steps.public-pom-chrome.outputs.chrome-path }}
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.public-pom-chrome.outputs.chromedriver-path }}
         run: python scripts/p2_real_public_text_input_slice.py public-portfolio/desh
+      - name: Checkout exact ORIGINAL full public NUnit project for bounded source build/discovery
+        uses: actions/checkout@v4
+        with:
+          repository: desh2001/Selenium-NUnit-Automation
+          ref: edacb9feb41a7e21d9b6bf6924f24c11698a4427
+          path: public-portfolio/desh-full
+      - name: Original full public NUnit project build and test discovery (NO external site execution)
+        timeout-minutes: 12
+        run: python scripts/p2_p3_full_public_project_preflight.py public-portfolio/desh-full
+      - name: Preserve original NUnit project source SHA and separated restore/build/discovery statuses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p3-original-public-project-preflight-${{ matrix.os }}
+          path: artifacts/p3-original-public-project-preflight/*
+          if-no-files-found: error
       - name: Retain bounded public real-source POM browser receipts and both mutations
         if: always()
         uses: actions/upload-artifact@v4
@@ -268,6 +286,19 @@ jobs:
           MIGRATOR_CHROME_BIN: ${{ steps.public-pom-chrome.outputs.chrome-path }}
           MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.public-pom-chrome.outputs.chromedriver-path }}
         run: python scripts/p2_real_public_generated_pom_slice.py public-portfolio/desh
+      - name: Actual public SampleApp Selenium vs Core-generated Playwright login/parity and negative controls
+        timeout-minutes: 15
+        env:
+          MIGRATOR_CHROME_BIN: ${{ steps.public-pom-chrome.outputs.chrome-path }}
+          MIGRATOR_CHROMEDRIVER_BIN: ${{ steps.public-pom-chrome.outputs.chromedriver-path }}
+        run: python scripts/p2_real_public_generated_sampleapp.py public-portfolio/desh
+      - name: Preserve SHA-pinned public SampleApp generated C#, seven NUnit TRX and three mutations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrator-p2-generated-public-sampleapp-${{ matrix.os }}
+          path: artifacts/p2-generated-public-sampleapp/*
+          if-no-files-found: error
       - name: Preserve source-bound Core generated target hash, independent TRX and mutation evidence
         if: always()
         uses: actions/upload-artifact@v4
